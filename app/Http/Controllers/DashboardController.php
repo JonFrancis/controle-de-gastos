@@ -26,7 +26,7 @@ class DashboardController extends Controller
             'pendingReview' => 0,
             'monthTotalCents' => (int) $purchases->sum('amount_cents'),
             'purchases' => $purchases->map(fn (Purchase $purchase) => [
-                'id' => $purchase->id, 'purchasedAt' => $purchase->purchased_at->toDateString(), 'description' => $purchase->description,
+                'id' => $purchase->id, 'purchasedAt' => $purchase->purchased_at->toDateString(), 'description' => $purchase->description, 'cardName' => $purchase->card_name,
                 'amountCents' => $purchase->amount_cents, 'payer' => $purchase->payer?->name, 'participant' => $purchase->participant?->name,
                 'paymentMethod' => $purchase->paymentMethod?->name, 'category' => $purchase->category?->name,
             ])->values(),

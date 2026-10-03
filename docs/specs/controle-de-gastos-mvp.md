@@ -10,7 +10,7 @@ O usuário precisa de um aplicativo local para computador que seja a fonte ofici
 
 Construir um aplicativo local com Laravel e SQLite no backend e React, TypeScript, Inertia.js, Tailwind CSS e shadcn/ui no frontend.
 
-O aplicativo terá uma Compra principal com valor total, Pagador, Forma de pagamento, categoria, data e Origem do gasto. Cada Compra terá um ou mais Rateios por Participante. Recorrências e Parcelamentos serão regras que geram Ocorrências por período; cada ocorrência poderá receber ajuste pontual sem alterar a regra original.
+O aplicativo terá uma Compra principal com valor total, descrição interna, nome exibido no cartão/fatura, Pagador opcional, Forma de pagamento, categoria opcional, data e Origem do gasto. Pagador e Participante vazios representam o usuário, sem exigir que ele seja cadastrado como pessoa. Cada Compra terá um ou mais Rateios por Participante. Recorrências e Parcelamentos serão regras que geram Ocorrências por período; cada ocorrência poderá receber ajuste pontual sem alterar a regra original.
 
 O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura, fechamento mensal, análise mensal, mensagens editáveis de cobrança, importação revisável da planilha, exportação para análise externa, backup local e integração opcional com OpenAI mediante ação explícita do usuário.
 
@@ -27,8 +27,8 @@ O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura,
 
 ### Compras e rateios
 
-7. Como usuário, quero cadastrar rapidamente uma Compra com data, descrição, valor total, Forma de pagamento, categoria e Participantes.
-8. Como usuário, quero registrar quem foi o Pagador, independentemente dos Participantes do Rateio.
+7. Como usuário, quero cadastrar rapidamente uma Compra com data, descrição interna, nome no cartão/fatura, valor total, Forma de pagamento, categoria opcional e Participantes.
+8. Como usuário, quero deixar Pagador ou Participante vazio para representar a mim mesmo, sem criar um cadastro para “Eu”.
 9. Como usuário, quero dividir uma Compra igualmente entre os Participantes.
 10. Como usuário, quero informar manualmente o valor de cada Rateio.
 11. Como usuário, quero informar percentuais de Rateio e calcular os valores automaticamente.
@@ -135,6 +135,9 @@ O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura,
 - A aplicação será iniciada localmente com `php artisan serve`.
 - O modelo de domínio separará Compra, Rateio, Participante, Pagador, Forma de pagamento, Recorrência, Parcelamento, Ocorrência, Recebimento, Fatura e Fechamento mensal.
 - Compras e Rateios serão entidades separadas, para impedir duplicação em compras compartilhadas.
+- A descrição interna e o nome exibido no cartão/fatura serão campos distintos para permitir conferência com o lançamento real.
+- Pagador e Participante serão opcionais; cada campo vazio representa o usuário e não exige um registro de pessoa.
+- Categoria será aplicável ao consumo próprio, identificado por Participante vazio; compras atribuídas a outra pessoa não terão categoria aplicada.
 - Recorrências e Parcelamentos serão regras que produzem Ocorrências por período.
 - Uma Ocorrência poderá receber ajuste pontual sem alterar a regra de origem.
 - Formas de pagamento terão tipos Crédito, Débito, Pix, Dinheiro e Outro.
@@ -169,7 +172,7 @@ O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura,
 - Os testes deverão confirmar que a chamada de IA só ocorre após ação explícita e que a aplicação continua funcionando sem API configurada.
 - Os testes deverão validar backup, restauração, Arquivamento, restauração de registros e histórico de alterações.
 - Os testes deverão incluir limites de mês, fechamento no último dia do mês, valores de centavos, rateios iguais e diferenças de arredondamento.
-- Ainda não há código existente ou testes anteriores; a primeira suíte será criada junto com o esqueleto do aplicativo.
+- O cadastro simples terá testes de Compra própria sem pessoa “Eu”, compra para outra pessoa, nome no cartão/fatura e categoria condicionada ao consumo próprio.
 
 ## Out of Scope
 

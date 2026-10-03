@@ -58,6 +58,7 @@ class PurchaseController extends Controller
     private function data(array $data): array
     {
         $data['amount_cents'] = (int) round(((float) $data['amount']) * 100);
+        $data['category_id'] = empty($data['participant_id']) ? ($data['category_id'] ?? null) : null;
         unset($data['amount']);
 
         return $data;

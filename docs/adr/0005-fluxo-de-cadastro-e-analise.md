@@ -1,6 +1,6 @@
 # Fluxo de cadastro e análise mensal
 
-O cadastro principal será um formulário rápido de compra com data, descrição, valor total, forma de pagamento, categoria e participantes. O rateio poderá ser igual, por valores ou por percentuais, sempre com validação de soma exata. O dashboard alternará entre mês calendário e fatura de cartão, e a análise mensal reproduzirá o relatório definido para cobranças, consumo próprio, categorias, formas de pagamento, origens, ambiguidades e conferência dos totais.
+O cadastro principal será um formulário rápido de compra com data, descrição interna, nome no cartão/fatura, valor total, pagador opcional, forma de pagamento, categoria opcional e participantes opcionais. Campo vazio de pagador ou participante representa o usuário, sem cadastro próprio. A categoria só se aplica ao consumo próprio, quando o participante estiver vazio. O rateio poderá ser igual, por valores ou por percentuais, sempre com validação de soma exata. O dashboard alternará entre mês calendário e fatura de cartão, e a análise mensal reproduzirá o relatório definido para cobranças, consumo próprio, categorias, formas de pagamento, origens, ambiguidades e conferência dos totais.
 
 ## Consequências
 

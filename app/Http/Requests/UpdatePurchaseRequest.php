@@ -23,12 +23,12 @@ class UpdatePurchaseRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'purchased_at' => ['required', 'date'], 'description' => ['required', 'string', 'max:160'],
+            'purchased_at' => ['required', 'date'], 'description' => ['required', 'string', 'max:160'], 'card_name' => ['nullable', 'string', 'max:160'],
             'amount' => ['required', 'numeric', 'min:0.01'],
-            'payer_id' => ['required', Rule::exists('participants', 'id')],
-            'participant_id' => ['required', Rule::exists('participants', 'id')],
+            'payer_id' => ['nullable', Rule::exists('participants', 'id')],
+            'participant_id' => ['nullable', Rule::exists('participants', 'id')],
             'payment_method_id' => ['required', Rule::exists('payment_methods', 'id')],
-            'category_id' => ['required', Rule::exists('categories', 'id')],
+            'category_id' => ['nullable', Rule::exists('categories', 'id')],
         ];
     }
 
