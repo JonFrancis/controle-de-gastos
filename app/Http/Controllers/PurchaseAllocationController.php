@@ -28,6 +28,7 @@ class PurchaseAllocationController extends Controller
     {
         $service->save($purchase, $request->string('allocation_mode')->toString(), $request->validated('allocations'));
 
-        return to_route('purchases.allocations.edit', $purchase);
+        return to_route('purchases.allocations.edit', $purchase)
+            ->with('success', 'Divisão salva com sucesso.');
     }
 }

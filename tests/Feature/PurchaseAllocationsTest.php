@@ -23,7 +23,7 @@ class PurchaseAllocationsTest extends TestCase
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page->component('Purchases/Allocations'));
 
-        $this->put("/purchases/{$purchase->id}/allocations", ['allocation_mode' => 'equal', 'allocations' => [['participant_id' => $purchase->payer_id, 'amount' => ''], ['participant_id' => $maria->id, 'amount' => ''], ['participant_id' => $joao->id, 'amount' => '']]])->assertRedirect("/purchases/{$purchase->id}/allocations/edit");
+        $this->put("/purchases/{$purchase->id}/allocations", ['allocation_mode' => 'equal', 'allocations' => [['participant_id' => $purchase->payer_id, 'amount' => ''], ['participant_id' => $maria->id, 'amount' => ''], ['participant_id' => $joao->id, 'amount' => '']]])->assertRedirect("/purchases/{$purchase->id}/allocations/edit")->assertSessionHas('success', 'Divisão salva com sucesso.');
 
         $this->assertDatabaseHas('purchases', ['id' => $purchase->id, 'allocation_mode' => 'equal']);
         $this->assertSame([3334, 3333, 3333], PurchaseAllocation::where('purchase_id', $purchase->id)->orderBy('id')->pluck('amount_cents')->all());
