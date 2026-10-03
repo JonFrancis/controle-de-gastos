@@ -8,13 +8,18 @@ type Props = {
         toReceive: string;
         salaryRemaining: string;
     };
+    catalogs: {
+        participants: { id: number; name: string }[];
+        categories: { id: number; name: string }[];
+        paymentMethods: { id: number; name: string; type: string; closing_day: number | null }[];
+    };
 };
 
 const navigation = [
     ['Visão geral', '/'],
     ['Compras', '#compras'],
     ['Pessoas', '#pessoas'],
-    ['Configurações', '#configuracoes'],
+    ['Configurações', '/settings/catalogs'],
 ];
 
 export default function Dashboard({ monthLabel, pendingReview, summary }: Props) {
@@ -45,7 +50,7 @@ export default function Dashboard({ monthLabel, pendingReview, summary }: Props)
                     <div className="absolute bottom-6 left-5 right-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
                         <p className="text-xs font-semibold uppercase tracking-wider text-emerald-300">Próximo passo</p>
                         <p className="mt-2 text-sm leading-5 text-slate-300">Cadastre uma forma de pagamento para começar.</p>
-                        <Link href="#configuracoes" className="mt-3 inline-block text-sm font-semibold text-emerald-300">Configurar agora →</Link>
+                        <Link href="/settings/catalogs" className="mt-3 inline-block text-sm font-semibold text-emerald-300">Configurar agora →</Link>
                     </div>
                 </aside>
 
@@ -82,7 +87,7 @@ export default function Dashboard({ monthLabel, pendingReview, summary }: Props)
                             <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6" id="compras">
                                 <div className="flex items-center justify-between"><div><h2 className="font-semibold text-white">Atalhos</h2><p className="mt-1 text-sm text-slate-400">Ações frequentes</p></div><span className="text-xl text-slate-500">⋯</span></div>
                                 <div className="mt-6 grid grid-cols-2 gap-3">
-                                    {['Registrar compra', 'Cadastrar pessoa', 'Adicionar recebimento', 'Importar planilha'].map((label, index) => <Link key={label} href="#" className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-emerald-300/40 hover:bg-emerald-300/5"><span className="text-xl">{['＋', '◎', '↗', '↥'][index]}</span><p className="mt-3 text-sm font-medium text-slate-200">{label}</p></Link>)}
+                                    {['Registrar compra', 'Cadastrar pessoa', 'Adicionar recebimento', 'Importar planilha'].map((label, index) => <Link key={label} href={label === 'Cadastrar pessoa' ? '/settings/catalogs' : '#'} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-emerald-300/40 hover:bg-emerald-300/5"><span className="text-xl">{['＋', '◎', '↗', '↥'][index]}</span><p className="mt-3 text-sm font-medium text-slate-200">{label}</p></Link>)}
                                 </div>
                             </div>
                         </section>
