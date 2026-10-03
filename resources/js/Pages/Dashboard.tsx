@@ -4,7 +4,9 @@ type Props = {
     monthLabel: string;
     selectedMonth: string;
     monthTotalCents: number;
+    view: 'calendar' | 'invoice';
     purchases: Purchase[];
+    invoiceGroups: InvoiceGroup[];
     pendingReview: number;
     summary: {
         ownExpenses: string;
@@ -19,6 +21,7 @@ type Props = {
     flash?: { success?: string };
 };
 type Purchase = { id: number; purchasedAt: string; description: string; cardName: string | null; amountCents: number; payer: string | null; participant: string | null; paymentMethod: string | null; category: string | null };
+type InvoiceGroup = { paymentMethod: string; closingDate: string; totalCents: number; purchases: Purchase[] };
 
 const navigation = [
     ['Visão geral', '/'],
@@ -27,7 +30,7 @@ const navigation = [
     ['Configurações', '/settings/catalogs'],
 ];
 
-export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, purchases, pendingReview, summary, catalogs, flash }: Props) {
+export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, view, purchases, invoiceGroups, pendingReview, summary, catalogs, flash }: Props) {
     return (
         <>
             <Head title="Visão geral" />
@@ -67,8 +70,9 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                                 <h1 className="mt-1 text-3xl font-bold tracking-tight text-white">Olá, João <span aria-hidden>👋</span></h1>
                                 <p className="mt-2 text-sm text-slate-400">Acompanhe seu mês sem depender de fórmulas.</p>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <button className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200">{monthLabel}⌄</button>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <div className="flex rounded-xl border border-white/10 bg-white/5 p-1 text-sm"><Link href={`/?month=${selectedMonth}&view=calendar`} className={`rounded-lg px-3 py-2 ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300'}`}>Mês</Link><Link href={`/?month=${selectedMonth}&view=invoice`} className={`rounded-lg px-3 py-2 ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300'}`}>Faturas</Link></div>
+                                <span className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200">{monthLabel}</span>
                                 <Link href="/purchases/create" className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-400/10">＋ Nova compra</Link>
                             </div>
                         </header>
@@ -82,8 +86,8 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                         </section>
 
                         <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
-                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="font-semibold text-white">Compras do período</h2><p className="mt-1 text-sm text-slate-400">{purchases.length} compra(s) · total de <strong className="text-emerald-300">{formatMoney(monthTotalCents)}</strong></p></div><form method="get" action="/" className="flex items-center gap-2"><input type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" /><button className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200">Filtrar</button></form></div>
-                            <div className="mt-5 space-y-2">{purchases.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Nenhuma compra ativa neste mês.</p>}{purchases.map((purchase) => <div key={purchase.id} className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-medium text-slate-200">{purchase.description}</p><p className="mt-1 text-xs text-slate-500">{formatDate(purchase.purchasedAt)} · {purchase.cardName ? `Fatura: ${purchase.cardName} · ` : ''}{purchase.category ?? 'Sem categoria'} · {purchase.paymentMethod ?? 'Sem forma'}</p><p className="mt-1 text-xs text-slate-500">Pagador: {purchase.payer ?? 'Eu'} · Participante: {purchase.participant ?? 'Eu'}</p></div><div className="flex items-center justify-between gap-4 sm:justify-end"><strong className="text-sm text-white">{formatMoney(purchase.amountCents)}</strong><Link href={`/purchases/${purchase.id}/edit`} className="text-xs font-semibold text-emerald-300">Editar</Link></div></div>)}</div>
+                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="font-semibold text-white">{view === 'invoice' ? 'Faturas de cartão' : 'Compras do período'}</h2><p className="mt-1 text-sm text-slate-400">{view === 'invoice' ? `${invoiceGroups.length} fatura(s)` : `${purchases.length} compra(s)`} · total de <strong className="text-emerald-300">{formatMoney(monthTotalCents)}</strong></p></div><form method="get" action="/" className="flex items-center gap-2"><input type="hidden" name="view" value={view} /><input type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" /><button className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200">Filtrar</button></form></div>
+                            {view === 'invoice' ? <InvoiceGroups groups={invoiceGroups} /> : <CalendarPurchases purchases={purchases} />}
                         </section>
 
                         <section className="mt-8 grid gap-5 xl:grid-cols-[1.35fr_1fr]">
@@ -115,6 +119,18 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
             </div>
         </>
     );
+}
+
+function CalendarPurchases({ purchases }: { purchases: Purchase[] }) {
+    return <div className="mt-5 space-y-2">{purchases.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Nenhuma compra ativa neste mês.</p>}{purchases.map((purchase) => <PurchaseRow key={purchase.id} purchase={purchase} />)}</div>;
+}
+
+function InvoiceGroups({ groups }: { groups: InvoiceGroup[] }) {
+    return <div className="mt-5 space-y-4">{groups.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Nenhuma fatura de cartão neste mês.</p>}{groups.map((group) => <article key={`${group.paymentMethod}-${group.closingDate}`} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-white">{group.paymentMethod}</h3><p className="mt-1 text-xs text-slate-400">Fechamento em {formatDate(group.closingDate)}</p></div><strong className="text-sm text-emerald-300">{formatMoney(group.totalCents)}</strong></div><div className="mt-3 space-y-2">{group.purchases.map((purchase) => <PurchaseRow key={purchase.id} purchase={purchase} />)}</div></article>)}</div>;
+}
+
+function PurchaseRow({ purchase }: { purchase: Purchase }) {
+    return <div className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-medium text-slate-200">{purchase.description}</p><p className="mt-1 text-xs text-slate-500">{formatDate(purchase.purchasedAt)} · {purchase.cardName ? `Fatura: ${purchase.cardName} · ` : ''}{purchase.category ?? 'Sem categoria'} · {purchase.paymentMethod ?? 'Sem forma'}</p><p className="mt-1 text-xs text-slate-500">Pagador: {purchase.payer ?? 'Eu'} · Participante: {purchase.participant ?? 'Eu'}</p></div><div className="flex items-center justify-between gap-4 sm:justify-end"><strong className="text-sm text-white">{formatMoney(purchase.amountCents)}</strong><Link href={`/purchases/${purchase.id}/edit`} className="text-xs font-semibold text-emerald-300">Editar</Link></div></div>;
 }
 
 function formatMoney(cents: number): string { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100); }
