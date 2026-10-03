@@ -19,7 +19,7 @@ class ParticipantController extends Controller
     public function index(): Response
     {
         return Inertia::render('Settings/Catalogs', [
-            'participants' => Participant::query()->orderBy('name')->get(['id', 'name', 'active']),
+            'participants' => Participant::query()->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'active', 'is_default']),
             'categories' => Category::query()->orderBy('name')->get(['id', 'name', 'active']),
             'paymentMethods' => PaymentMethod::query()->orderBy('name')->get(['id', 'name', 'type', 'closing_day', 'active']),
             'paymentMethodTypes' => PaymentMethod::types(),
@@ -65,6 +65,10 @@ class ParticipantController extends Controller
      */
     public function update(UpdateParticipantRequest $request, Participant $participant): RedirectResponse
     {
+        if ($participant->is_default) {
+            return to_route('settings.catalogs')->withErrors(['name' => 'A pessoa Eu é obrigatória e não pode ser alterada.']);
+        }
+
         $participant->update($request->validated());
 
         return to_route('settings.catalogs');
@@ -75,6 +79,10 @@ class ParticipantController extends Controller
      */
     public function destroy(Participant $participant): RedirectResponse
     {
+        if ($participant->is_default) {
+            return to_route('settings.catalogs')->withErrors(['name' => 'A pessoa Eu é obrigatória e não pode ser excluída.']);
+        }
+
         $participant->delete();
 
         return to_route('settings.catalogs');

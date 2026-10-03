@@ -47,21 +47,21 @@ class PurchasesTest extends TestCase
         $this->assertNull($purchase->fresh()->archived_at);
     }
 
-    public function test_missing_payer_or_participant_represents_the_user_without_self_catalog_entry(): void
+    public function test_eu_is_selected_for_own_purchases(): void
     {
-        [, $participant, $method, $category] = $this->catalogs();
+        [$payer, $participant, $method, $category] = $this->catalogs();
 
-        $this->post('/purchases', ['purchased_at' => '2026-10-14', 'description' => 'Compra minha', 'card_name' => 'LOJA', 'amount' => '25,00', 'payer_id' => '', 'participant_id' => '', 'payment_method_id' => $method->id, 'category_id' => $category->id])->assertRedirect('/');
-        $this->post('/purchases', ['purchased_at' => '2026-10-15', 'description' => 'Paguei para Maria', 'card_name' => 'LOJA', 'amount' => '30,00', 'payer_id' => '', 'participant_id' => $participant->id, 'payment_method_id' => $method->id, 'category_id' => $category->id])->assertRedirect('/');
+        $this->post('/purchases', ['purchased_at' => '2026-10-14', 'description' => 'Compra minha', 'card_name' => 'LOJA', 'amount' => '25,00', 'payer_id' => $payer->id, 'participant_id' => $payer->id, 'payment_method_id' => $method->id, 'category_id' => $category->id])->assertRedirect('/');
+        $this->post('/purchases', ['purchased_at' => '2026-10-15', 'description' => 'Paguei para Maria', 'card_name' => 'LOJA', 'amount' => '30,00', 'payer_id' => $payer->id, 'participant_id' => $participant->id, 'payment_method_id' => $method->id, 'category_id' => $category->id])->assertRedirect('/');
 
-        $this->assertDatabaseHas('purchases', ['description' => 'Compra minha', 'payer_id' => null, 'participant_id' => null, 'category_id' => $category->id]);
-        $this->assertDatabaseHas('purchases', ['description' => 'Paguei para Maria', 'payer_id' => null, 'participant_id' => $participant->id, 'category_id' => null]);
+        $this->assertDatabaseHas('purchases', ['description' => 'Compra minha', 'payer_id' => $payer->id, 'participant_id' => $payer->id, 'category_id' => $category->id]);
+        $this->assertDatabaseHas('purchases', ['description' => 'Paguei para Maria', 'payer_id' => $payer->id, 'participant_id' => $participant->id, 'category_id' => null]);
     }
 
     /** @return array{0: Participant, 1: Participant, 2: PaymentMethod, 3: Category} */
     private function catalogs(): array
     {
-        $payer = Participant::create(['name' => 'Eu']);
+        $payer = Participant::query()->where('is_default', true)->firstOrFail();
         $participant = Participant::create(['name' => 'Maria']);
         $method = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
         $category = Category::create(['name' => 'Casa']);

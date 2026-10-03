@@ -18,7 +18,7 @@ class PurchaseAllocationController extends Controller
     {
         return Inertia::render('Purchases/Allocations', [
             'purchase' => $purchase->load(['allocations.participant']),
-            'participants' => Participant::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
+            'participants' => Participant::query()->where('active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']),
             'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
             'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
         ]);

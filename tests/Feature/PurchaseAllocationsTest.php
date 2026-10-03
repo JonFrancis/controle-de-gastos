@@ -23,7 +23,7 @@ class PurchaseAllocationsTest extends TestCase
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page->component('Purchases/Allocations'));
 
-        $this->put("/purchases/{$purchase->id}/allocations", ['allocation_mode' => 'equal', 'allocations' => [['participant_id' => '', 'amount' => ''], ['participant_id' => $maria->id, 'amount' => ''], ['participant_id' => $joao->id, 'amount' => '']]])->assertRedirect("/purchases/{$purchase->id}/allocations/edit");
+        $this->put("/purchases/{$purchase->id}/allocations", ['allocation_mode' => 'equal', 'allocations' => [['participant_id' => $purchase->payer_id, 'amount' => ''], ['participant_id' => $maria->id, 'amount' => ''], ['participant_id' => $joao->id, 'amount' => '']]])->assertRedirect("/purchases/{$purchase->id}/allocations/edit");
 
         $this->assertDatabaseHas('purchases', ['id' => $purchase->id, 'allocation_mode' => 'equal']);
         $this->assertSame([3334, 3333, 3333], PurchaseAllocation::where('purchase_id', $purchase->id)->orderBy('id')->pluck('amount_cents')->all());
@@ -33,11 +33,11 @@ class PurchaseAllocationsTest extends TestCase
     {
         [$purchase, $maria] = $this->purchase();
 
-        $this->from("/purchases/{$purchase->id}/allocations/edit")->put("/purchases/{$purchase->id}/allocations", ['allocation_mode' => 'amount', 'allocations' => [['participant_id' => '', 'amount' => '50,00'], ['participant_id' => $maria->id, 'amount' => '49,99']]])->assertRedirect("/purchases/{$purchase->id}/allocations/edit")->assertSessionHasErrors('allocations');
-        $this->put("/purchases/{$purchase->id}/allocations", ['allocation_mode' => 'amount', 'allocations' => [['participant_id' => '', 'amount' => '50,00'], ['participant_id' => $maria->id, 'amount' => '50,00']]])->assertRedirect("/purchases/{$purchase->id}/allocations/edit");
+        $this->from("/purchases/{$purchase->id}/allocations/edit")->put("/purchases/{$purchase->id}/allocations", ['allocation_mode' => 'amount', 'allocations' => [['participant_id' => $purchase->payer_id, 'amount' => '50,00'], ['participant_id' => $maria->id, 'amount' => '49,99']]])->assertRedirect("/purchases/{$purchase->id}/allocations/edit")->assertSessionHasErrors('allocations');
+        $this->put("/purchases/{$purchase->id}/allocations", ['allocation_mode' => 'amount', 'allocations' => [['participant_id' => $purchase->payer_id, 'amount' => '50,00'], ['participant_id' => $maria->id, 'amount' => '50,00']]])->assertRedirect("/purchases/{$purchase->id}/allocations/edit");
         $this->assertSame('amount', $purchase->fresh()->allocation_mode);
 
-        $this->put("/purchases/{$purchase->id}/allocations", ['allocation_mode' => 'percentage', 'allocations' => [['participant_id' => '', 'percentage' => '33,33'], ['participant_id' => $maria->id, 'percentage' => '66,67']]])->assertRedirect("/purchases/{$purchase->id}/allocations/edit");
+        $this->put("/purchases/{$purchase->id}/allocations", ['allocation_mode' => 'percentage', 'allocations' => [['participant_id' => $purchase->payer_id, 'percentage' => '33,33'], ['participant_id' => $maria->id, 'percentage' => '66,67']]])->assertRedirect("/purchases/{$purchase->id}/allocations/edit");
         $this->assertSame(10000, PurchaseAllocation::where('purchase_id', $purchase->id)->sum('percentage_basis_points'));
         $this->assertSame(10000, PurchaseAllocation::where('purchase_id', $purchase->id)->sum('amount_cents'));
     }
@@ -55,7 +55,7 @@ class PurchaseAllocationsTest extends TestCase
     /** @return array{0: Purchase, 1: Participant, 2: Participant} */
     private function purchase(): array
     {
-        $payer = Participant::create(['name' => 'Eu']);
+        $payer = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria']);
         $joao = Participant::create(['name' => 'João']);
         $method = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);

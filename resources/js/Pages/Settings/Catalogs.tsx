@@ -1,7 +1,7 @@
 import { Form, Head, Link, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 
-type CatalogItem = { id: number; name: string; active: boolean };
+type CatalogItem = { id: number; name: string; active: boolean; is_default?: boolean };
 type PaymentMethod = CatalogItem & { type: string; closing_day: number | null };
 type Props = { participants: CatalogItem[]; categories: CatalogItem[]; paymentMethods: PaymentMethod[]; paymentMethodTypes: string[] };
 type CatalogFormData = { name: string; active: boolean };
@@ -28,7 +28,7 @@ function SimpleCatalog({ title, description, endpoint, items }: { title: string;
         </Form>
         <div className="mt-5 space-y-2">
             {items.length === 0 && <p className="rounded-xl border border-dashed border-white/10 px-4 py-5 text-center text-sm text-slate-500">Nenhum cadastro ainda.</p>}
-            {items.map((item) => editingId === item.id ? <EditCatalogItem key={item.id} item={item} endpoint={endpoint} onCancel={() => setEditingId(null)} /> : <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3"><span className={item.active ? 'text-sm text-slate-200' : 'text-sm text-slate-500 line-through'}>{item.name}</span><div className="flex items-center gap-2"><Status active={item.active} /><button onClick={() => setEditingId(item.id)} className="text-xs font-semibold text-slate-300">Editar</button><Form action={`${endpoint}/${item.id}`} method="delete" onBefore={() => window.confirm(`Excluir ${item.name} permanentemente?`)}><button className="text-xs font-semibold text-rose-300">Excluir</button></Form></div></div>)}
+            {items.map((item) => editingId === item.id ? <EditCatalogItem key={item.id} item={item} endpoint={endpoint} onCancel={() => setEditingId(null)} /> : <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3"><span className={item.active ? 'text-sm text-slate-200' : 'text-sm text-slate-500 line-through'}>{item.name}{item.is_default && <span className="ml-2 text-xs text-emerald-300">padrão</span>}</span><div className="flex items-center gap-2"><Status active={item.active} />{!item.is_default && <><button onClick={() => setEditingId(item.id)} className="text-xs font-semibold text-slate-300">Editar</button><Form action={`${endpoint}/${item.id}`} method="delete" onBefore={() => window.confirm(`Excluir ${item.name} permanentemente?`)}><button className="text-xs font-semibold text-rose-300">Excluir</button></Form></>}</div></div>)}
         </div>
     </section>;
 }

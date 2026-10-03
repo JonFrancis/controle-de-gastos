@@ -13,17 +13,17 @@ class PurchaseAllocationService
     public function save(Purchase $purchase, string $mode, array $allocations): void
     {
         if (! in_array($mode, self::MODES, true) || count($allocations) === 0) {
-            throw ValidationException::withMessages(['allocations' => 'Informe um modo e pelo menos um participante no rateio.']);
+            throw ValidationException::withMessages(['allocations' => 'Informe um modo e pelo menos um participante na divisão.']);
         }
 
-        $rows = collect($allocations)->map(fn (array $row) => ['participant_id' => $row['participant_id'] ?: null, 'amount_cents' => $this->moneyToCents($row['amount'] ?? '0'), 'percentage_basis_points' => $this->percentageToBasisPoints($row['percentage'] ?? '0')])->values();
+        $rows = collect($allocations)->map(fn (array $row) => ['participant_id' => $row['participant_id'], 'amount_cents' => $this->moneyToCents($row['amount'] ?? '0'), 'percentage_basis_points' => $this->percentageToBasisPoints($row['percentage'] ?? '0')])->values();
         $this->ensureUniqueParticipants($rows->pluck('participant_id')->all());
 
         if ($mode === 'equal') {
             $rows = $this->equalAmounts($rows->count(), $purchase->amount_cents, $rows);
         } elseif ($mode === 'amount') {
             if ((int) $rows->sum('amount_cents') !== $purchase->amount_cents) {
-                throw ValidationException::withMessages(['allocations' => 'A soma dos rateios precisa ser exatamente igual ao valor da compra.']);
+                throw ValidationException::withMessages(['allocations' => 'A soma das divisões precisa ser exatamente igual ao valor da compra.']);
             }
             $rows = $rows->map(fn (array $row) => [...$row, 'percentage_basis_points' => null]);
         } else {
@@ -59,7 +59,7 @@ class PurchaseAllocationService
     private function ensureUniqueParticipants(array $participantIds): void
     {
         if (count($participantIds) !== count(array_unique(array_map(fn ($id) => $id === null ? 'self' : (string) $id, $participantIds)))) {
-            throw ValidationException::withMessages(['allocations' => 'Cada participante pode aparecer apenas uma vez no rateio.']);
+            throw ValidationException::withMessages(['allocations' => 'Cada participante pode aparecer apenas uma vez na divisão.']);
         }
     }
 

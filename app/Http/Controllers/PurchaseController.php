@@ -21,9 +21,11 @@ class PurchaseController extends Controller
 
     public function store(StorePurchaseRequest $request): RedirectResponse
     {
-        Purchase::create($this->data($request->validated()));
+        $data = $request->validated();
+        $openAllocation = (bool) ($data['open_allocation'] ?? false);
+        $purchase = Purchase::create($this->data($data));
 
-        return to_route('dashboard');
+        return $openAllocation ? to_route('purchases.allocations.edit', $purchase) : to_route('dashboard');
     }
 
     public function edit(Purchase $purchase): Response
@@ -58,8 +60,10 @@ class PurchaseController extends Controller
     private function data(array $data): array
     {
         $data['amount_cents'] = (int) round(((float) $data['amount']) * 100);
-        $data['category_id'] = empty($data['participant_id']) ? ($data['category_id'] ?? null) : null;
+        $selfId = Participant::query()->where('is_default', true)->value('id');
+        $data['category_id'] = (int) $data['participant_id'] === (int) $selfId ? ($data['category_id'] ?? null) : null;
         unset($data['amount']);
+        unset($data['open_allocation']);
 
         return $data;
     }
@@ -67,7 +71,7 @@ class PurchaseController extends Controller
     private function catalogs(): array
     {
         return [
-            'participants' => Participant::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
+            'participants' => Participant::query()->where('active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']),
             'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
             'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
         ];

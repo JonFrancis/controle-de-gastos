@@ -25,10 +25,11 @@ class UpdatePurchaseRequest extends FormRequest
         return [
             'purchased_at' => ['required', 'date'], 'description' => ['required', 'string', 'max:160'], 'card_name' => ['nullable', 'string', 'max:160'],
             'amount' => ['required', 'numeric', 'min:0.01'],
-            'payer_id' => ['nullable', Rule::exists('participants', 'id')],
-            'participant_id' => ['nullable', Rule::exists('participants', 'id')],
+            'payer_id' => ['required', Rule::exists('participants', 'id')->where('active', true)],
+            'participant_id' => ['required', Rule::exists('participants', 'id')->where('active', true)],
             'payment_method_id' => ['required', Rule::exists('payment_methods', 'id')],
             'category_id' => ['nullable', Rule::exists('categories', 'id')],
+            'open_allocation' => ['nullable', 'boolean'],
         ];
     }
 

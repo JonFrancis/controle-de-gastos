@@ -23,7 +23,7 @@ class CatalogsTest extends TestCase
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Settings/Catalogs')
-                ->has('participants', 1)
+                ->has('participants', 2)
                 ->has('categories', 1)
                 ->has('paymentMethods', 1)
             );
@@ -95,5 +95,16 @@ class CatalogsTest extends TestCase
         $this->assertDatabaseMissing('participants', ['id' => $participant->id]);
         $this->assertDatabaseMissing('categories', ['id' => $category->id]);
         $this->assertDatabaseMissing('payment_methods', ['id' => $method->id]);
+    }
+
+    public function test_default_eu_participant_cannot_be_changed_or_deleted(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+
+        $this->patch("/participants/{$self->id}", ['name' => 'Outro nome', 'active' => false])
+            ->assertRedirect('/settings/catalogs');
+        $this->delete("/participants/{$self->id}")->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseHas('participants', ['id' => $self->id, 'name' => 'Eu', 'active' => true, 'is_default' => true]);
     }
 }
