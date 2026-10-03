@@ -5,8 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['purchased_at', 'description', 'card_name', 'amount_cents', 'payer_id', 'participant_id', 'payment_method_id', 'category_id', 'archived_at'])]
+#[Fillable(['purchased_at', 'description', 'card_name', 'amount_cents', 'allocation_mode', 'payer_id', 'participant_id', 'payment_method_id', 'category_id', 'archived_at'])]
 class Purchase extends Model
 {
     protected function casts(): array
@@ -37,5 +38,10 @@ class Purchase extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function allocations(): HasMany
+    {
+        return $this->hasMany(PurchaseAllocation::class);
     }
 }

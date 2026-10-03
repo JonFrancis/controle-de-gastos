@@ -4,6 +4,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ParticipantController;
 use App\Http\Controllers\PaymentMethodController;
+use App\Http\Controllers\PurchaseAllocationController;
 use App\Http\Controllers\PurchaseController;
 use Illuminate\Support\Facades\Route;
 
@@ -15,6 +16,8 @@ Route::get('/purchases/{purchase}/edit', [PurchaseController::class, 'edit'])->n
 Route::patch('/purchases/{purchase}', [PurchaseController::class, 'update'])->name('purchases.update');
 Route::patch('/purchases/{purchase}/archive', [PurchaseController::class, 'destroy'])->name('purchases.archive');
 Route::patch('/purchases/{purchase}/restore', [PurchaseController::class, 'restore'])->name('purchases.restore');
+Route::get('/purchases/{purchase}/allocations/edit', [PurchaseAllocationController::class, 'edit'])->name('purchases.allocations.edit');
+Route::put('/purchases/{purchase}/allocations', [PurchaseAllocationController::class, 'update'])->name('purchases.allocations.update');
 
 Route::get('/settings/catalogs', [ParticipantController::class, 'index'])->name('settings.catalogs');
 Route::post('/participants', [ParticipantController::class, 'store'])->name('participants.store');
