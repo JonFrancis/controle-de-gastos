@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['purchase_id', 'participant_id', 'amount_cents', 'percentage_basis_points'])]
+#[Fillable(['purchase_id', 'participant_id', 'category_id', 'amount_cents', 'percentage_basis_points'])]
 class PurchaseAllocation extends Model
 {
     protected function casts(): array
@@ -22,5 +22,10 @@ class PurchaseAllocation extends Model
     public function participant(): BelongsTo
     {
         return $this->belongsTo(Participant::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
     }
 }

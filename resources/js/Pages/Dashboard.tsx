@@ -16,6 +16,7 @@ type Props = {
         categories: { id: number; name: string }[];
         paymentMethods: { id: number; name: string; type: string; closing_day: number | null }[];
     };
+    flash?: { success?: string };
 };
 type Purchase = { id: number; purchasedAt: string; description: string; cardName: string | null; amountCents: number; payer: string | null; participant: string | null; paymentMethod: string | null; category: string | null };
 
@@ -26,7 +27,7 @@ const navigation = [
     ['Configurações', '/settings/catalogs'],
 ];
 
-export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, purchases, pendingReview, summary, catalogs }: Props) {
+export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, purchases, pendingReview, summary, catalogs, flash }: Props) {
     return (
         <>
             <Head title="Visão geral" />
@@ -71,6 +72,8 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                                 <Link href="/purchases/create" className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-400/10">＋ Nova compra</Link>
                             </div>
                         </header>
+
+                        {flash?.success && <p role="status" className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{flash.success}</p>}
 
                         <section className="mt-8 grid gap-4 md:grid-cols-3">
                             <SummaryCard label="Meu consumo no mês" value={summary.ownExpenses} note="Inclui compras próprias" accent="emerald" />

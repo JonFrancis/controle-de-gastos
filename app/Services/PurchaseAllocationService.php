@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Participant;
 use App\Models\Purchase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -16,7 +17,8 @@ class PurchaseAllocationService
             throw ValidationException::withMessages(['allocations' => 'Informe um modo e pelo menos um participante na divisão.']);
         }
 
-        $rows = collect($allocations)->map(fn (array $row) => ['participant_id' => $row['participant_id'], 'amount_cents' => $this->moneyToCents($row['amount'] ?? '0'), 'percentage_basis_points' => $this->percentageToBasisPoints($row['percentage'] ?? '0')])->values();
+        $selfId = (int) Participant::query()->where('is_default', true)->value('id');
+        $rows = collect($allocations)->map(fn (array $row) => ['participant_id' => $row['participant_id'], 'category_id' => (int) $row['participant_id'] === $selfId ? ($row['category_id'] ?? null) : null, 'amount_cents' => $this->moneyToCents($row['amount'] ?? '0'), 'percentage_basis_points' => $this->percentageToBasisPoints($row['percentage'] ?? '0')])->values();
         $this->ensureUniqueParticipants($rows->pluck('participant_id')->all());
 
         if ($mode === 'equal') {

@@ -17,7 +17,7 @@ class PurchaseAllocationController extends Controller
     public function edit(Purchase $purchase): Response
     {
         return Inertia::render('Purchases/Allocations', [
-            'purchase' => $purchase->load(['allocations.participant']),
+            'purchase' => $purchase->load(['allocations.participant', 'allocations.category']),
             'participants' => Participant::query()->where('active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']),
             'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
             'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
@@ -28,7 +28,6 @@ class PurchaseAllocationController extends Controller
     {
         $service->save($purchase, $request->string('allocation_mode')->toString(), $request->validated('allocations'));
 
-        return to_route('purchases.allocations.edit', $purchase)
-            ->with('success', 'Divisão salva com sucesso.');
+        return to_route('dashboard')->with('success', 'Divisão salva com sucesso.');
     }
 }

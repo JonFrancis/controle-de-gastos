@@ -44,6 +44,7 @@ class UpdatePurchaseAllocationsRequest extends FormRequest
             'allocations' => ['required', 'array', 'min:1'],
             'allocations.*' => ['required', 'array'],
             'allocations.*.participant_id' => ['required', Rule::exists('participants', 'id')->where('active', true)],
+            'allocations.*.category_id' => ['nullable', Rule::exists('categories', 'id')->where('active', true)],
             'allocations.*.amount' => ['nullable', 'numeric', 'min:0'],
             'allocations.*.percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ];

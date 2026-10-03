@@ -21,11 +21,9 @@ class PurchaseController extends Controller
 
     public function store(StorePurchaseRequest $request): RedirectResponse
     {
-        $data = $request->validated();
-        $openAllocation = (bool) ($data['open_allocation'] ?? false);
-        $purchase = Purchase::create($this->data($data));
+        $purchase = Purchase::create($this->data($request->validated(), true));
 
-        return $openAllocation ? to_route('purchases.allocations.edit', $purchase) : to_route('dashboard');
+        return to_route('purchases.allocations.edit', $purchase);
     }
 
     public function edit(Purchase $purchase): Response
@@ -57,13 +55,17 @@ class PurchaseController extends Controller
         return to_route('dashboard');
     }
 
-    private function data(array $data): array
+    private function data(array $data, bool $creating = false): array
     {
         $data['amount_cents'] = (int) round(((float) $data['amount']) * 100);
-        $selfId = Participant::query()->where('is_default', true)->value('id');
-        $data['category_id'] = (int) $data['participant_id'] === (int) $selfId ? ($data['category_id'] ?? null) : null;
         unset($data['amount']);
-        unset($data['open_allocation']);
+
+        if ($creating) {
+            $data['participant_id'] = null;
+            $data['category_id'] = null;
+        } else {
+            unset($data['participant_id'], $data['category_id']);
+        }
 
         return $data;
     }

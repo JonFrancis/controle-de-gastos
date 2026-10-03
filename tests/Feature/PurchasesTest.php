@@ -18,7 +18,7 @@ class PurchasesTest extends TestCase
     {
         [$payer, $participant, $method, $category] = $this->catalogs();
 
-        $this->post('/purchases', ['purchased_at' => '2026-10-12', 'description' => 'Mercado', 'card_name' => 'SUPERMERCADO TESTE', 'amount' => '123,45', 'payer_id' => $payer->id, 'participant_id' => $participant->id, 'payment_method_id' => $method->id, 'category_id' => $category->id])->assertRedirect('/');
+        $this->post('/purchases', ['purchased_at' => '2026-10-12', 'description' => 'Mercado', 'card_name' => 'SUPERMERCADO TESTE', 'amount' => '123,45', 'payer_id' => $payer->id, 'payment_method_id' => $method->id])->assertRedirect();
         $this->assertDatabaseHas('purchases', ['description' => 'Mercado', 'card_name' => 'SUPERMERCADO TESTE', 'amount_cents' => 12345, 'archived_at' => null]);
     }
 
@@ -47,15 +47,19 @@ class PurchasesTest extends TestCase
         $this->assertNull($purchase->fresh()->archived_at);
     }
 
-    public function test_eu_is_selected_for_own_purchases(): void
+    public function test_purchase_creation_opens_division_and_division_selects_participants_and_category(): void
     {
         [$payer, $participant, $method, $category] = $this->catalogs();
 
-        $this->post('/purchases', ['purchased_at' => '2026-10-14', 'description' => 'Compra minha', 'card_name' => 'LOJA', 'amount' => '25,00', 'payer_id' => $payer->id, 'participant_id' => $payer->id, 'payment_method_id' => $method->id, 'category_id' => $category->id])->assertRedirect('/');
-        $this->post('/purchases', ['purchased_at' => '2026-10-15', 'description' => 'Paguei para Maria', 'card_name' => 'LOJA', 'amount' => '30,00', 'payer_id' => $payer->id, 'participant_id' => $participant->id, 'payment_method_id' => $method->id, 'category_id' => $category->id])->assertRedirect('/');
+        $response = $this->post('/purchases', ['purchased_at' => '2026-10-14', 'description' => 'Compra minha', 'card_name' => 'LOJA', 'amount' => '25,00', 'payer_id' => $payer->id, 'payment_method_id' => $method->id]);
+        $purchase = Purchase::query()->where('description', 'Compra minha')->firstOrFail();
+        $response->assertRedirect("/purchases/{$purchase->id}/allocations/edit");
 
-        $this->assertDatabaseHas('purchases', ['description' => 'Compra minha', 'payer_id' => $payer->id, 'participant_id' => $payer->id, 'category_id' => $category->id]);
-        $this->assertDatabaseHas('purchases', ['description' => 'Paguei para Maria', 'payer_id' => $payer->id, 'participant_id' => $participant->id, 'category_id' => null]);
+        $this->assertDatabaseHas('purchases', ['description' => 'Compra minha', 'payer_id' => $payer->id, 'participant_id' => null, 'category_id' => null]);
+        $this->put("/purchases/{$purchase->id}/allocations", ['allocation_mode' => 'amount', 'allocations' => [['participant_id' => $payer->id, 'category_id' => $category->id, 'amount' => '25,00']]])->assertRedirect('/');
+        $this->assertDatabaseHas('purchase_allocations', ['purchase_id' => $purchase->id, 'participant_id' => $payer->id, 'category_id' => $category->id, 'amount_cents' => 2500]);
+
+        $this->assertDatabaseMissing('purchase_allocations', ['purchase_id' => $purchase->id, 'participant_id' => $participant->id, 'category_id' => $category->id]);
     }
 
     /** @return array{0: Participant, 1: Participant, 2: PaymentMethod, 3: Category} */
