@@ -67,4 +67,33 @@ class CatalogsTest extends TestCase
             'name' => 'Cartão inválido', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 32,
         ])->assertRedirect('/settings/catalogs')->assertSessionHasErrors('closing_day');
     }
+
+    public function test_duplicate_catalog_names_return_user_facing_errors(): void
+    {
+        Participant::create(['name' => 'Maria']);
+        Category::create(['name' => 'Casa']);
+        PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+
+        $this->from('/settings/catalogs')->post('/participants', ['name' => 'Maria'])
+            ->assertSessionHasErrors(['name' => 'Já existe uma pessoa com este nome.']);
+        $this->from('/settings/catalogs')->post('/categories', ['name' => 'Casa'])
+            ->assertSessionHasErrors(['name' => 'Já existe uma categoria com este nome.']);
+        $this->from('/settings/catalogs')->post('/payment-methods', ['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX])
+            ->assertSessionHasErrors(['name' => 'Já existe uma forma de pagamento com este nome.']);
+    }
+
+    public function test_catalogs_can_be_permanently_deleted(): void
+    {
+        $participant = Participant::create(['name' => 'Maria']);
+        $category = Category::create(['name' => 'Casa']);
+        $method = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+
+        $this->delete("/participants/{$participant->id}")->assertRedirect('/settings/catalogs');
+        $this->delete("/categories/{$category->id}")->assertRedirect('/settings/catalogs');
+        $this->delete("/payment-methods/{$method->id}")->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseMissing('participants', ['id' => $participant->id]);
+        $this->assertDatabaseMissing('categories', ['id' => $category->id]);
+        $this->assertDatabaseMissing('payment_methods', ['id' => $method->id]);
+    }
 }

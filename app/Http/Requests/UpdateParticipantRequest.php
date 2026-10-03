@@ -27,4 +27,9 @@ class UpdateParticipantRequest extends FormRequest
             'active' => ['required', 'boolean'],
         ];
     }
+
+    public function messages(): array
+    {
+        return ['name.unique' => 'Já existe uma pessoa com este nome.'];
+    }
 }

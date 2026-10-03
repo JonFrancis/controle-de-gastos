@@ -34,4 +34,12 @@ class StorePaymentMethodRequest extends FormRequest
     {
         $validator->sometimes('closing_day', ['required'], fn () => $this->input('type') === PaymentMethod::TYPE_CREDIT);
     }
+
+    public function messages(): array
+    {
+        return [
+            'name.unique' => 'Já existe uma forma de pagamento com este nome.',
+            'closing_day.required' => 'Informe o dia de fechamento do cartão de crédito.',
+        ];
+    }
 }

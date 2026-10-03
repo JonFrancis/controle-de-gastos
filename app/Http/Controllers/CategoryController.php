@@ -64,8 +64,10 @@ class CategoryController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy(Category $category): RedirectResponse
     {
-        //
+        $category->delete();
+
+        return to_route('settings.catalogs');
     }
 }

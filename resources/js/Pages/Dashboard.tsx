@@ -22,7 +22,7 @@ const navigation = [
     ['Configurações', '/settings/catalogs'],
 ];
 
-export default function Dashboard({ monthLabel, pendingReview, summary }: Props) {
+export default function Dashboard({ monthLabel, pendingReview, summary, catalogs }: Props) {
     return (
         <>
             <Head title="Visão geral" />
@@ -47,11 +47,11 @@ export default function Dashboard({ monthLabel, pendingReview, summary }: Props)
                             </Link>
                         ))}
                     </nav>
-                    <div className="absolute bottom-6 left-5 right-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+                    {catalogs.participants.length === 0 && catalogs.categories.length === 0 && catalogs.paymentMethods.length === 0 && <div className="absolute bottom-6 left-5 right-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
                         <p className="text-xs font-semibold uppercase tracking-wider text-emerald-300">Próximo passo</p>
                         <p className="mt-2 text-sm leading-5 text-slate-300">Cadastre uma forma de pagamento para começar.</p>
                         <Link href="/settings/catalogs" className="mt-3 inline-block text-sm font-semibold text-emerald-300">Configurar agora →</Link>
-                    </div>
+                    </div>}
                 </aside>
 
                 <main className="min-h-screen lg:pl-64">

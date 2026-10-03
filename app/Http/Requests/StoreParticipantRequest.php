@@ -25,4 +25,9 @@ class StoreParticipantRequest extends FormRequest
             'name' => ['required', 'string', 'max:100', 'unique:participants,name'],
         ];
     }
+
+    public function messages(): array
+    {
+        return ['name.unique' => 'Já existe uma pessoa com este nome.'];
+    }
 }

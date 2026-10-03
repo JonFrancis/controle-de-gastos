@@ -25,4 +25,9 @@ class StoreCategoryRequest extends FormRequest
             'name' => ['required', 'string', 'max:100', 'unique:categories,name'],
         ];
     }
+
+    public function messages(): array
+    {
+        return ['name.unique' => 'Já existe uma categoria com este nome.'];
+    }
 }

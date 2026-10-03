@@ -69,8 +69,10 @@ class PaymentMethodController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy(PaymentMethod $paymentMethod): RedirectResponse
     {
-        //
+        $paymentMethod->delete();
+
+        return to_route('settings.catalogs');
     }
 }

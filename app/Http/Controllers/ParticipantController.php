@@ -73,8 +73,10 @@ class ParticipantController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy(Participant $participant): RedirectResponse
     {
-        //
+        $participant->delete();
+
+        return to_route('settings.catalogs');
     }
 }
