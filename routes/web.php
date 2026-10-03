@@ -4,9 +4,17 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ParticipantController;
 use App\Http\Controllers\PaymentMethodController;
+use App\Http\Controllers\PurchaseController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', DashboardController::class);
+Route::get('/', DashboardController::class)->name('dashboard');
+
+Route::get('/purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');
+Route::post('/purchases', [PurchaseController::class, 'store'])->name('purchases.store');
+Route::get('/purchases/{purchase}/edit', [PurchaseController::class, 'edit'])->name('purchases.edit');
+Route::patch('/purchases/{purchase}', [PurchaseController::class, 'update'])->name('purchases.update');
+Route::patch('/purchases/{purchase}/archive', [PurchaseController::class, 'destroy'])->name('purchases.archive');
+Route::patch('/purchases/{purchase}/restore', [PurchaseController::class, 'restore'])->name('purchases.restore');
 
 Route::get('/settings/catalogs', [ParticipantController::class, 'index'])->name('settings.catalogs');
 Route::post('/participants', [ParticipantController::class, 'store'])->name('participants.store');

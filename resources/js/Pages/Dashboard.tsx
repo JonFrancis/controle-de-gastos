@@ -2,6 +2,9 @@ import { Head, Link } from '@inertiajs/react';
 
 type Props = {
     monthLabel: string;
+    selectedMonth: string;
+    monthTotalCents: number;
+    purchases: Purchase[];
     pendingReview: number;
     summary: {
         ownExpenses: string;
@@ -14,6 +17,7 @@ type Props = {
         paymentMethods: { id: number; name: string; type: string; closing_day: number | null }[];
     };
 };
+type Purchase = { id: number; purchasedAt: string; description: string; amountCents: number; payer: string | null; participant: string | null; paymentMethod: string | null; category: string | null };
 
 const navigation = [
     ['Visão geral', '/'],
@@ -22,7 +26,7 @@ const navigation = [
     ['Configurações', '/settings/catalogs'],
 ];
 
-export default function Dashboard({ monthLabel, pendingReview, summary, catalogs }: Props) {
+export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, purchases, pendingReview, summary, catalogs }: Props) {
     return (
         <>
             <Head title="Visão geral" />
@@ -64,7 +68,7 @@ export default function Dashboard({ monthLabel, pendingReview, summary, catalogs
                             </div>
                             <div className="flex items-center gap-3">
                                 <button className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200">{monthLabel}⌄</button>
-                                <button className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-400/10">＋ Nova compra</button>
+                                <Link href="/purchases/create" className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-400/10">＋ Nova compra</Link>
                             </div>
                         </header>
 
@@ -72,6 +76,11 @@ export default function Dashboard({ monthLabel, pendingReview, summary, catalogs
                             <SummaryCard label="Meu consumo no mês" value={summary.ownExpenses} note="Inclui compras próprias" accent="emerald" />
                             <SummaryCard label="A receber" value={summary.toReceive} note="De outras pessoas" accent="violet" />
                             <SummaryCard label="Salário restante" value={summary.salaryRemaining} note="Após meus gastos" accent="amber" />
+                        </section>
+
+                        <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
+                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="font-semibold text-white">Compras do período</h2><p className="mt-1 text-sm text-slate-400">{purchases.length} compra(s) · total de <strong className="text-emerald-300">{formatMoney(monthTotalCents)}</strong></p></div><form method="get" action="/" className="flex items-center gap-2"><input type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" /><button className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200">Filtrar</button></form></div>
+                            <div className="mt-5 space-y-2">{purchases.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Nenhuma compra ativa neste mês.</p>}{purchases.map((purchase) => <div key={purchase.id} className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-medium text-slate-200">{purchase.description}</p><p className="mt-1 text-xs text-slate-500">{formatDate(purchase.purchasedAt)} · {purchase.category ?? 'Sem categoria'} · {purchase.paymentMethod ?? 'Sem forma'}</p><p className="mt-1 text-xs text-slate-500">Pagador: {purchase.payer ?? '—'} · Participante: {purchase.participant ?? '—'}</p></div><div className="flex items-center justify-between gap-4 sm:justify-end"><strong className="text-sm text-white">{formatMoney(purchase.amountCents)}</strong><Link href={`/purchases/${purchase.id}/edit`} className="text-xs font-semibold text-emerald-300">Editar</Link></div></div>)}</div>
                         </section>
 
                         <section className="mt-8 grid gap-5 xl:grid-cols-[1.35fr_1fr]">
@@ -104,6 +113,9 @@ export default function Dashboard({ monthLabel, pendingReview, summary, catalogs
         </>
     );
 }
+
+function formatMoney(cents: number): string { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100); }
+function formatDate(value: string): string { return new Intl.DateTimeFormat('pt-BR').format(new Date(`${value}T12:00:00`)); }
 
 function SummaryCard({ label, value, note, accent }: { label: string; value: string; note: string; accent: 'emerald' | 'violet' | 'amber' }) {
     const accents = { emerald: 'text-emerald-300 bg-emerald-300/10', violet: 'text-violet-300 bg-violet-300/10', amber: 'text-amber-300 bg-amber-300/10' };
