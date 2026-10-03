@@ -14,7 +14,8 @@ Route::get('/purchases/create', [PurchaseController::class, 'create'])->name('pu
 Route::post('/purchases', [PurchaseController::class, 'store'])->name('purchases.store');
 Route::get('/purchases/{purchase}/edit', [PurchaseController::class, 'edit'])->name('purchases.edit');
 Route::patch('/purchases/{purchase}', [PurchaseController::class, 'update'])->name('purchases.update');
-Route::patch('/purchases/{purchase}/archive', [PurchaseController::class, 'destroy'])->name('purchases.archive');
+Route::delete('/purchases/{purchase}', [PurchaseController::class, 'destroy'])->name('purchases.destroy');
+Route::patch('/purchases/{purchase}/archive', [PurchaseController::class, 'archive'])->name('purchases.archive');
 Route::patch('/purchases/{purchase}/restore', [PurchaseController::class, 'restore'])->name('purchases.restore');
 Route::get('/purchases/{purchase}/allocations/edit', [PurchaseAllocationController::class, 'edit'])->name('purchases.allocations.edit');
 Route::put('/purchases/{purchase}/allocations', [PurchaseAllocationController::class, 'update'])->name('purchases.allocations.update');

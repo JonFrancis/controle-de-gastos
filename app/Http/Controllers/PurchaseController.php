@@ -41,11 +41,18 @@ class PurchaseController extends Controller
         return to_route('dashboard');
     }
 
-    public function destroy(Purchase $purchase): RedirectResponse
+    public function archive(Purchase $purchase): RedirectResponse
     {
         $purchase->update(['archived_at' => now()]);
 
-        return to_route('dashboard');
+        return to_route('dashboard')->with('success', 'Compra arquivada com sucesso.');
+    }
+
+    public function destroy(Purchase $purchase): RedirectResponse
+    {
+        $purchase->delete();
+
+        return to_route('dashboard')->with('success', 'Compra excluída com sucesso.');
     }
 
     public function restore(Purchase $purchase): RedirectResponse

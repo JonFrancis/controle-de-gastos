@@ -47,6 +47,20 @@ class PurchasesTest extends TestCase
         $this->assertNull($purchase->fresh()->archived_at);
     }
 
+    public function test_purchase_can_be_deleted_permanently_with_its_division(): void
+    {
+        [$payer, $participant, $method, $category] = $this->catalogs();
+        $purchase = Purchase::create(['purchased_at' => '2026-10-12', 'description' => 'Compra para excluir', 'amount_cents' => 10000, 'payer_id' => $payer->id, 'participant_id' => $participant->id, 'payment_method_id' => $method->id, 'category_id' => $category->id]);
+        $purchase->allocations()->create(['participant_id' => $participant->id, 'amount_cents' => 10000]);
+
+        $this->delete("/purchases/{$purchase->id}")
+            ->assertRedirect('/')
+            ->assertSessionHas('success', 'Compra excluída com sucesso.');
+
+        $this->assertDatabaseMissing('purchases', ['id' => $purchase->id]);
+        $this->assertDatabaseMissing('purchase_allocations', ['purchase_id' => $purchase->id]);
+    }
+
     public function test_purchase_creation_opens_division_and_division_selects_participants_and_category(): void
     {
         [$payer, $participant, $method, $category] = $this->catalogs();
