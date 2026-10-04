@@ -142,6 +142,90 @@ class DashboardTest extends TestCase
             );
     }
 
+    public function test_dashboard_exposes_expenses_and_net_balances_by_person_for_the_selected_month(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        Participant::create(['name' => 'Joana']);
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+
+        $sharedPurchase = Purchase::create([
+            'purchased_at' => '2026-10-05',
+            'description' => 'Compra compartilhada',
+            'amount_cents' => 8000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+        PurchaseAllocation::create(['purchase_id' => $sharedPurchase->id, 'participant_id' => $self->id, 'amount_cents' => 2000]);
+        $mariaDebt = PurchaseAllocation::create(['purchase_id' => $sharedPurchase->id, 'participant_id' => $maria->id, 'amount_cents' => 6000]);
+
+        $payablePurchase = Purchase::create([
+            'purchased_at' => '2026-10-06',
+            'description' => 'Compra paga por Maria',
+            'amount_cents' => 1000,
+            'payer_id' => $maria->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+
+        $this->post('/receipts', ['participant_id' => $maria->id, 'received_at' => '2026-10-07', 'amount' => '30,00'])
+            ->assertRedirect('/balances');
+
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('personChart.expenses', 2)
+                ->where('personChart.expenses.0.name', 'Maria')
+                ->where('personChart.expenses.0.amountCents', 6000)
+                ->where('personChart.expenses.1.name', 'Eu')
+                ->where('personChart.expenses.1.amountCents', 3000)
+                ->has('personChart.balances', 1)
+                ->where('personChart.balances.0.name', 'Maria')
+                ->where('personChart.balances.0.amountCents', 2000)
+                ->where('personChart.balances.0.netCents', 2000)
+                ->where('personChart.balances.0.creditCents', 0));
+
+        $this->assertDatabaseHas('receipt_applications', [
+            'purchase_allocation_id' => $mariaDebt->id,
+            'amount_cents' => 3000,
+            'source' => 'automatic',
+        ]);
+        $this->assertModelExists($payablePurchase);
+    }
+
+    public function test_dashboard_represents_participant_credit_in_the_balance_chart(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $purchase = Purchase::create([
+            'purchased_at' => '2026-10-05',
+            'description' => 'Compra para Maria',
+            'amount_cents' => 2000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+        PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $maria->id, 'amount_cents' => 2000]);
+
+        $this->post('/receipts', ['participant_id' => $maria->id, 'received_at' => '2026-10-07', 'amount' => '30,00'])
+            ->assertRedirect('/balances');
+
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('personChart.balances', 1)
+                ->where('personChart.balances.0.name', 'Maria')
+                ->where('personChart.balances.0.amountCents', -1000)
+                ->where('personChart.balances.0.netCents', 0)
+                ->where('personChart.balances.0.creditCents', 1000));
+    }
+
+    public function test_dashboard_exposes_empty_person_chart_series_without_movements(): void
+    {
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('personChart.expenses', [])
+                ->where('personChart.balances', []));
+    }
+
     private function purchase(string $description, string $date, PaymentMethod $method, int $amount, ?string $cardName, Participant $self): void
     {
         Purchase::create([
