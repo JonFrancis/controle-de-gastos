@@ -8,11 +8,13 @@ use App\Http\Controllers\ParticipantController;
 use App\Http\Controllers\PaymentMethodController;
 use App\Http\Controllers\PurchaseAllocationController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\RecurrenceController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
 
 Route::get('/purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');
+Route::get('/purchases/create/simple', [PurchaseController::class, 'createSimple'])->name('purchases.create.simple');
 Route::post('/purchases', [PurchaseController::class, 'store'])->name('purchases.store');
 Route::get('/purchases/{purchase}/edit', [PurchaseController::class, 'edit'])->name('purchases.edit');
 Route::patch('/purchases/{purchase}', [PurchaseController::class, 'update'])->name('purchases.update');
@@ -23,10 +25,12 @@ Route::get('/purchases/{purchase}/allocations/edit', [PurchaseAllocationControll
 Route::put('/purchases/{purchase}/allocations', [PurchaseAllocationController::class, 'update'])->name('purchases.allocations.update');
 
 Route::get('/installments', [InstallmentController::class, 'index'])->name('installments.index');
+Route::get('/installments/create', [InstallmentController::class, 'create'])->name('installments.create');
 Route::post('/installments', [InstallmentController::class, 'store'])->name('installments.store');
 Route::patch('/installments/{installment}/archive', [InstallmentController::class, 'archive'])->name('installments.archive');
 Route::get('/installment-occurrences/{installmentOccurrence}/edit', [InstallmentOccurrenceController::class, 'edit'])->name('installment-occurrences.edit');
 Route::patch('/installment-occurrences/{installmentOccurrence}', [InstallmentOccurrenceController::class, 'update'])->name('installment-occurrences.update');
+Route::get('/recurrences', [RecurrenceController::class, 'index'])->name('recurrences.index');
 
 Route::get('/settings/catalogs', [ParticipantController::class, 'index'])->name('settings.catalogs');
 Route::post('/participants', [ParticipantController::class, 'store'])->name('participants.store');

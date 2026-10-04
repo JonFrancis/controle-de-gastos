@@ -16,6 +16,11 @@ class PurchaseController extends Controller
 {
     public function create(): Response
     {
+        return Inertia::render('Purchases/TypeSelector');
+    }
+
+    public function createSimple(): Response
+    {
         return Inertia::render('Purchases/Form', ['purchase' => null, ...$this->catalogs()]);
     }
 

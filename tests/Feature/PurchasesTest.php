@@ -14,6 +14,12 @@ class PurchasesTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_new_purchase_flow_starts_with_type_selector_and_simple_form_has_its_own_route(): void
+    {
+        $this->get('/purchases/create')->assertInertia(fn (Assert $page) => $page->component('Purchases/TypeSelector'));
+        $this->get('/purchases/create/simple')->assertInertia(fn (Assert $page) => $page->component('Purchases/Form'));
+    }
+
     public function test_purchase_can_be_created_with_amount_stored_in_cents(): void
     {
         [$payer, $participant, $method, $category] = $this->catalogs();

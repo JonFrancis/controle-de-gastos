@@ -14,6 +14,11 @@ use Inertia\Response;
 
 class InstallmentController extends Controller
 {
+    public function create(): Response
+    {
+        return Inertia::render('Installments/Create', $this->catalogs());
+    }
+
     public function index(): Response
     {
         $installments = Installment::query()
@@ -45,7 +50,7 @@ class InstallmentController extends Controller
 
         return Inertia::render('Installments/Index', [
             'installments' => $installments,
-            ...$this->catalogs(),
+            'flash' => ['success' => session('success')],
         ]);
     }
 

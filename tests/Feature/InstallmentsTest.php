@@ -14,6 +14,13 @@ class InstallmentsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_installments_list_and_create_screens_are_separate(): void
+    {
+        $this->get('/installments')->assertInertia(fn (Assert $page) => $page->component('Installments/Index')->missing('participants')->missing('paymentMethods'));
+        $this->get('/installments/create')->assertInertia(fn (Assert $page) => $page->component('Installments/Create')->has('participants')->has('paymentMethods'));
+        $this->get('/recurrences')->assertInertia(fn (Assert $page) => $page->component('Recurrences/Index'));
+    }
+
     public function test_installment_creation_generates_future_occurrences_with_exact_total(): void
     {
         $category = Category::create(['name' => 'Casa']);

@@ -28,6 +28,7 @@ const navigation = [
     ['Visão geral', '/'],
     ['Compras', '#compras'],
     ['Parcelamentos', '/installments'],
+    ['Recorrentes', '/recurrences'],
     ['Pessoas', '#pessoas'],
     ['Configurações', '/settings/catalogs'],
 ];
@@ -52,7 +53,7 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                                 href={href}
                                 className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${index === 0 ? 'bg-emerald-400/10 font-semibold text-emerald-300' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
                             >
-                                <span className="w-5 text-center text-xs">{['⌂', '＋', '◫', '◎', '⚙'][index]}</span>
+                                <span className="w-5 text-center text-xs">{['⌂', '＋', '◫', '↻', '◎', '⚙'][index]}</span>
                                 {label}
                             </Link>
                         ))}
@@ -88,7 +89,7 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                         </section>
 
                         <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
-                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="font-semibold text-white">{view === 'invoice' ? 'Faturas de cartão' : 'Compras do período'}</h2><p className="mt-1 text-sm text-slate-400">{view === 'invoice' ? `${invoiceGroups.length} fatura(s)` : `${purchases.length} compra(s)`} · total de <strong className="text-emerald-300">{formatMoney(monthTotalCents)}</strong></p></div><form method="get" action="/" className="flex items-center gap-2"><input type="hidden" name="view" value={view} /><input type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" /><button className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200">Filtrar</button></form></div>
+                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="font-semibold text-white">{view === 'invoice' ? 'Faturas de cartão' : 'Compras do período'}</h2><p className="mt-1 text-sm text-slate-400">{view === 'invoice' ? `${invoiceGroups.length} fatura(s)` : `${purchases.length + occurrences.length} item(ns)`} · total de <strong className="text-emerald-300">{formatMoney(monthTotalCents)}</strong></p></div><form method="get" action="/" className="flex items-center gap-2"><input type="hidden" name="view" value={view} /><input type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" /><button className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200">Filtrar</button></form></div>
                             {view === 'invoice' ? <InvoiceGroups groups={invoiceGroups} /> : <CalendarPurchases purchases={purchases} occurrences={occurrences} />}
                         </section>
 
