@@ -8,6 +8,7 @@ use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
 use App\Models\RecurrenceOccurrence;
+use App\Models\SpreadsheetImportRow;
 use App\Services\BalanceService;
 use App\Services\InvoiceCycleService;
 use App\Services\RecurrenceService;
@@ -55,7 +56,7 @@ class DashboardController extends Controller
             'selectedMonth' => $selectedMonth,
             'view' => $view,
             'summary' => $this->summaryData($balanceService->summary($month->copy()->endOfMonth(), $month->copy()->startOfMonth())),
-            'pendingReview' => 0,
+            'pendingReview' => SpreadsheetImportRow::query()->where('status', 'pending_review')->count(),
             'monthTotalCents' => (int) ($view === 'invoice' ? $invoiceGroups->sum('totalCents') : $purchases->sum('amount_cents') + $occurrences->sum('amount_cents')),
             'purchases' => $view === 'calendar' ? $purchases->map(fn (Purchase $purchase) => $this->purchaseData($purchase, $selfId))->values() : [],
             'occurrences' => $view === 'calendar' ? $occurrences->map(fn (InstallmentOccurrence|RecurrenceOccurrence $occurrence) => $this->occurrenceData($occurrence))->values() : [],
@@ -104,7 +105,7 @@ class DashboardController extends Controller
     {
         return [
             'id' => $purchase->id,
-            'origin' => 'purchase',
+            'origin' => $purchase->origin ?: 'manual',
             'editUrl' => "/purchases/{$purchase->id}/edit",
             'purchasedAt' => $purchase->purchased_at->toDateString(),
             'description' => $purchase->description,

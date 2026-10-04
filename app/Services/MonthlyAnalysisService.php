@@ -187,12 +187,12 @@ class MonthlyAnalysisService
         foreach ($purchases as $purchase) {
             $allocations = $purchase->allocations;
             if ($allocations->isEmpty()) {
-                $items->push($this->row('manual', 'purchase', $purchase->id, 'purchase:'.$purchase->id, $purchase->purchased_at, $purchase->description, $purchase->card_name, $purchase->amount_cents, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->category?->name, $purchase->payment_method_id, $participantNames, $paymentMethods));
+                $items->push($this->row($purchase->origin ?: 'manual', 'purchase', $purchase->id, 'purchase:'.$purchase->id, $purchase->purchased_at, $purchase->description, $purchase->card_name, $purchase->amount_cents, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->category?->name, $purchase->payment_method_id, $participantNames, $paymentMethods));
 
                 continue;
             }
             foreach ($allocations as $allocation) {
-                $items->push($this->row('manual', 'purchase_allocation', $allocation->id, 'purchase:'.$purchase->id, $purchase->purchased_at, $purchase->description, $purchase->card_name, $allocation->amount_cents, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $allocation->category?->name, $purchase->payment_method_id, $participantNames, $paymentMethods));
+                $items->push($this->row($purchase->origin ?: 'manual', 'purchase_allocation', $allocation->id, 'purchase:'.$purchase->id, $purchase->purchased_at, $purchase->description, $purchase->card_name, $allocation->amount_cents, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $allocation->category?->name, $purchase->payment_method_id, $participantNames, $paymentMethods));
             }
         }
         foreach (InstallmentOccurrence::query()->whereNull('archived_at')->with(['installment', 'paymentMethod', 'category'])->whereBetween('purchased_at', [$start, $end])->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
