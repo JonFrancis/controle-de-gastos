@@ -9,6 +9,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\InstallmentController;
 use App\Http\Controllers\InstallmentOccurrenceController;
+use App\Http\Controllers\OpenAiController;
 use App\Http\Controllers\ParticipantController;
 use App\Http\Controllers\PaymentMethodController;
 use App\Http\Controllers\PurchaseAllocationController;
@@ -27,6 +28,7 @@ Route::get('/exports/csv/{type}', [ExportController::class, 'csv'])->name('expor
 Route::get('/exports/excel', [ExportController::class, 'excel'])->name('exports.excel');
 Route::get('/exports/markdown', [ExportController::class, 'markdown'])->name('exports.markdown');
 Route::get('/exports/prompt', [ExportController::class, 'prompt'])->name('exports.prompt');
+Route::post('/openai/responses', OpenAiController::class)->name('openai.responses.store');
 Route::get('/history', [AuditLogController::class, 'index'])->name('history');
 Route::get('/settings/backups', [BackupController::class, 'index'])->name('settings.backups');
 Route::patch('/settings/backups', [BackupController::class, 'update'])->name('settings.backups.update');
