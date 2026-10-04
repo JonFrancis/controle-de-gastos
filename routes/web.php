@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\AnalysisController;
+use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\BackupController;
 use App\Http\Controllers\BalanceController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
@@ -15,6 +17,7 @@ use App\Http\Controllers\ReceiptController;
 use App\Http\Controllers\RecurrenceController;
 use App\Http\Controllers\RecurrenceOccurrenceController;
 use App\Http\Controllers\SalaryController;
+use App\Http\Controllers\SpreadsheetImportController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
@@ -24,6 +27,18 @@ Route::get('/exports/csv/{type}', [ExportController::class, 'csv'])->name('expor
 Route::get('/exports/excel', [ExportController::class, 'excel'])->name('exports.excel');
 Route::get('/exports/markdown', [ExportController::class, 'markdown'])->name('exports.markdown');
 Route::get('/exports/prompt', [ExportController::class, 'prompt'])->name('exports.prompt');
+Route::get('/history', [AuditLogController::class, 'index'])->name('history');
+Route::get('/settings/backups', [BackupController::class, 'index'])->name('settings.backups');
+Route::patch('/settings/backups', [BackupController::class, 'update'])->name('settings.backups.update');
+Route::post('/settings/backups', [BackupController::class, 'store'])->name('settings.backups.store');
+Route::post('/settings/backups/restore', [BackupController::class, 'restore'])->name('settings.backups.restore');
+Route::get('/imports/create', [SpreadsheetImportController::class, 'create'])->name('imports.create');
+Route::post('/imports', [SpreadsheetImportController::class, 'store'])->name('imports.store');
+Route::get('/imports/{import}/mapping', [SpreadsheetImportController::class, 'mapping'])->name('imports.mapping');
+Route::post('/imports/{import}/mapping', [SpreadsheetImportController::class, 'map'])->name('imports.map');
+Route::get('/imports/{import}/review', [SpreadsheetImportController::class, 'review'])->name('imports.review');
+Route::patch('/imports/{import}/rows/{row}', [SpreadsheetImportController::class, 'updateRow'])->name('imports.rows.update');
+Route::post('/imports/{import}/confirm', [SpreadsheetImportController::class, 'confirm'])->name('imports.confirm');
 Route::patch('/settings/salary', [SalaryController::class, 'update'])->name('settings.salary.update');
 Route::get('/balances', BalanceController::class)->name('balances');
 Route::get('/receipts/create', [ReceiptController::class, 'create'])->name('receipts.create');

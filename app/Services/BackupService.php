@@ -1,0 +1,146 @@
+<?php
+
+namespace App\Services;
+
+use App\Exceptions\InvalidBackupException;
+use App\Models\AppSetting;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
+use JsonException;
+
+class BackupService
+{
+    public const FORMAT = 'controle-de-gastos-backup';
+
+    public const VERSION = 1;
+
+    /** @return array{path: string, filename: string} */
+    public function create(?string $directory = null, string $source = 'manual'): array
+    {
+        $directory = $this->ensureDirectory($directory ?? $this->configuredDirectory());
+        $filename = 'controle-de-gastos-backup-'.now()->format('Ymd_His_u').'.json';
+        $path = $directory.DIRECTORY_SEPARATOR.$filename;
+        $tables = [];
+
+        foreach ($this->tableNames() as $table) {
+            $tables[$table] = DB::table($table)->get()->map(fn (object $row): array => (array) $row)->all();
+        }
+
+        $payload = [
+            'format' => self::FORMAT,
+            'version' => self::VERSION,
+            'generated_at' => now()->toIso8601String(),
+            'source' => $source,
+            'tables' => $tables,
+        ];
+
+        try {
+            $contents = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new InvalidBackupException('Não foi possível serializar o backup.', previous: $exception);
+        }
+
+        $temporaryPath = $path.'.tmp';
+        if (File::put($temporaryPath, $contents) === false || ! File::move($temporaryPath, $path)) {
+            throw new InvalidBackupException('Não foi possível salvar o backup no local configurado.');
+        }
+
+        AppSetting::query()->first()?->update([
+            'last_backup_path' => $path,
+            'last_backup_at' => now(),
+        ]);
+
+        return ['path' => $path, 'filename' => $filename];
+    }
+
+    /** @return array{path: string, filename: string} */
+    public function restore(UploadedFile $file): array
+    {
+        $payload = $this->readAndValidate($file->getRealPath() ?: '');
+        $previous = $this->create(source: 'pre-restore');
+
+        Schema::withoutForeignKeyConstraints(function () use ($payload): void {
+            DB::transaction(function () use ($payload): void {
+                foreach ($this->tableNames() as $table) {
+                    DB::table($table)->delete();
+                }
+
+                foreach ($payload['tables'] as $table => $rows) {
+                    if ($rows !== []) {
+                        DB::table($table)->insert($rows);
+                    }
+                }
+            });
+        });
+
+        return $previous;
+    }
+
+    public function createAutomaticIfEnabled(): void
+    {
+        $setting = AppSetting::query()->first();
+
+        if ($setting?->automatic_backup_enabled) {
+            $this->create(source: 'automatic');
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function readAndValidate(string $path): array
+    {
+        if ($path === '' || ! File::isFile($path) || ! File::isReadable($path)) {
+            throw new InvalidBackupException('Selecione um arquivo de backup válido.');
+        }
+
+        try {
+            $payload = json_decode(File::get($path), true, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            throw new InvalidBackupException('O arquivo de backup não contém JSON válido.');
+        }
+
+        if (! is_array($payload) || ($payload['format'] ?? null) !== self::FORMAT || ($payload['version'] ?? null) !== self::VERSION || ! is_array($payload['tables'] ?? null)) {
+            throw new InvalidBackupException('O arquivo não é um backup compatível com esta versão.');
+        }
+
+        $knownTables = $this->tableNames();
+        foreach ($payload['tables'] as $table => $rows) {
+            if (! is_string($table) || ! in_array($table, $knownTables, true) || ! is_array($rows)) {
+                throw new InvalidBackupException('O backup contém uma tabela desconhecida ou inválida.');
+            }
+
+            $columns = Schema::getColumnListing($table);
+            foreach ($rows as $row) {
+                if (! is_array($row) || array_diff(array_keys($row), $columns) !== []) {
+                    throw new InvalidBackupException('O backup contém colunas incompatíveis.');
+                }
+            }
+        }
+
+        return $payload;
+    }
+
+    /** @return list<string> */
+    private function tableNames(): array
+    {
+        return array_values(array_filter(
+            Schema::getTableListing(null, false),
+            fn (string $table): bool => $table !== 'sqlite_sequence',
+        ));
+    }
+
+    private function configuredDirectory(): string
+    {
+        return AppSetting::query()->value('backup_path') ?: storage_path('app/private/backups');
+    }
+
+    private function ensureDirectory(string $directory): string
+    {
+        if (! File::isDirectory($directory) && ! File::makeDirectory($directory, 0755, true)) {
+            throw new InvalidBackupException('Não foi possível criar o local configurado para backups.');
+        }
+
+        return rtrim($directory, '\\/');
+    }
+}

@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
+use App\Services\AuditService;
 use App\Services\BalanceService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -25,9 +26,10 @@ class PurchaseController extends Controller
         return Inertia::render('Purchases/Form', ['purchase' => null, ...$this->catalogs()]);
     }
 
-    public function store(StorePurchaseRequest $request): RedirectResponse
+    public function store(StorePurchaseRequest $request, AuditService $audit): RedirectResponse
     {
         $purchase = Purchase::create($this->data($request->validated(), true));
+        $audit->record('create', $purchase, newValues: $purchase->getAttributes());
 
         return to_route('purchases.allocations.edit', $purchase);
     }
@@ -40,17 +42,21 @@ class PurchaseController extends Controller
         ]);
     }
 
-    public function update(UpdatePurchaseRequest $request, Purchase $purchase, BalanceService $balanceService): RedirectResponse
+    public function update(UpdatePurchaseRequest $request, Purchase $purchase, BalanceService $balanceService, AuditService $audit): RedirectResponse
     {
+        $oldValues = $purchase->getAttributes();
         $purchase->update($this->data($request->validated()));
         $balanceService->reconcileAll();
+        $audit->record('update', $purchase, $oldValues, $purchase->fresh()->getAttributes());
 
         return to_route('dashboard');
     }
 
-    public function archive(Purchase $purchase): RedirectResponse
+    public function archive(Purchase $purchase, AuditService $audit): RedirectResponse
     {
+        $oldValues = $purchase->getAttributes();
         $purchase->update(['archived_at' => now()]);
+        $audit->record('archive', $purchase, $oldValues, $purchase->fresh()->getAttributes());
 
         return to_route('dashboard')->with('success', 'Compra arquivada com sucesso.');
     }
@@ -62,9 +68,11 @@ class PurchaseController extends Controller
         return to_route('dashboard')->with('success', 'Compra excluída com sucesso.');
     }
 
-    public function restore(Purchase $purchase): RedirectResponse
+    public function restore(Purchase $purchase, AuditService $audit): RedirectResponse
     {
+        $oldValues = $purchase->getAttributes();
         $purchase->update(['archived_at' => null]);
+        $audit->record('restore', $purchase, $oldValues, $purchase->fresh()->getAttributes());
 
         return to_route('dashboard');
     }
