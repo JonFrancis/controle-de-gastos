@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Installment;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
@@ -82,7 +83,10 @@ class PurchaseIndexTest extends TestCase
                 ->where('monthTotalCents', 23000)
             );
 
-        $this->assertNotNull($recurrence->occurrences()->whereDate('purchased_at', '2026-10-15')->first());
+        $this->assertDatabaseHas('recurrence_occurrences', [
+            'recurrence_id' => $recurrence->id,
+            'purchased_at' => '2026-10-15 00:00:00',
+        ]);
     }
 
     public function test_invoice_view_groups_credit_items_by_closing_cycle_and_keeps_original_purchase_date(): void
@@ -108,26 +112,52 @@ class PurchaseIndexTest extends TestCase
             );
     }
 
-    public function test_purchase_can_be_edited_and_deleted_from_the_purchases_page(): void
+    public function test_purchase_edit_link_uses_the_named_route(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
         $purchase = $this->createPurchase($self, $paymentMethod, 'Compra editável', '2026-10-12', 10000);
 
         $this->get('/purchases?month=2026-10')
-            ->assertInertia(fn (Assert $page) => $page->where('purchases.0.editUrl', "/purchases/{$purchase->id}/edit"));
+            ->assertInertia(fn (Assert $page) => $page->where('purchases.0.editUrl', route('purchases.edit', $purchase, false)));
+    }
 
-        $this->patch("/purchases/{$purchase->id}", [
+    public function test_purchase_can_be_updated_and_audit_the_change(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $purchase = $this->createPurchase($self, $paymentMethod, 'Compra editável', '2026-10-12', 10000);
+
+        $this->patch(route('purchases.update', $purchase, false), [
             'purchased_at' => '2026-10-13',
             'description' => 'Compra atualizada',
             'amount' => '110,00',
             'payer_id' => $self->id,
             'payment_method_id' => $paymentMethod->id,
-        ])->assertRedirect('/');
-        $this->assertDatabaseHas('purchases', ['id' => $purchase->id, 'description' => 'Compra atualizada', 'amount_cents' => 11000]);
+        ])->assertRedirect(route('dashboard'));
 
-        $this->delete("/purchases/{$purchase->id}")->assertRedirect('/');
+        $this->assertDatabaseHas('purchases', ['id' => $purchase->id, 'description' => 'Compra atualizada', 'amount_cents' => 11000]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => AuditLog::ACTION_UPDATE,
+            'auditable_type' => Purchase::class,
+            'auditable_id' => $purchase->id,
+        ]);
+    }
+
+    public function test_purchase_can_be_deleted_and_audit_the_deletion(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $purchase = $this->createPurchase($self, $paymentMethod, 'Compra excluível', '2026-10-12', 10000);
+
+        $this->delete(route('purchases.destroy', $purchase, false))->assertRedirect(route('dashboard'));
+
         $this->assertDatabaseMissing('purchases', ['id' => $purchase->id]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => AuditLog::ACTION_DELETE,
+            'auditable_type' => Purchase::class,
+            'auditable_id' => $purchase->id,
+        ]);
     }
 
     private function createPurchase(Participant $self, PaymentMethod $paymentMethod, string $description, string $date, int $amount): Purchase

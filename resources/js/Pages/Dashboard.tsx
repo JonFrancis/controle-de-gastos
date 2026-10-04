@@ -21,7 +21,7 @@ type Props = {
 };
 type ChartRow = { name: string; amountCents: number };
 type MovementRow = { week: number; label: string; amountCents: number };
-type PersonChartItem = { id: number; name: string; amountCents: number; netCents?: number; creditCents?: number };
+type PersonChartItem = { id: number; name: string; amountCents: number; netCents?: number; creditCents?: number; status?: 'chargeable' | 'settled' };
 type PersonChartData = { expenses: PersonChartItem[]; balances: PersonChartItem[] };
 
 const navigation = [
@@ -148,6 +148,10 @@ function ParticipantChart({ chart }: { chart: PersonChartData }) {
 }
 
 function balanceLabel(item: PersonChartItem): string {
+    if (item.status === 'settled') {
+        return 'Quitado';
+    }
+
     if ((item.creditCents ?? 0) > 0 && (item.netCents ?? 0) <= 0) {
         return `Crédito ${formatMoney(item.creditCents ?? 0)}`;
     }

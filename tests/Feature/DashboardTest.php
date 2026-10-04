@@ -207,7 +207,10 @@ class DashboardTest extends TestCase
                 ->where('summary.salaryRemainingCents', null)
             );
 
-        $this->assertTrue($recurrence->occurrences()->whereDate('purchased_at', '2026-10-10')->exists());
+        $this->assertDatabaseHas('recurrence_occurrences', [
+            'recurrence_id' => $recurrence->id,
+            'purchased_at' => '2026-10-10 00:00:00',
+        ]);
     }
 
     public function test_dashboard_exposes_salary_configuration_state_and_negative_deficit(): void
@@ -305,6 +308,69 @@ class DashboardTest extends TestCase
                 ->where('personChart.balances.0.amountCents', -1000)
                 ->where('personChart.balances.0.netCents', 0)
                 ->where('personChart.balances.0.creditCents', 1000));
+    }
+
+    public function test_dashboard_marks_shared_purchase_as_settled_after_receipt_in_the_selected_month(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $purchase = Purchase::create([
+            'purchased_at' => '2026-10-05',
+            'description' => 'Compra compartilhada quitada',
+            'amount_cents' => 8000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+        PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $self->id, 'amount_cents' => 2000]);
+        $mariaDebt = PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $maria->id, 'amount_cents' => 6000]);
+
+        $this->post(route('receipts.store'), [
+            'participant_id' => $maria->id,
+            'received_at' => '2026-10-07',
+            'amount' => '60,00',
+        ])->assertRedirect(route('balances'));
+
+        $this->get(route('dashboard', ['month' => '2026-10']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('personChart.balances', 1)
+                ->where('personChart.balances.0.name', 'Maria')
+                ->where('personChart.balances.0.amountCents', 0)
+                ->where('personChart.balances.0.netCents', 0)
+                ->where('personChart.balances.0.creditCents', 0)
+                ->where('personChart.balances.0.status', 'settled'));
+
+        $this->assertDatabaseHas('receipt_applications', [
+            'purchase_allocation_id' => $mariaDebt->id,
+            'amount_cents' => 6000,
+            'source' => 'automatic',
+        ]);
+    }
+
+    public function test_dashboard_balance_chart_changes_with_month_and_hides_historical_debt(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $purchase = Purchase::create([
+            'purchased_at' => '2026-09-20',
+            'description' => 'Dívida histórica',
+            'amount_cents' => 5000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+        PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $maria->id, 'amount_cents' => 5000]);
+
+        $this->get(route('dashboard', ['month' => '2026-10']))
+            ->assertInertia(fn (Assert $page) => $page->where('selectedMonth', '2026-10')->where('personChart.balances', []));
+
+        $this->get(route('dashboard', ['month' => '2026-09']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-09')
+                ->has('personChart.balances', 1)
+                ->where('personChart.balances.0.name', 'Maria')
+                ->where('personChart.balances.0.amountCents', 5000)
+                ->where('personChart.balances.0.status', 'chargeable'));
     }
 
     public function test_dashboard_exposes_empty_person_chart_series_without_movements(): void

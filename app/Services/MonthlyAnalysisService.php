@@ -266,25 +266,85 @@ class MonthlyAnalysisService
         foreach ($purchases as $purchase) {
             $allocations = $purchase->allocations;
             if ($allocations->isEmpty()) {
-                $items->push($this->row($purchase->origin ?: 'manual', 'purchase', $purchase->id, 'purchase:'.$purchase->id, $purchase->purchased_at, $purchase->description, $purchase->card_name, $purchase->amount_cents, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->category_id, $purchase->category?->name, $purchase->payment_method_id, $participantNames, $paymentMethods));
+                $items->push($this->row([
+                    'origin' => $purchase->origin ?: 'manual',
+                    'sourceType' => 'purchase',
+                    'sourceId' => $purchase->id,
+                    'sourceKey' => 'purchase:'.$purchase->id,
+                    'date' => $purchase->purchased_at,
+                    'description' => $purchase->description,
+                    'cardName' => $purchase->card_name,
+                    'amountCents' => $purchase->amount_cents,
+                    'sourceAmountCents' => $purchase->amount_cents,
+                    'payerId' => $purchase->payer_id ?? $selfId,
+                    'participantId' => $purchase->participant_id ?? $selfId,
+                    'categoryId' => $purchase->category_id,
+                    'categoryName' => $purchase->category?->name,
+                    'paymentMethodId' => $purchase->payment_method_id,
+                ], $participantNames, $paymentMethods));
 
                 continue;
             }
             foreach ($allocations as $allocation) {
-                $items->push($this->row($purchase->origin ?: 'manual', 'purchase_allocation', $allocation->id, 'purchase:'.$purchase->id, $purchase->purchased_at, $purchase->description, $purchase->card_name, $allocation->amount_cents, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $allocation->category_id, $allocation->category?->name, $purchase->payment_method_id, $participantNames, $paymentMethods));
+                $items->push($this->row([
+                    'origin' => $purchase->origin ?: 'manual',
+                    'sourceType' => 'purchase_allocation',
+                    'sourceId' => $allocation->id,
+                    'sourceKey' => 'purchase:'.$purchase->id,
+                    'date' => $purchase->purchased_at,
+                    'description' => $purchase->description,
+                    'cardName' => $purchase->card_name,
+                    'amountCents' => $allocation->amount_cents,
+                    'sourceAmountCents' => $purchase->amount_cents,
+                    'payerId' => $purchase->payer_id ?? $selfId,
+                    'participantId' => $allocation->participant_id ?? $selfId,
+                    'categoryId' => $allocation->category_id,
+                    'categoryName' => $allocation->category?->name,
+                    'paymentMethodId' => $purchase->payment_method_id,
+                ], $participantNames, $paymentMethods));
             }
         }
         foreach (InstallmentOccurrence::query()->whereNull('archived_at')->with(['installment', 'paymentMethod', 'category'])
             ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
             ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
             ->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
-            $items->push($this->row('installment', 'installment_occurrence', $occurrence->id, 'installment_occurrence:'.$occurrence->id, $occurrence->purchased_at, $occurrence->description, $occurrence->card_name, $occurrence->amount_cents, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->category_id, $occurrence->category?->name, $occurrence->payment_method_id, $participantNames, $paymentMethods));
+            $items->push($this->row([
+                'origin' => 'installment',
+                'sourceType' => 'installment_occurrence',
+                'sourceId' => $occurrence->id,
+                'sourceKey' => 'installment_occurrence:'.$occurrence->id,
+                'date' => $occurrence->purchased_at,
+                'description' => $occurrence->description,
+                'cardName' => $occurrence->card_name,
+                'amountCents' => $occurrence->amount_cents,
+                'sourceAmountCents' => $occurrence->amount_cents,
+                'payerId' => $occurrence->payer_id ?? $selfId,
+                'participantId' => $occurrence->participant_id ?? $selfId,
+                'categoryId' => $occurrence->category_id,
+                'categoryName' => $occurrence->category?->name,
+                'paymentMethodId' => $occurrence->payment_method_id,
+            ], $participantNames, $paymentMethods));
         }
         foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->with(['recurrence', 'paymentMethod', 'category'])
             ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
             ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
             ->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
-            $items->push($this->row('recurrence', 'recurrence_occurrence', $occurrence->id, 'recurrence_occurrence:'.$occurrence->id, $occurrence->purchased_at, $occurrence->description, $occurrence->card_name, $occurrence->amount_cents, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->category_id, $occurrence->category?->name, $occurrence->payment_method_id, $participantNames, $paymentMethods));
+            $items->push($this->row([
+                'origin' => 'recurrence',
+                'sourceType' => 'recurrence_occurrence',
+                'sourceId' => $occurrence->id,
+                'sourceKey' => 'recurrence_occurrence:'.$occurrence->id,
+                'date' => $occurrence->purchased_at,
+                'description' => $occurrence->description,
+                'cardName' => $occurrence->card_name,
+                'amountCents' => $occurrence->amount_cents,
+                'sourceAmountCents' => $occurrence->amount_cents,
+                'payerId' => $occurrence->payer_id ?? $selfId,
+                'participantId' => $occurrence->participant_id ?? $selfId,
+                'categoryId' => $occurrence->category_id,
+                'categoryName' => $occurrence->category?->name,
+                'paymentMethodId' => $occurrence->payment_method_id,
+            ], $participantNames, $paymentMethods));
         }
 
         return $items->sortBy([['date', 'asc'], ['key', 'asc']])->values();
@@ -301,15 +361,16 @@ class MonthlyAnalysisService
     }
 
     /**
+     * @param  array{origin: string, sourceType: string, sourceId: int, sourceKey: string, date: CarbonInterface, description: string, cardName: ?string, amountCents: int, sourceAmountCents: int, payerId: int, participantId: ?int, categoryId: ?int, categoryName: ?string, paymentMethodId: ?int}  $data
      * @param  Collection<int|string, string>  $participantNames
      * @param  Collection<int|string, PaymentMethod>  $paymentMethods
      * @return array<string, mixed>
      */
-    private function row(string $origin, string $sourceType, int $sourceId, string $sourceKey, CarbonInterface $date, string $description, ?string $cardName, int $amountCents, int $sourceAmountCents, int $payerId, ?int $participantId, ?int $categoryId, ?string $categoryName, ?int $paymentMethodId, Collection $participantNames, Collection $paymentMethods): array
+    private function row(array $data, Collection $participantNames, Collection $paymentMethods): array
     {
-        $paymentMethod = $paymentMethods->get($paymentMethodId);
+        $paymentMethod = $paymentMethods->get($data['paymentMethodId']);
 
-        return ['key' => $sourceType.':'.$sourceId, 'sourceKey' => $sourceKey, 'origin' => $origin, 'date' => $date->toDateString(), 'description' => $description, 'cardName' => $cardName, 'amountCents' => $amountCents, 'sourceAmountCents' => $sourceAmountCents, 'payerId' => $payerId, 'participantId' => $participantId, 'participantName' => $participantNames->get($participantId), 'categoryId' => $categoryId, 'categoryName' => $categoryName, 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $paymentMethodId, 'paymentType' => $paymentMethod?->type, 'closingDay' => $paymentMethod?->closing_day];
+        return ['key' => $data['sourceType'].':'.$data['sourceId'], 'sourceKey' => $data['sourceKey'], 'origin' => $data['origin'], 'date' => $data['date']->toDateString(), 'description' => $data['description'], 'cardName' => $data['cardName'], 'amountCents' => $data['amountCents'], 'sourceAmountCents' => $data['sourceAmountCents'], 'payerId' => $data['payerId'], 'participantId' => $data['participantId'], 'participantName' => $participantNames->get($data['participantId']), 'categoryId' => $data['categoryId'], 'categoryName' => $data['categoryName'], 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $data['paymentMethodId'], 'paymentType' => $paymentMethod?->type, 'closingDay' => $paymentMethod?->closing_day];
     }
 
     private function selfId(): int

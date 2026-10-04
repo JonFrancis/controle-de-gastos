@@ -112,18 +112,18 @@ class BalanceService
     }
 
     /** @return list<array<string, mixed>> */
-    public function participantBalances(CarbonInterface $until): array
+    public function participantBalances(CarbonInterface $until, ?CarbonInterface $since = null): array
     {
         $selfId = $this->selfId();
-        $rows = $this->expenseRows($until);
-        $applications = $this->applicationsUntil($until);
+        $rows = $this->expenseRows($until, $since);
+        $applications = $this->applicationsUntil($until, $since);
 
-        return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($rows, $applications, $until): array {
+        return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($rows, $applications, $until, $since): array {
             $receivableItems = $rows->filter(fn (array $row): bool => $row['payer_id'] === $this->selfId() && $row['participant_id'] === $participant->id)->map(fn (array $row): array => $this->itemWithOutstanding($row, $applications))->values();
             $payableItems = $rows->filter(fn (array $row): bool => $row['payer_id'] === $participant->id && $row['participant_id'] === $this->selfId())->map(fn (array $row): array => $this->itemWithOutstanding($row, $applications))->values();
             $receivable = (int) $receivableItems->sum('outstanding_cents');
             $payable = (int) $payableItems->sum('outstanding_cents');
-            $received = Receipt::query()->where('participant_id', $participant->id)->whereNull('archived_at')->whereDate('received_at', '<=', $until)->with('applications')->get();
+            $received = Receipt::query()->where('participant_id', $participant->id)->whereNull('archived_at')->whereDate('received_at', '<=', $until)->when($since, fn ($query, CarbonInterface $start) => $query->whereDate('received_at', '>=', $start))->with('applications')->get();
             $credit = max(0, (int) $received->sum('amount_cents') - (int) $received->sum(fn (Receipt $receipt): int => $receipt->applications->sum('amount_cents')));
 
             return [
@@ -135,6 +135,7 @@ class BalanceService
                 'creditCents' => $credit,
                 'receivableItems' => $receivableItems->all(),
                 'payableItems' => $payableItems->all(),
+                'hasMovement' => $receivableItems->isNotEmpty() || $payableItems->isNotEmpty() || $received->isNotEmpty(),
             ];
         })->values()->all();
     }
@@ -190,9 +191,9 @@ class BalanceService
     }
 
     /** @return Collection<string, int> */
-    private function applicationsUntil(CarbonInterface $until): Collection
+    private function applicationsUntil(CarbonInterface $until, ?CarbonInterface $since = null): Collection
     {
-        return ReceiptApplication::query()->whereNull('superseded_at')->whereHas('receipt', fn ($query) => $query->whereNull('archived_at')->whereDate('received_at', '<=', $until))->get()->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)->map(fn (Collection $rows): int => (int) $rows->sum('amount_cents'));
+        return ReceiptApplication::query()->whereNull('superseded_at')->whereHas('receipt', fn ($query) => $query->whereNull('archived_at')->whereDate('received_at', '<=', $until)->when($since, fn ($query, CarbonInterface $start) => $query->whereDate('received_at', '>=', $start)))->get()->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)->map(fn (Collection $rows): int => (int) $rows->sum('amount_cents'));
     }
 
     /** @param array<string, mixed> $row */
