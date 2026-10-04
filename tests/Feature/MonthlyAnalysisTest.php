@@ -9,6 +9,7 @@ use App\Models\Purchase;
 use App\Models\PurchaseAllocation;
 use App\Models\Receipt;
 use App\Models\ReceiptApplication;
+use App\Models\Recurrence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -82,6 +83,26 @@ class MonthlyAnalysisTest extends TestCase
         $this->patch('/settings/salary?month=2026-10&view=calendar', ['amount' => '500,00'])->assertRedirect('/analysis?month=2026-10&view=calendar');
 
         $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('summary.salaryCents', 50000)->where('summary.salaryRemainingCents', 47000));
+    }
+
+    public function test_calendar_analysis_materializes_recurring_occurrences_for_the_selected_month(): void
+    {
+        [$self, , $pix] = $this->catalogs();
+        Recurrence::create([
+            'start_date' => '2026-10-01',
+            'day_of_month' => 15,
+            'description' => 'Assinatura mensal',
+            'amount_cents' => 2500,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+            'active' => true,
+        ]);
+
+        $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('origins.recurrence.amountCents', 2500)
+            ->where('origins.recurrence.count', 1)
+            ->where('purchaseReview.0.description', 'Assinatura mensal'));
     }
 
     /** @return array{0: Participant, 1: Participant, 2: PaymentMethod, 3: Category, 4: PaymentMethod} */

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AppSetting;
 use App\Services\MonthlyAnalysisService;
+use App\Services\RecurrenceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -11,10 +12,13 @@ use Inertia\Response;
 
 class AnalysisController extends Controller
 {
-    public function __invoke(Request $request, MonthlyAnalysisService $service): Response
+    public function __invoke(Request $request, MonthlyAnalysisService $service, RecurrenceService $recurrenceService): Response
     {
         $selectedMonth = $this->validMonth($request->query('month'));
         $view = $request->query('view') === 'invoice' ? 'invoice' : 'calendar';
+        $month = Carbon::createFromFormat('!Y-m', $selectedMonth);
+        $periodStart = $view === 'invoice' ? $month->copy()->subMonthNoOverflow()->startOfMonth() : $month->copy()->startOfMonth();
+        $recurrenceService->ensureOccurrencesForRange($periodStart, $month->copy()->endOfMonth());
 
         return Inertia::render('Analysis/Index', [
             'selectedMonth' => $selectedMonth,
