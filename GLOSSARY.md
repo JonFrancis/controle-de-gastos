@@ -75,7 +75,7 @@ Abatimento entre valores que duas pessoas devem uma à outra, preservando os lan
 _Evitar_: exclusão de dívida, quitação automática sem histórico.
 
 **Recebimento**:
-Valor já devolvido por um participante ao pagador, associado a uma pessoa e a uma data.
+Valor já devolvido por um participante ao pagador, associado a uma pessoa e a uma data. Ao ser registrado, reduz a Cobrança em aberto dessa pessoa, começando pelos lançamentos mais antigos; o excedente permanece como Crédito de participante.
 _Evitar_: pagamento recebido sem contexto.
 
 **Ambiguidade**:

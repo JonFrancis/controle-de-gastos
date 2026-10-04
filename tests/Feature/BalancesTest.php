@@ -64,6 +64,19 @@ class BalancesTest extends TestCase
         $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('participants.0.receivableCents', 0)->where('participants.0.creditCents', 3000));
     }
 
+    public function test_receipt_reduces_the_person_open_debt_by_the_received_amount(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $this->purchase('2026-10-01', 10000, $self, [[$maria, 10000]]);
+
+        $this->post('/receipts', ['participant_id' => $maria->id, 'received_at' => '2026-10-03', 'amount' => '40,00'])
+            ->assertRedirect('/balances');
+
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.receivableCents', 6000)
+            ->where('participants.0.creditCents', 0));
+    }
+
     public function test_receipt_applications_can_be_adjusted_manually_without_losing_credit(): void
     {
         [$self, $maria] = $this->catalogs();
