@@ -29,7 +29,15 @@ class ReceiptController extends Controller
         $applied = $receipt->applications->keyBy(fn ($application): string => $application->source_type.':'.$application->source_id);
         $debts = $service->debtItems()->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id)->map(fn (array $debt): array => [...$debt, 'applied_cents' => $applied->get($debt['key'])?->amount_cents ?? 0])->values();
 
-        return Inertia::render('Balances/ReceiptApplications', ['receipt' => $receipt, 'debts' => $debts]);
+        return Inertia::render('Balances/ReceiptApplications', [
+            'receipt' => [
+                'id' => $receipt->id,
+                'participant' => ['name' => $receipt->participant->name],
+                'received_at' => $receipt->received_at->toDateString(),
+                'amount_cents' => $receipt->amount_cents,
+            ],
+            'debts' => $debts,
+        ]);
     }
 
     public function store(StoreReceiptRequest $request, BalanceService $service): RedirectResponse

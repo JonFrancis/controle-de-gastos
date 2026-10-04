@@ -77,6 +77,19 @@ class BalancesTest extends TestCase
             ->where('participants.0.creditCents', 0));
     }
 
+    public function test_receipt_application_screen_receives_a_date_only_value(): void
+    {
+        [, $maria] = $this->catalogs();
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-03', 'amount_cents' => 4000]);
+
+        $this->get("/receipts/{$receipt->id}/edit")
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Balances/ReceiptApplications')
+                ->where('receipt.received_at', '2026-10-03')
+                ->where('receipt.participant.name', 'Maria'));
+    }
+
     public function test_receipt_applications_can_be_adjusted_manually_without_losing_credit(): void
     {
         [$self, $maria] = $this->catalogs();
