@@ -8,8 +8,10 @@ use App\Models\PaymentMethod;
 use App\Models\Purchase;
 use App\Models\SpreadsheetImport;
 use App\Models\SpreadsheetImportRow;
+use App\Services\SpreadsheetImportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -46,6 +48,54 @@ class SpreadsheetImportsTest extends TestCase
                 ->where('import.original_filename', 'historico.csv')
                 ->where('headers', ['Data', 'Descrição', 'Valor'])
                 ->has('rows', 1));
+    }
+
+    public function test_xlsx_import_reads_all_worksheets_preserves_provenance_and_normalizes_serial_dates(): void
+    {
+        Storage::fake('local');
+        [$self, $maria, $pix, $category] = $this->catalogs();
+
+        $xlsx = $this->xlsxWithSheets([
+            'Outubro' => [
+                ['Data', 'Descrição', 'Valor', 'Pagador', 'Participante', 'Forma', 'Categoria', 'Origem'],
+                ['46307', 'Mercado', '123,45', 'Eu', 'Maria', 'Pix', 'Casa', 'Manual'],
+            ],
+            'Novembro' => [
+                ['Data', 'Descrição', 'Valor', 'Pagador', 'Participante', 'Forma', 'Categoria', 'Origem'],
+                ['01/11/2026', 'Farmácia', '50,00', 'Eu', 'Eu', 'Pix', 'Casa', 'Manual'],
+            ],
+        ]);
+        $response = $this->post('/imports', [
+            'file' => UploadedFile::fake()->createWithContent('historico.xlsx', $xlsx, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+        ]);
+        $import = SpreadsheetImport::query()->firstOrFail();
+        $rows = $import->rows()->orderBy('id')->get();
+
+        $this->assertCount(2, $rows);
+        $this->assertSame('Outubro', $rows[0]->sheet_name);
+        $this->assertSame(2, $rows[0]->row_number);
+        $this->assertSame('Novembro', $rows[1]->sheet_name);
+        $this->assertSame(2, $rows[1]->row_number);
+        $this->assertContains('Descrição', $import->headers);
+
+        $this->post(route('imports.map', $import), [
+            'mapping' => [
+                'purchased_at' => 'Data',
+                'description' => 'Descrição',
+                'amount' => 'Valor',
+                'payer' => 'Pagador',
+                'participant' => 'Participante',
+                'payment_method' => 'Forma',
+                'category' => 'Categoria',
+                'origin' => 'Origem',
+            ],
+        ])->assertRedirect(route('imports.review', $import));
+
+        $this->assertSame('2026-10-12', $rows[0]->fresh()->mapped_data['purchased_at']);
+        $this->assertSame($self->id, $rows[0]->fresh()->mapped_data['payer_id']);
+        $this->assertSame($maria->id, $rows[0]->fresh()->mapped_data['participant_id']);
+        $this->assertSame($pix->id, $rows[0]->fresh()->mapped_data['payment_method_id']);
+        $this->assertSame($category->id, $rows[0]->fresh()->mapped_data['category_id']);
     }
 
     public function test_mapping_detects_unknown_values_dates_and_duplicates_without_importing_them(): void
@@ -140,8 +190,48 @@ class SpreadsheetImportsTest extends TestCase
         ]);
         $this->assertSame('pending_review', $pending->fresh()->status);
         $this->assertDatabaseCount('purchases', 1);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'import',
+        ]);
+        $this->get('/history?action=import')
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('History/Index')
+                ->has('logs', 1)
+                ->where('logs.0.metadata.source', 'historico.csv')
+                ->where('logs.0.metadata.records', 1));
         $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('origins.recurrence.count', 1));
         $this->get('/?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('pendingReview', 1));
+    }
+
+    public function test_mapping_uses_cached_catalogs_and_existing_purchase_fingerprints(): void
+    {
+        Storage::fake('local');
+        $this->catalogs();
+        $rows = collect(range(1, 4))->map(fn (int $number): string => "12/10/2026;Compra {$number};10,00;Eu;Eu;Pix;Casa;Manual")->implode("\n");
+
+        $this->post('/imports', [
+            'file' => UploadedFile::fake()->createWithContent('historico.csv', "Data;Descrição;Valor;Pagador;Participante;Forma;Categoria;Origem\n{$rows}\n", 'text/csv'),
+        ]);
+        $import = SpreadsheetImport::query()->firstOrFail();
+        DB::connection()->flushQueryLog();
+        DB::connection()->enableQueryLog();
+
+        app(SpreadsheetImportService::class)->map($import, [
+            'purchased_at' => 'Data',
+            'description' => 'Descrição',
+            'amount' => 'Valor',
+            'payer' => 'Pagador',
+            'participant' => 'Participante',
+            'payment_method' => 'Forma',
+            'category' => 'Categoria',
+            'origin' => 'Origem',
+        ], null, null);
+
+        $selects = collect(DB::connection()->getQueryLog())->filter(fn (array $query): bool => str_starts_with(strtolower(ltrim($query['query'])), 'select'));
+        DB::connection()->disableQueryLog();
+
+        $this->assertLessThanOrEqual(10, $selects->count());
+        $this->assertDatabaseCount('spreadsheet_import_rows', 4);
     }
 
     /** @return array{Participant, Participant, PaymentMethod, Category} */
@@ -153,5 +243,39 @@ class SpreadsheetImportsTest extends TestCase
         $category = Category::create(['name' => 'Casa', 'active' => true]);
 
         return [$self, $maria, $pix, $category];
+    }
+
+    /** @param array<string, list<list<string>>> $sheets */
+    private function xlsxWithSheets(array $sheets): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'spreadsheet-test-');
+        $archive = new \ZipArchive;
+        $archive->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+        $sheetNodes = [];
+        $relationshipNodes = [];
+        foreach (array_values($sheets) as $index => $rows) {
+            $sheetNumber = $index + 1;
+            $sheetName = array_keys($sheets)[$index];
+            $sheetNodes[] = '<sheet name="'.htmlspecialchars($sheetName, ENT_XML1).'" sheetId="'.$sheetNumber.'" r:id="rId'.$sheetNumber.'"/>';
+            $relationshipNodes[] = '<Relationship Id="rId'.$sheetNumber.'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'.$sheetNumber.'.xml"/>';
+            $sheetXml = '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+            foreach ($rows as $rowIndex => $row) {
+                $sheetXml .= '<row r="'.($rowIndex + 1).'">';
+                foreach ($row as $columnIndex => $value) {
+                    $column = chr(65 + $columnIndex);
+                    $sheetXml .= '<c r="'.$column.($rowIndex + 1).'" t="inlineStr"><is><t>'.htmlspecialchars($value, ENT_XML1).'</t></is></c>';
+                }
+                $sheetXml .= '</row>';
+            }
+            $archive->addFromString('xl/worksheets/sheet'.$sheetNumber.'.xml', $sheetXml.'</sheetData></worksheet>');
+        }
+        $archive->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'.implode('', $sheetNodes).'</sheets></workbook>');
+        $archive->addFromString('xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'.implode('', $relationshipNodes).'</Relationships>');
+        $archive->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/></Types>');
+        $archive->close();
+        $contents = file_get_contents($path);
+        unlink($path);
+
+        return $contents ?: '';
     }
 }

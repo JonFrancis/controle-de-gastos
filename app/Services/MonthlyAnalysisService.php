@@ -24,6 +24,19 @@ class MonthlyAnalysisService
         $periodStart = $view === 'invoice' ? $month->copy()->subMonthNoOverflow()->startOfMonth() : $month->copy()->startOfMonth();
         $periodEnd = $month->copy()->endOfMonth();
         $items = $this->items($periodStart, $periodEnd)->filter(fn (array $item): bool => $view !== 'invoice' || $this->inInvoice($item, $selectedMonth))->values();
+
+        return $this->buildAnalysis($items, $periodStart, $periodEnd);
+    }
+
+    /** @return array<string, mixed> */
+    public function analyzeRange(?CarbonInterface $periodStart, ?CarbonInterface $periodEnd): array
+    {
+        return $this->buildAnalysis($this->items($periodStart, $periodEnd), $periodStart, $periodEnd);
+    }
+
+    /** @param Collection<int, array<string, mixed>> $items */
+    private function buildAnalysis(Collection $items, ?CarbonInterface $periodStart, ?CarbonInterface $periodEnd): array
+    {
         $chargeableItems = $items->reject(fn (array $item): bool => $this->isPending($item))->values();
         $selfId = $this->selfId();
         $participants = $this->participantRows($chargeableItems, $selfId, $periodStart, $periodEnd);
@@ -68,12 +81,16 @@ class MonthlyAnalysisService
     }
 
     /** @param Collection<int, array<string, mixed>> $items */
-    private function participantRows(Collection $items, int $selfId, CarbonInterface $periodStart, CarbonInterface $periodEnd): array
+    private function participantRows(Collection $items, int $selfId, ?CarbonInterface $periodStart, ?CarbonInterface $periodEnd): array
     {
         $sourceKeysByType = $items->pluck('key')->map(fn (string $sourceKey): array => explode(':', $sourceKey, 2))->groupBy(fn (array $parts): string => $parts[0])->map(fn (Collection $parts): array => $parts->pluck(1)->map(fn (string $id): int => (int) $id)->all());
         $itemsByParticipant = $items->filter(fn (array $item): bool => $item['payerId'] === $selfId)->groupBy('participantId');
         $applicationsQuery = ReceiptApplication::query()->whereNull('superseded_at')
-            ->whereHas('receipt', fn ($query) => $query->whereNull('archived_at')->whereBetween('received_at', [$periodStart, $periodEnd]));
+            ->whereHas('receipt', function ($query) use ($periodStart, $periodEnd): void {
+                $query->whereNull('archived_at')
+                    ->when($periodStart, fn ($query, CarbonInterface $start) => $query->whereDate('received_at', '>=', $start))
+                    ->when($periodEnd, fn ($query, CarbonInterface $end) => $query->whereDate('received_at', '<=', $end));
+            });
         if ($sourceKeysByType->isNotEmpty()) {
             $applicationsQuery->where(function ($query) use ($sourceKeysByType): void {
                 foreach ($sourceKeysByType as $sourceType => $sourceIds) {
@@ -177,13 +194,16 @@ class MonthlyAnalysisService
     }
 
     /** @return Collection<int, array<string, mixed>> */
-    private function items(CarbonInterface $start, CarbonInterface $end): Collection
+    private function items(?CarbonInterface $start, ?CarbonInterface $end): Collection
     {
         $items = collect();
         $selfId = $this->selfId();
         $participantNames = Participant::query()->pluck('name', 'id');
         $paymentMethods = PaymentMethod::query()->get(['id', 'name', 'type', 'closing_day'])->keyBy('id');
-        $purchases = Purchase::query()->active()->with(['allocations.category', 'paymentMethod', 'category'])->whereBetween('purchased_at', [$start, $end])->orderBy('purchased_at')->orderBy('id')->get();
+        $purchases = Purchase::query()->active()->with(['allocations.category', 'paymentMethod', 'category'])
+            ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
+            ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
+            ->orderBy('purchased_at')->orderBy('id')->get();
         foreach ($purchases as $purchase) {
             $allocations = $purchase->allocations;
             if ($allocations->isEmpty()) {
@@ -195,10 +215,16 @@ class MonthlyAnalysisService
                 $items->push($this->row($purchase->origin ?: 'manual', 'purchase_allocation', $allocation->id, 'purchase:'.$purchase->id, $purchase->purchased_at, $purchase->description, $purchase->card_name, $allocation->amount_cents, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $allocation->category?->name, $purchase->payment_method_id, $participantNames, $paymentMethods));
             }
         }
-        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->with(['installment', 'paymentMethod', 'category'])->whereBetween('purchased_at', [$start, $end])->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
+        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->with(['installment', 'paymentMethod', 'category'])
+            ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
+            ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
+            ->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
             $items->push($this->row('installment', 'installment_occurrence', $occurrence->id, 'installment_occurrence:'.$occurrence->id, $occurrence->purchased_at, $occurrence->description, $occurrence->card_name, $occurrence->amount_cents, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->category?->name, $occurrence->payment_method_id, $participantNames, $paymentMethods));
         }
-        foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->with(['recurrence', 'paymentMethod', 'category'])->whereBetween('purchased_at', [$start, $end])->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
+        foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->with(['recurrence', 'paymentMethod', 'category'])
+            ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
+            ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
+            ->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
             $items->push($this->row('recurrence', 'recurrence_occurrence', $occurrence->id, 'recurrence_occurrence:'.$occurrence->id, $occurrence->purchased_at, $occurrence->description, $occurrence->card_name, $occurrence->amount_cents, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->category?->name, $occurrence->payment_method_id, $participantNames, $paymentMethods));
         }
 

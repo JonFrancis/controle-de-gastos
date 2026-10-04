@@ -30,12 +30,14 @@ class SpreadsheetImportService
         'origin',
     ];
 
+    public function __construct(private readonly AuditService $auditService) {}
+
     public function upload(UploadedFile $file): SpreadsheetImport
     {
         return $this->create($file);
     }
 
-    /** @return array{headers: list<string>, rows: list<array<string, string>>, sheet_name: string} */
+    /** @return array{headers: list<string>, rows: list<array{sheet_name: string, row_number: int, raw_data: array<string, string>>>, sheet_name: string} */
     public function create(UploadedFile $file): SpreadsheetImport
     {
         $parsed = $this->readFile($file);
@@ -52,11 +54,11 @@ class SpreadsheetImportService
             'headers' => $parsed['headers'],
         ]);
 
-        foreach ($parsed['rows'] as $rowNumber => $row) {
+        foreach ($parsed['rows'] as $row) {
             $import->rows()->create([
-                'sheet_name' => $parsed['sheet_name'],
-                'row_number' => $rowNumber + 2,
-                'raw_data' => $row,
+                'sheet_name' => $row['sheet_name'],
+                'row_number' => $row['row_number'],
+                'raw_data' => $row['raw_data'],
                 'status' => 'pending_review',
             ]);
         }
@@ -80,9 +82,10 @@ class SpreadsheetImportService
         ]);
 
         $batchFingerprints = [];
-        foreach ($import->rows()->orderBy('row_number')->get() as $row) {
+        $lookups = $this->lookupContext($import);
+        foreach ($import->rows()->orderBy('id')->lazyById(200) as $row) {
             $normalized = $this->normalize($row->raw_data, $mapping);
-            $issues = $this->issues($normalized, $import, $batchFingerprints);
+            $issues = $this->issues($normalized, $import, $batchFingerprints, $lookups);
             $fingerprint = $normalized['fingerprint'] ?? null;
             if ($fingerprint !== null) {
                 $batchFingerprints[$fingerprint] = true;
@@ -131,7 +134,7 @@ class SpreadsheetImportService
 
         $mapped['purchased_at'] = $this->parseDate((string) ($mapped['purchased_at'] ?? ''));
         $mapped['amount_cents'] = $this->parseAmount($mapped['amount'] ?? $mapped['amount_cents'] ?? null);
-        $issues = $this->issues($mapped, $row->spreadsheetImport, []);
+        $issues = $this->issues($mapped, $row->spreadsheetImport, [], $this->lookupContext($row->spreadsheetImport));
         $action = $data['action'] ?? 'pending_review';
         $blockingIssues = collect($issues)->reject(fn (string $issue): bool => in_array($issue, ['possible_duplicate', 'date_outside_period'], true));
         $status = $action === 'rejected' ? 'rejected' : ($blockingIssues->isEmpty() && $action === 'approved' ? 'approved' : 'pending_review');
@@ -174,12 +177,13 @@ class SpreadsheetImportService
             }
 
             $import->update(['status' => 'confirmed', 'confirmed_at' => now()]);
+            $this->auditService->recordImport($import->original_filename, $approvedRows->count());
 
             return $approvedRows->count();
         });
     }
 
-    /** @return array{headers: list<string>, rows: list<array<string, string>>, sheet_name: string} */
+    /** @return array{headers: list<string>, rows: list<array{sheet_name: string, row_number: int, raw_data: array<string, string>>>, sheet_name: string} */
     private function readFile(UploadedFile $file): array
     {
         return strtolower($file->getClientOriginalExtension()) === 'xlsx'
@@ -187,7 +191,7 @@ class SpreadsheetImportService
             : $this->readDelimited($file->getRealPath(), $file->getClientOriginalName());
     }
 
-    /** @return array{headers: list<string>, rows: list<array<string, string>>, sheet_name: string} */
+    /** @return array{headers: list<string>, rows: list<array{sheet_name: string, row_number: int, raw_data: array<string, string>>>, sheet_name: string} */
     private function readDelimited(string $path, string $filename): array
     {
         $handle = fopen($path, 'rb');
@@ -211,20 +215,26 @@ class SpreadsheetImportService
         }
 
         $rows = [];
+        $rowNumber = 1;
         while (($values = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $rowNumber++;
             if (count(array_filter($values, fn (mixed $value): bool => trim((string) $value) !== '')) === 0) {
                 continue;
             }
 
             $values = array_pad($values, count($headers), '');
-            $rows[] = array_combine($headers, array_map(fn (mixed $value): string => trim((string) $value), array_slice($values, 0, count($headers))));
+            $rows[] = [
+                'sheet_name' => pathinfo($filename, PATHINFO_FILENAME) ?: 'CSV',
+                'row_number' => $rowNumber,
+                'raw_data' => array_combine($headers, array_map(fn (mixed $value): string => trim((string) $value), array_slice($values, 0, count($headers)))),
+            ];
         }
         fclose($handle);
 
         return ['headers' => $headers, 'rows' => $rows, 'sheet_name' => pathinfo($filename, PATHINFO_FILENAME) ?: 'CSV'];
     }
 
-    /** @return array{headers: list<string>, rows: list<array<string, string>>, sheet_name: string} */
+    /** @return array{headers: list<string>, rows: list<array{sheet_name: string, row_number: int, raw_data: array<string, string>>>, sheet_name: string} */
     private function readXlsx(string $path, string $filename): array
     {
         $archive = new ZipArchive;
@@ -241,12 +251,6 @@ class SpreadsheetImportService
 
         $workbook->registerXPathNamespace('main', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
         $relationships->registerXPathNamespace('rel', 'http://schemas.openxmlformats.org/package/2006/relationships');
-        $sheet = $workbook->xpath('//main:sheets/main:sheet')[0] ?? null;
-        $relationshipId = (string) ($sheet['{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id'] ?? '');
-        $relationship = collect($relationships->xpath('//rel:Relationship'))->first(fn ($item) => (string) $item['Id'] === $relationshipId);
-        $target = ltrim(str_replace('\\', '/', (string) ($relationship['Target'] ?? '')), '/');
-        $target = str_starts_with($target, 'xl/') ? $target : 'xl/'.$target;
-        $worksheet = simplexml_load_string((string) $archive->getFromName($target));
         $sharedStringsXml = $archive->getFromName('xl/sharedStrings.xml');
         $sharedStrings = [];
         if ($sharedStringsXml !== false) {
@@ -258,36 +262,68 @@ class SpreadsheetImportService
             }
         }
 
-        $worksheet?->registerXPathNamespace('main', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
-        $rows = $worksheet?->xpath('//main:sheetData/main:row') ?: [];
+        $sheets = $workbook->xpath('//main:sheets/main:sheet') ?: [];
+        $relationshipsById = collect($relationships->xpath('//rel:Relationship'))->keyBy(fn ($item): string => (string) $item['Id']);
+        $headers = [];
         $parsedRows = [];
-        foreach ($rows as $row) {
-            $values = [];
-            foreach ($row->c ?? [] as $cell) {
-                $reference = (string) $cell['r'];
-                $column = preg_replace('/\d+/', '', $reference);
-                $index = $this->columnIndex($column);
-                $value = (string) ($cell->v ?? $cell->is->t ?? '');
-                if ((string) $cell['t'] === 's') {
-                    $value = $sharedStrings[(int) $value] ?? $value;
-                }
-                $values[$index] = $value;
+        $firstSheetName = null;
+
+        foreach ($sheets as $sheet) {
+            $sheetName = (string) ($sheet['name'] ?? (pathinfo($filename, PATHINFO_FILENAME) ?: 'XLSX'));
+            $firstSheetName ??= $sheetName;
+            $sheetRelationships = $sheet->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships');
+            $relationshipId = (string) ($sheetRelationships['id'] ?? $sheet['r:id'] ?? '');
+            $relationship = $relationshipsById->get($relationshipId);
+            $target = ltrim(str_replace('\\', '/', (string) ($relationship['Target'] ?? '')), '/');
+            $target = str_starts_with($target, 'xl/') ? $target : 'xl/'.$target;
+            $worksheet = simplexml_load_string((string) $archive->getFromName($target));
+            if ($worksheet === false) {
+                continue;
             }
-            if ($values !== []) {
-                ksort($values);
-                $parsedRows[] = array_values(array_replace(array_fill(0, max(array_keys($values)) + 1, ''), $values));
+
+            $worksheet->registerXPathNamespace('main', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+            $rows = $worksheet->xpath('//main:sheetData/main:row') ?: [];
+            $sheetRows = [];
+            foreach ($rows as $row) {
+                $values = [];
+                foreach ($row->c ?? [] as $cell) {
+                    $reference = (string) $cell['r'];
+                    $column = preg_replace('/\d+/', '', $reference);
+                    $index = $this->columnIndex($column);
+                    $value = (string) ((string) $cell['t'] === 'inlineStr' ? ($cell->is->t ?? '') : ($cell->v ?? ''));
+                    if ((string) $cell['t'] === 's') {
+                        $value = $sharedStrings[(int) $value] ?? $value;
+                    }
+                    $values[$index] = $value;
+                }
+                if ($values !== []) {
+                    ksort($values);
+                    $sheetRows[] = ['row_number' => (int) ($row['r'] ?? count($sheetRows) + 1), 'values' => array_values(array_replace(array_fill(0, max(array_keys($values)) + 1, ''), $values))];
+                }
+            }
+
+            $headerRow = array_shift($sheetRows);
+            $sheetHeaders = array_map(fn (mixed $header): string => trim((string) $header), $headerRow['values'] ?? []);
+            if ($sheetHeaders === []) {
+                continue;
+            }
+            $headers = array_values(array_unique([...$headers, ...array_filter($sheetHeaders, fn (string $header): bool => $header !== '')]));
+            foreach ($sheetRows as $sheetRow) {
+                $values = array_pad($sheetRow['values'], count($sheetHeaders), '');
+                $rawData = array_combine($sheetHeaders, array_map(fn (mixed $value): string => trim((string) $value), array_slice($values, 0, count($sheetHeaders))));
+                if ($rawData === false || count(array_filter($rawData, fn (string $value): bool => $value !== '')) === 0) {
+                    continue;
+                }
+                $parsedRows[] = ['sheet_name' => $sheetName, 'row_number' => $sheetRow['row_number'], 'raw_data' => $rawData];
             }
         }
         $archive->close();
 
-        $headers = array_map(fn (mixed $header): string => trim((string) $header), array_shift($parsedRows) ?: []);
-        $mappedRows = array_map(function (array $values) use ($headers): array {
-            $values = array_pad($values, count($headers), '');
+        if ($headers === [] || $parsedRows === []) {
+            throw ValidationException::withMessages(['file' => 'A planilha está vazia.']);
+        }
 
-            return array_combine($headers, array_map(fn (mixed $value): string => trim((string) $value), array_slice($values, 0, count($headers))));
-        }, $parsedRows);
-
-        return ['headers' => $headers, 'rows' => $mappedRows, 'sheet_name' => (string) ($sheet['name'] ?? pathinfo($filename, PATHINFO_FILENAME))];
+        return ['headers' => $headers, 'rows' => $parsedRows, 'sheet_name' => $firstSheetName ?? (pathinfo($filename, PATHINFO_FILENAME) ?: 'XLSX')];
     }
 
     private function delimiter(string $line): string
@@ -348,15 +384,19 @@ class SpreadsheetImportService
         ];
     }
 
-    /** @param array<string, mixed> $normalized @param array<string, bool> $batchFingerprints @return list<string> */
-    private function issues(array &$normalized, SpreadsheetImport $import, array $batchFingerprints): array
+    /**
+     * @param  array<string, mixed>  $normalized
+     * @param  array<string, bool>  $batchFingerprints
+     * @param  array{self_id: int, participants_by_id: array<int, int>, participants_by_name: array<string, int>, payment_methods_by_id: array<int, int>, payment_methods_by_name: array<string, int>, categories_by_id: array<int, int>, categories_by_name: array<string, int>, existing_fingerprints: array<string, bool>}  $lookups
+     * @return list<string>
+     */
+    private function issues(array &$normalized, SpreadsheetImport $import, array $batchFingerprints, array $lookups): array
     {
         $issues = [];
-        $selfId = Participant::query()->where('is_default', true)->value('id');
-        $normalized['payer_id'] = $this->validCatalogId(Participant::class, $normalized['payer_id'] ?? null) ?? $this->findId(Participant::class, $normalized['payer_name'] ?? '', $selfId);
-        $normalized['participant_id'] = $this->validCatalogId(Participant::class, $normalized['participant_id'] ?? null) ?? $this->findId(Participant::class, $normalized['participant_name'] ?? '', $selfId);
-        $normalized['payment_method_id'] = $this->validCatalogId(PaymentMethod::class, $normalized['payment_method_id'] ?? null) ?? $this->findId(PaymentMethod::class, $normalized['payment_method_name'] ?? '');
-        $normalized['category_id'] = $this->validCatalogId(Category::class, $normalized['category_id'] ?? null) ?? $this->findId(Category::class, $normalized['category_name'] ?? '', null, true);
+        $normalized['payer_id'] = $this->resolveCatalogId($normalized['payer_id'] ?? null, $normalized['payer_name'] ?? '', $lookups['participants_by_id'], $lookups['participants_by_name'], $lookups['self_id']);
+        $normalized['participant_id'] = $this->resolveCatalogId($normalized['participant_id'] ?? null, $normalized['participant_name'] ?? '', $lookups['participants_by_id'], $lookups['participants_by_name'], $lookups['self_id']);
+        $normalized['payment_method_id'] = $this->resolveCatalogId($normalized['payment_method_id'] ?? null, $normalized['payment_method_name'] ?? '', $lookups['payment_methods_by_id'], $lookups['payment_methods_by_name']);
+        $normalized['category_id'] = $this->resolveCatalogId($normalized['category_id'] ?? null, $normalized['category_name'] ?? '', $lookups['categories_by_id'], $lookups['categories_by_name']);
 
         if (blank($normalized['purchased_at'])) {
             $issues[] = 'invalid_date';
@@ -394,33 +434,36 @@ class SpreadsheetImportService
 
         $fingerprint = $this->fingerprint($normalized);
         $normalized['fingerprint'] = $fingerprint;
-        if ($fingerprint !== null && (isset($batchFingerprints[$fingerprint]) || $this->matchesExistingPurchase($normalized))) {
+        if ($fingerprint !== null && (isset($batchFingerprints[$fingerprint]) || isset($lookups['existing_fingerprints'][$fingerprint]))) {
             $issues[] = 'possible_duplicate';
         }
 
         return array_values(array_unique($issues));
     }
 
-    private function validCatalogId(string $model, mixed $id): ?int
+    /** @param array<int, int> $ids @param array<string, int> $names */
+    private function resolveCatalogId(mixed $id, string $name, array $ids, array $names, ?int $fallback = null): ?int
     {
-        if ($id === null || $id === '') {
-            return null;
+        if ($id !== null && $id !== '') {
+            return $ids[(int) $id] ?? null;
         }
 
-        return $model::query()->where('active', true)->whereKey((int) $id)->value('id');
-    }
-
-    private function findId(string $model, string $name, ?int $fallback = null, bool $nullable = false): ?int
-    {
         if ($name === '') {
-            return $nullable ? null : $fallback;
+            return $fallback;
         }
 
-        return $model::query()->where('active', true)->get(['id', 'name'])->first(fn ($item): bool => mb_strtolower(trim($item->name)) === mb_strtolower(trim($name)))?->id;
+        return $names[mb_strtolower(trim($name))] ?? null;
     }
 
     private function parseDate(string $value): ?string
     {
+        if (is_numeric($value) && (float) $value >= 1) {
+            try {
+                return Carbon::create(1899, 12, 30)->addDays((int) floor((float) $value))->format('Y-m-d');
+            } catch (\Throwable) {
+            }
+        }
+
         foreach (['d/m/Y', 'Y-m-d', 'd-m-Y'] as $format) {
             try {
                 return Carbon::createFromFormat('!'.$format, $value)->format('Y-m-d');
@@ -494,14 +537,35 @@ class SpreadsheetImportService
         ]);
     }
 
-    /** @param array<string, mixed> $normalized */
-    private function matchesExistingPurchase(array $normalized): bool
+    /**
+     * @return array{self_id: int, participants_by_id: array<int, int>, participants_by_name: array<string, int>, payment_methods_by_id: array<int, int>, payment_methods_by_name: array<string, int>, categories_by_id: array<int, int>, categories_by_name: array<string, int>, existing_fingerprints: array<string, bool>}
+     */
+    private function lookupContext(SpreadsheetImport $import): array
     {
-        return Purchase::query()
-            ->whereDate('purchased_at', $normalized['purchased_at'])
-            ->where('amount_cents', $normalized['amount_cents'])
-            ->where('payment_method_id', $normalized['payment_method_id'])
-            ->whereRaw('lower(description) = ?', [mb_strtolower($normalized['description'])])
-            ->exists();
+        $participants = Participant::query()->where('active', true)->get(['id', 'name', 'is_default']);
+        $paymentMethods = PaymentMethod::query()->where('active', true)->get(['id', 'name']);
+        $categories = Category::query()->where('active', true)->get(['id', 'name']);
+        $existingFingerprints = [];
+        Purchase::query()->select(['purchased_at', 'description', 'amount_cents', 'payment_method_id'])
+            ->when($import->period_start, fn ($query, Carbon $start) => $query->whereDate('purchased_at', '>=', $start))
+            ->when($import->period_end, fn ($query, Carbon $end) => $query->whereDate('purchased_at', '<=', $end))
+            ->cursor()
+            ->each(function (Purchase $purchase) use (&$existingFingerprints): void {
+                $fingerprint = $this->fingerprintFromPurchase($purchase);
+                if ($fingerprint !== null) {
+                    $existingFingerprints[$fingerprint] = true;
+                }
+            });
+
+        return [
+            'self_id' => (int) $participants->firstWhere('is_default', true)?->id,
+            'participants_by_id' => $participants->mapWithKeys(fn (Participant $participant): array => [$participant->id => $participant->id])->all(),
+            'participants_by_name' => $participants->mapWithKeys(fn (Participant $participant): array => [mb_strtolower(trim($participant->name)) => $participant->id])->all(),
+            'payment_methods_by_id' => $paymentMethods->mapWithKeys(fn (PaymentMethod $method): array => [$method->id => $method->id])->all(),
+            'payment_methods_by_name' => $paymentMethods->mapWithKeys(fn (PaymentMethod $method): array => [mb_strtolower(trim($method->name)) => $method->id])->all(),
+            'categories_by_id' => $categories->mapWithKeys(fn (Category $category): array => [$category->id => $category->id])->all(),
+            'categories_by_name' => $categories->mapWithKeys(fn (Category $category): array => [mb_strtolower(trim($category->name)) => $category->id])->all(),
+            'existing_fingerprints' => $existingFingerprints,
+        ];
     }
 }

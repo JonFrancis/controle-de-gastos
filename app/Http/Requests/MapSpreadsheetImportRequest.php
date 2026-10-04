@@ -11,7 +11,7 @@ class MapSpreadsheetImportRequest extends FormRequest
         return true;
     }
 
-    /** @return array<string, list<mixed>> */
+    /** @return array{mapping: list<string>, 'mapping.*': list<string>, period_start: list<string>, period_end: list<string>} */
     public function rules(): array
     {
         return [

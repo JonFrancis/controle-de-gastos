@@ -11,6 +11,7 @@ class RestoreBackupRequest extends FormRequest
         return true;
     }
 
+    /** @return array{backup: list<string>, confirmation: list<string>} */
     public function rules(): array
     {
         return [

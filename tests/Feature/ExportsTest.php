@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Category;
 use App\Models\Installment;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
@@ -105,6 +106,11 @@ class ExportsTest extends TestCase
         $markdown->assertDownload('analise-2026-10-01-2026-10-31.md');
         $this->assertStringContainsString('Total desembolsado: R$ 137,00', $markdown->streamedContent());
         $this->assertStringContainsString('Conferência de rateios: OK', $markdown->streamedContent());
+        $this->assertStringContainsString('## Saldos de participantes', $markdown->streamedContent());
+        $this->assertStringContainsString('Maria', $markdown->streamedContent());
+        $this->assertStringContainsString('## Consumo próprio', $markdown->streamedContent());
+        $this->assertStringContainsString('Casa', $markdown->streamedContent());
+        $this->assertStringContainsString('Pix', $markdown->streamedContent());
     }
 
     public function test_prompt_export_is_available_without_an_ai_api_call(): void
@@ -115,6 +121,9 @@ class ExportsTest extends TestCase
 
         $response->assertDownload('prompt-2026-10-01-2026-10-31.md');
         $this->assertStringContainsString('Não envie mensagens nem altere os dados oficiais', $response->streamedContent());
+        $this->assertStringContainsString('Mercado do mês', $response->streamedContent());
+        $this->assertStringContainsString('Maria', $response->streamedContent());
+        $this->assertStringNotContainsString('Cole os CSVs exportados', $response->streamedContent());
     }
 
     public function test_period_export_requires_a_valid_date_range(): void
@@ -129,6 +138,7 @@ class ExportsTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria']);
         $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $casa = Category::create(['name' => 'Casa']);
 
         $purchase = Purchase::create([
             'purchased_at' => '2026-10-12',
@@ -138,7 +148,7 @@ class ExportsTest extends TestCase
             'payer_id' => $self->id,
             'payment_method_id' => $pix->id,
         ]);
-        PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $self->id, 'amount_cents' => 3000]);
+        PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $self->id, 'category_id' => $casa->id, 'amount_cents' => 3000]);
         PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $maria->id, 'amount_cents' => 7000]);
         Purchase::create(['purchased_at' => '2026-09-12', 'description' => 'Fora do período', 'amount_cents' => 9000, 'payer_id' => $self->id, 'participant_id' => $self->id, 'payment_method_id' => $pix->id]);
 

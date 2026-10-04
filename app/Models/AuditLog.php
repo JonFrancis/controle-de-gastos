@@ -3,11 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable(['action', 'auditable_type', 'auditable_id', 'old_values', 'new_values', 'metadata'])]
 class AuditLog extends Model
 {
+    use HasFactory;
+
     public const UPDATED_AT = null;
 
     public const ACTION_CREATE = 'create';

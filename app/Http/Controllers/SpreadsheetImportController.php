@@ -34,7 +34,7 @@ class SpreadsheetImportController extends Controller
         return Inertia::render('Imports/Mapping', [
             'import' => $import,
             'headers' => $import->headers,
-            'rows' => $import->rows()->orderBy('row_number')->limit(8)->get(['id', 'sheet_name', 'row_number', 'raw_data']),
+            'rows' => $import->rows()->orderBy('sheet_name')->orderBy('row_number')->limit(8)->get(['id', 'sheet_name', 'row_number', 'raw_data']),
             'mapping' => $import->column_mapping ?? $this->suggestedMapping($import->headers),
         ]);
     }
@@ -50,7 +50,7 @@ class SpreadsheetImportController extends Controller
     {
         return Inertia::render('Imports/Review', [
             'import' => $import,
-            'rows' => $import->rows()->orderBy('row_number')->get()->map(fn (SpreadsheetImportRow $row): array => [
+            'rows' => $import->rows()->orderBy('sheet_name')->orderBy('row_number')->get()->map(fn (SpreadsheetImportRow $row): array => [
                 'id' => $row->id,
                 'sheetName' => $row->sheet_name,
                 'rowNumber' => $row->row_number,

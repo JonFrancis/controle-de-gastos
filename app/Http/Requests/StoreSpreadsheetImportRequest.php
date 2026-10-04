@@ -11,7 +11,7 @@ class StoreSpreadsheetImportRequest extends FormRequest
         return true;
     }
 
-    /** @return array<string, list<mixed>> */
+    /** @return array{file: list<string>} */
     public function rules(): array
     {
         return [

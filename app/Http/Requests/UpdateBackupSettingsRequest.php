@@ -11,6 +11,7 @@ class UpdateBackupSettingsRequest extends FormRequest
         return true;
     }
 
+    /** @return array{automatic_backup_enabled: list<string>, backup_path: list<string>} */
     public function rules(): array
     {
         return [

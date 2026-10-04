@@ -20,6 +20,8 @@ class ExportService
     /** @var list<string> */
     private const TYPES = ['purchases', 'allocations', 'receipts', 'recurrences', 'installments'];
 
+    public function __construct(private readonly MonthlyAnalysisService $monthlyAnalysisService) {}
+
     /** @param array{mode?: string, start_date?: string|null, end_date?: string|null} $input */
     /** @return array{mode: 'period'|'history', start: CarbonImmutable|null, end: CarbonImmutable|null, label: string} */
     public function selection(array $input): array
@@ -36,7 +38,7 @@ class ExportService
         return ['mode' => 'period', 'start' => $start, 'end' => $end, 'label' => $start->toDateString().'-'.$end->toDateString()];
     }
 
-    /** @return array{purchases: list<array<string, mixed>>, allocations: list<array<string, mixed>>, receipts: list<array<string, mixed>>, recurrences: list<array<string, mixed>>, installments: list<array<string, mixed>>, summary: array<string, mixed>, counts: array<string, int>} */
+    /** @return array{purchases: list<array<string, mixed>>, allocations: list<array<string, mixed>>, receipts: list<array<string, mixed>>, recurrences: list<array<string, mixed>>, installments: list<array<string, mixed>>, summary: array<string, mixed>, counts: array<string, int>, analysis: array<string, mixed>} */
     public function data(array $selection): array
     {
         $purchases = $this->purchases($selection);
@@ -49,6 +51,7 @@ class ExportService
         $recurrenceRows = $recurrences->map(fn (Recurrence $recurrence): array => $this->recurrenceRow($recurrence))->values()->all();
         $installmentRows = $installments->map(fn ($installment): array => $this->installmentRow($installment))->values()->all();
         $summary = $this->summary($purchases, $receipts, $recurrences, $installments);
+        $analysis = $this->monthlyAnalysisService->analyzeRange($selection['start'], $selection['end']);
 
         return [
             'purchases' => $purchaseRows,
@@ -57,6 +60,7 @@ class ExportService
             'recurrences' => $recurrenceRows,
             'installments' => $installmentRows,
             'summary' => $summary,
+            'analysis' => $analysis,
             'counts' => [
                 'purchases' => count($purchaseRows),
                 'allocations' => $allocationRows->count(),
@@ -144,7 +148,10 @@ class ExportService
             .'- Recebimentos: '.$this->money($summary['receiptTotalCents'])."\n"
             .'- Ocorrências: '.$this->money($summary['occurrenceTotalCents'])."\n"
             .'- Total desembolsado: '.$this->money($summary['totalDisbursedCents'])."\n\n"
-            ."## Dados\n\nCole os CSVs exportados abaixo e devolva uma análise rastreável, com conferência de totais e recomendações de revisão.\n";
+            .$this->analysisMarkdown($data['analysis'])
+            ."\n## Registros selecionados\n\n"
+            ."Os registros abaixo já estão preenchidos para este escopo. Use somente estes dados, sem chamar APIs e sem solicitar que o usuário cole arquivos adicionais.\n\n"
+            .'```json'."\n".json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n```\n";
     }
 
     private function purchases(array $selection): Collection
@@ -268,7 +275,53 @@ class ExportService
             .'- Total desembolsado: '.$this->money($summary['totalDisbursedCents'])."\n\n"
             .'## Conferência'."\n\n"
             .'- Conferência de rateios: '.($summary['reconciliationPassed'] ? 'OK' : 'REVISAR')."\n"
-            .'- Diferença entre compras e rateios: '.$this->money($summary['purchaseTotalCents'] - $summary['allocationTotalCents'])."\n";
+            .'- Diferença entre compras e rateios: '.$this->money($summary['purchaseTotalCents'] - $summary['allocationTotalCents'])."\n\n"
+            .$this->analysisMarkdown($data['analysis']);
+    }
+
+    /** @param array<string, mixed> $analysis */
+    private function analysisMarkdown(array $analysis): string
+    {
+        $summary = $analysis['summary'];
+        $content = "## Análise mensal\n\n"
+            .'- Consumo próprio: '.$this->money($summary['ownConsumptionCents'])."\n"
+            .'- Valor pago para terceiros: '.$this->money($summary['paidForOthersCents'])."\n"
+            .'- Total desembolsado: '.$this->money($summary['totalDisbursedCents'])."\n\n"
+            .'## Saldos de participantes'."\n\n";
+
+        if ($analysis['participants'] === []) {
+            $content .= "Nenhum participante com saldo no escopo.\n\n";
+        } else {
+            foreach ($analysis['participants'] as $participant) {
+                $content .= '### '.$participant['name']."\n\n"
+                    .'- Saldo bruto: '.$this->money($participant['grossCents'])."\n"
+                    .'- Abatimentos: '.$this->money($participant['abatementsCents'])."\n"
+                    .'- Cobrança líquida: '.$this->money($participant['finalCents'])."\n"
+                    .'- Status: '.$participant['status']."\n";
+                foreach ($participant['items'] as $item) {
+                    $content .= '- '.$item['description'].' ('.$item['date'].'): '.$this->money($item['finalCents'])."\n";
+                }
+                $content .= "\n";
+            }
+        }
+
+        $content .= "## Consumo próprio\n\n"
+            ."### Por categoria\n\n"
+            .$this->breakdownMarkdown($analysis['categories'])
+            ."\n### Por forma de pagamento\n\n"
+            .$this->breakdownMarkdown($analysis['paymentMethods']);
+
+        return $content;
+    }
+
+    /** @param list<array{name: string, amountCents: int}> $rows */
+    private function breakdownMarkdown(array $rows): string
+    {
+        if ($rows === []) {
+            return "Nenhum consumo próprio no escopo.\n";
+        }
+
+        return collect($rows)->map(fn (array $row): string => '- '.$row['name'].': '.$this->money($row['amountCents']))->implode("\n")."\n";
     }
 
     private function scopeLabel(array $selection): string

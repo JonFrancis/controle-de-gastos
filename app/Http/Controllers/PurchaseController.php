@@ -44,19 +44,15 @@ class PurchaseController extends Controller
 
     public function update(UpdatePurchaseRequest $request, Purchase $purchase, BalanceService $balanceService, AuditService $audit): RedirectResponse
     {
-        $oldValues = $purchase->getAttributes();
-        $purchase->update($this->data($request->validated()));
+        $this->updateAndAudit($purchase, $this->data($request->validated()), 'update', $audit);
         $balanceService->reconcileAll();
-        $audit->record('update', $purchase, $oldValues, $purchase->fresh()->getAttributes());
 
         return to_route('dashboard');
     }
 
     public function archive(Purchase $purchase, AuditService $audit): RedirectResponse
     {
-        $oldValues = $purchase->getAttributes();
-        $purchase->update(['archived_at' => now()]);
-        $audit->record('archive', $purchase, $oldValues, $purchase->fresh()->getAttributes());
+        $this->updateAndAudit($purchase, ['archived_at' => now()], 'archive', $audit);
 
         return to_route('dashboard')->with('success', 'Compra arquivada com sucesso.');
     }
@@ -70,9 +66,7 @@ class PurchaseController extends Controller
 
     public function restore(Purchase $purchase, AuditService $audit): RedirectResponse
     {
-        $oldValues = $purchase->getAttributes();
-        $purchase->update(['archived_at' => null]);
-        $audit->record('restore', $purchase, $oldValues, $purchase->fresh()->getAttributes());
+        $this->updateAndAudit($purchase, ['archived_at' => null], 'restore', $audit);
 
         return to_route('dashboard');
     }
@@ -90,6 +84,14 @@ class PurchaseController extends Controller
         }
 
         return $data;
+    }
+
+    /** @param array<string, mixed> $changes */
+    private function updateAndAudit(Purchase $purchase, array $changes, string $action, AuditService $audit): void
+    {
+        $oldValues = $purchase->getAttributes();
+        $purchase->update($changes);
+        $audit->record($action, $purchase, $oldValues, $purchase->fresh()->getAttributes());
     }
 
     private function catalogs(): array

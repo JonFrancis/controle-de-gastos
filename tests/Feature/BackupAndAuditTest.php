@@ -19,6 +19,26 @@ class BackupAndAuditTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_backups_page_exposes_inertia_props_and_write_endpoints(): void
+    {
+        $backupDirectory = $this->backupDirectory();
+
+        $this->get('/settings/backups')
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Settings/Backups')
+                ->has('settings.automaticBackupEnabled')
+                ->has('backups'));
+
+        $this->patch('/settings/backups', [
+            'automatic_backup_enabled' => true,
+            'backup_path' => $backupDirectory,
+        ])->assertRedirect('/settings/backups');
+
+        $this->post('/settings/backups')->assertRedirect('/settings/backups');
+        $this->assertCount(1, File::glob($backupDirectory.'/*.json'));
+    }
+
     public function test_manual_backup_is_identifiable_and_contains_the_database_state(): void
     {
         $backupDirectory = $this->backupDirectory();

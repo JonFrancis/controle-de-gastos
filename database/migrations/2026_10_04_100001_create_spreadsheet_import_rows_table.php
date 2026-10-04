@@ -22,7 +22,7 @@ return new class extends Migration
             $table->timestamp('reviewed_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['spreadsheet_import_id', 'row_number']);
+            $table->unique(['spreadsheet_import_id', 'sheet_name', 'row_number']);
         });
     }
 

@@ -11,6 +11,7 @@ class UpdateSpreadsheetImportRowRequest extends FormRequest
         return true;
     }
 
+    /** @return array{action: list<string>, purchased_at: list<string>, description: list<string>, card_name: list<string>, amount: list<string>, payer_id: list<string>, participant_id: list<string>, payment_method_id: list<string>, category_id: list<string>, origin: list<string>} */
     public function rules(): array
     {
         return [
