@@ -26,10 +26,12 @@ class MonthlyAnalysisService
         $items = $this->items($periodStart, $periodEnd)->filter(fn (array $item): bool => $view !== 'invoice' || $this->inInvoice($item, $selectedMonth))->values();
         $chargeableItems = $items->reject(fn (array $item): bool => $this->isPending($item))->values();
         $selfId = $this->selfId();
+        $participants = $this->participantRows($chargeableItems, $selfId, $periodStart, $periodEnd);
 
         return [
             'summary' => $this->summary($chargeableItems, $selfId),
-            'participants' => $this->participantRows($chargeableItems, $selfId, $periodStart, $periodEnd),
+            'participants' => $participants,
+            'fullMessage' => $this->fullMessage($participants),
             'categories' => $this->groupOwnRows($chargeableItems, $selfId, 'categoryName'),
             'paymentMethods' => $this->groupOwnRows($chargeableItems, $selfId, 'paymentMethodName'),
             'origins' => $this->origins($chargeableItems),
@@ -87,9 +89,67 @@ class MonthlyAnalysisService
             $participantItems = $itemsByParticipant->get($participant->id, collect());
             $gross = (int) $participantItems->sum('amountCents');
             $abatements = (int) $participantItems->sum(fn (array $item): int => min($item['amountCents'], $appliedBySource[$item['key']] ?? 0));
+            $items = $participantItems->map(fn (array $item): array => [
+                'date' => $item['date'],
+                'description' => $item['description'],
+                'cardName' => $item['cardName'],
+                'origin' => $item['origin'],
+                'amountCents' => $item['amountCents'],
+                'abatementCents' => min($item['amountCents'], $appliedBySource[$item['key']] ?? 0),
+                'finalCents' => max(0, $item['amountCents'] - ($appliedBySource[$item['key']] ?? 0)),
+            ])->values()->all();
+            $final = $gross - $abatements;
+            $status = $final > 0 ? 'chargeable' : 'settled';
+            $row = ['id' => $participant->id, 'name' => $participant->name, 'grossCents' => $gross, 'abatementsCents' => $abatements, 'finalCents' => $final, 'status' => $status, 'items' => $items];
 
-            return ['id' => $participant->id, 'name' => $participant->name, 'grossCents' => $gross, 'abatementsCents' => $abatements, 'finalCents' => $gross - $abatements];
+            return [...$row, 'message' => $this->participantMessage($row)];
         })->filter(fn (array $row): bool => $row['grossCents'] > 0 || $row['abatementsCents'] > 0)->values()->all();
+    }
+
+    /** @param list<array<string, mixed>> $participants */
+    private function fullMessage(array $participants): string
+    {
+        $chargeable = collect($participants)->filter(fn (array $participant): bool => $participant['status'] === 'chargeable');
+        if ($chargeable->isEmpty()) {
+            return 'Nenhuma cobrança a enviar neste período.';
+        }
+
+        $sections = $chargeable->map(fn (array $participant): string => $participant['name'].":\n".$this->messageDetails($participant['items'])."\nTotal bruto: ".$this->formatMoney($participant['grossCents'])."\nAbatimentos: ".$this->formatMoney($participant['abatementsCents'])."\nValor líquido: ".$this->formatMoney($participant['finalCents']))->implode("\n\n");
+
+        $settled = collect($participants)->filter(fn (array $participant): bool => $participant['status'] === 'settled')->pluck('name');
+        if ($settled->isNotEmpty()) {
+            $sections .= "\n\nQuitados ou sem cobrança: ".$settled->implode(', ').'.';
+        }
+
+        return "Cobranças do período:\n\n".$sections;
+    }
+
+    /** @param array<string, mixed> $participant */
+    private function participantMessage(array $participant): string
+    {
+        if ($participant['status'] === 'settled') {
+            return "Olá, {$participant['name']}!\n\nSua conta está quitada neste período. Nenhuma cobrança a enviar.";
+        }
+
+        return "Olá, {$participant['name']}!\n\nSegue o resumo das suas compras no período:\n".$this->messageDetails($participant['items'])."\n\nTotal bruto: ".$this->formatMoney($participant['grossCents'])."\nAbatimentos: ".$this->formatMoney($participant['abatementsCents'])."\nValor líquido: ".$this->formatMoney($participant['finalCents']);
+    }
+
+    /** @param list<array<string, mixed>> $items */
+    private function messageDetails(array $items): string
+    {
+        return collect($items)->map(function (array $item): string {
+            $line = '- '.$item['description'].' ('.Carbon::parse($item['date'])->format('d/m/Y').'): '.$this->formatMoney($item['finalCents']);
+            if ($item['abatementCents'] > 0) {
+                $line .= ' (abatimento '.$this->formatMoney($item['abatementCents']).')';
+            }
+
+            return $line;
+        })->implode("\n");
+    }
+
+    private function formatMoney(int $cents): string
+    {
+        return 'R$ '.number_format($cents / 100, 2, ',', '.');
     }
 
     /** @param Collection<int, array<string, mixed>> $items */

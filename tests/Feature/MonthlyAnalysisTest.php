@@ -40,6 +40,10 @@ class MonthlyAnalysisTest extends TestCase
                 ->where('participants.0.name', 'Maria')
                 ->where('participants.0.grossCents', 7000)
                 ->where('participants.0.finalCents', 7000)
+                ->where('participants.0.items.0.description', 'Mercado do mês')
+                ->where('participants.0.items.0.finalCents', 7000)
+                ->where('participants.0.message', "Olá, Maria!\n\nSegue o resumo das suas compras no período:\n- Mercado do mês (12/10/2026): R$ 70,00\n\nTotal bruto: R$ 70,00\nAbatimentos: R$ 0,00\nValor líquido: R$ 70,00")
+                ->where('fullMessage', "Cobranças do período:\n\nMaria:\n- Mercado do mês (12/10/2026): R$ 70,00\nTotal bruto: R$ 70,00\nAbatimentos: R$ 0,00\nValor líquido: R$ 70,00")
                 ->where('purchaseReview.0.description', 'Mercado do mês')
                 ->where('purchaseReview.0.cardName', 'SUPERMERCADO REAL'));
     }
@@ -73,6 +77,20 @@ class MonthlyAnalysisTest extends TestCase
         ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $currentAllocation->id, 'purchase_allocation_id' => $currentAllocation->id, 'amount_cents' => 4000, 'source' => 'manual']);
 
         $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('participants.0.grossCents', 7000)->where('participants.0.abatementsCents', 4000)->where('participants.0.finalCents', 3000));
+    }
+
+    public function test_quitted_participant_is_flagged_without_a_charge_message(): void
+    {
+        [$self, $maria, $pix] = $this->catalogs();
+        $purchase = Purchase::create(['purchased_at' => '2026-10-12', 'description' => 'Compra quitada', 'amount_cents' => 4000, 'payer_id' => $self->id, 'payment_method_id' => $pix->id]);
+        $allocation = PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $maria->id, 'amount_cents' => 4000]);
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-20', 'amount_cents' => 4000]);
+        ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $allocation->id, 'purchase_allocation_id' => $allocation->id, 'amount_cents' => 4000, 'source' => 'manual']);
+
+        $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.status', 'settled')
+            ->where('participants.0.finalCents', 0)
+            ->where('fullMessage', 'Nenhuma cobrança a enviar neste período.'));
     }
 
     public function test_monthly_salary_is_saved_and_remaining_amount_is_calculated_after_own_consumption(): void
