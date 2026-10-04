@@ -9,6 +9,7 @@ use App\Http\Controllers\PaymentMethodController;
 use App\Http\Controllers\PurchaseAllocationController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\RecurrenceController;
+use App\Http\Controllers\RecurrenceOccurrenceController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
@@ -31,6 +32,14 @@ Route::patch('/installments/{installment}/archive', [InstallmentController::clas
 Route::get('/installment-occurrences/{installmentOccurrence}/edit', [InstallmentOccurrenceController::class, 'edit'])->name('installment-occurrences.edit');
 Route::patch('/installment-occurrences/{installmentOccurrence}', [InstallmentOccurrenceController::class, 'update'])->name('installment-occurrences.update');
 Route::get('/recurrences', [RecurrenceController::class, 'index'])->name('recurrences.index');
+Route::get('/recurrences/create', [RecurrenceController::class, 'create'])->name('recurrences.create');
+Route::post('/recurrences', [RecurrenceController::class, 'store'])->name('recurrences.store');
+Route::get('/recurrences/{recurrence}/edit', [RecurrenceController::class, 'edit'])->name('recurrences.edit');
+Route::patch('/recurrences/{recurrence}', [RecurrenceController::class, 'update'])->name('recurrences.update');
+Route::patch('/recurrences/{recurrence}/activate', [RecurrenceController::class, 'activate'])->name('recurrences.activate');
+Route::patch('/recurrences/{recurrence}/deactivate', [RecurrenceController::class, 'deactivate'])->name('recurrences.deactivate');
+Route::get('/recurrence-occurrences/{recurrenceOccurrence}/edit', [RecurrenceOccurrenceController::class, 'edit'])->name('recurrence-occurrences.edit');
+Route::patch('/recurrence-occurrences/{recurrenceOccurrence}', [RecurrenceOccurrenceController::class, 'update'])->name('recurrence-occurrences.update');
 
 Route::get('/settings/catalogs', [ParticipantController::class, 'index'])->name('settings.catalogs');
 Route::post('/participants', [ParticipantController::class, 'store'])->name('participants.store');

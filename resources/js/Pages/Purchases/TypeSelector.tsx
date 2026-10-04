@@ -3,7 +3,7 @@ import { Head, Link } from '@inertiajs/react';
 const options = [
     { title: 'Compra simples', description: 'Registre uma compra feita uma única vez.', href: '/purchases/create/simple', icon: '＋', accent: 'emerald' },
     { title: 'Parcelamento', description: 'Gere as parcelas futuras e acompanhe cada ocorrência.', href: '/installments/create', icon: '◫', accent: 'violet' },
-    { title: 'Compra recorrente', description: 'Consulte e organize compras que se repetem por período.', href: '/recurrences', icon: '↻', accent: 'amber' },
+    { title: 'Compra recorrente', description: 'Cadastre uma regra mensal e acompanhe suas ocorrências.', href: '/recurrences/create', icon: '↻', accent: 'amber' },
 ];
 
 export default function TypeSelector() {

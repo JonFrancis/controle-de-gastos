@@ -21,7 +21,7 @@ type Props = {
     };
     flash?: { success?: string };
 };
-type ExpenseItem = { id: number; origin: 'purchase' | 'installment'; editUrl: string; occurrenceNumber?: number; occurrenceCount?: number; purchasedAt: string; description: string; cardName: string | null; amountCents: number; payer: string | null; participant: string | null; paymentMethod: string | null; category: string | null; isAdjusted?: boolean };
+type ExpenseItem = { id: number; origin: 'purchase' | 'installment' | 'recurrence'; editUrl: string; occurrenceNumber?: number | null; occurrenceCount?: number | null; purchasedAt: string; description: string; cardName: string | null; amountCents: number; payer: string | null; participant: string | null; paymentMethod: string | null; category: string | null; isAdjusted?: boolean };
 type InvoiceGroup = { paymentMethod: string; closingDate: string; totalCents: number; purchases: ExpenseItem[] };
 
 const navigation = [
@@ -134,7 +134,7 @@ function InvoiceGroups({ groups }: { groups: InvoiceGroup[] }) {
 }
 
 function PurchaseRow({ purchase }: { purchase: ExpenseItem }) {
-    const label = purchase.origin === 'installment' ? `Parcela ${purchase.occurrenceNumber}/${purchase.occurrenceCount}${purchase.isAdjusted ? ' · ajustada' : ''}` : null;
+    const label = purchase.origin === 'installment' ? `Parcela ${purchase.occurrenceNumber}/${purchase.occurrenceCount}${purchase.isAdjusted ? ' · ajustada' : ''}` : purchase.origin === 'recurrence' ? `Recorrência${purchase.isAdjusted ? ' · ajustada' : ''}` : null;
     return <div className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-medium text-slate-200">{purchase.description}{label && <span className="ml-2 rounded-full bg-violet-300/10 px-2 py-1 text-[10px] font-semibold text-violet-300">{label}</span>}</p><p className="mt-1 text-xs text-slate-500">{formatDate(purchase.purchasedAt)} · {purchase.cardName ? `Fatura: ${purchase.cardName} · ` : ''}{purchase.category ?? 'Sem categoria'} · {purchase.paymentMethod ?? 'Sem forma'}</p><p className="mt-1 text-xs text-slate-500">Pagador: {purchase.payer ?? 'Eu'} · Participante: {purchase.participant ?? 'Eu'}</p></div><div className="flex items-center justify-between gap-4 sm:justify-end"><strong className="text-sm text-white">{formatMoney(purchase.amountCents)}</strong><Link href={purchase.editUrl} className="text-xs font-semibold text-emerald-300">{purchase.origin === 'installment' ? 'Ajustar' : 'Editar'}</Link>{purchase.origin === 'purchase' && <Form action={`/purchases/${purchase.id}`} method="delete" onBefore={() => window.confirm(`Excluir ${purchase.description} permanentemente?`)}><button type="submit" className="text-xs font-semibold text-rose-300">Excluir</button></Form>}</div></div>;
 }
 
