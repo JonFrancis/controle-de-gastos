@@ -27,7 +27,9 @@ class DashboardController extends Controller
         $selfId = Participant::query()->where('is_default', true)->value('id');
         $periodStart = $view === 'invoice' ? $month->copy()->subMonthNoOverflow()->startOfMonth() : $month->copy()->startOfMonth();
         $recurrenceService->ensureOccurrencesForRange($periodStart, $month->copy()->endOfMonth());
-        $budgetSummary = $monthlyAnalysisService->analyze($selectedMonth, 'calendar')['summary'];
+        $movementCategoryId = $request->integer('category') ?: null;
+        $monthlyAnalysis = $monthlyAnalysisService->analyze($selectedMonth, 'calendar', $movementCategoryId);
+        $budgetSummary = $monthlyAnalysis['summary'];
         $allPurchases = Purchase::query()->active()->with(['payer:id,name', 'participant:id,name', 'paymentMethod', 'category:id,name', 'allocations.participant:id,name', 'allocations' => fn ($query) => $query->with('category:id,name')])->whereBetween('purchased_at', [$periodStart, $month->copy()->endOfMonth()])->orderByDesc('purchased_at')->get();
         $allInstallmentOccurrences = InstallmentOccurrence::query()->whereNull('archived_at')->with(['payer:id,name', 'participant:id,name', 'paymentMethod', 'category:id,name', 'installment:id,installment_count'])->whereBetween('purchased_at', [$periodStart, $month->copy()->endOfMonth()])->orderByDesc('purchased_at')->get();
         $allRecurrenceOccurrences = RecurrenceOccurrence::query()->whereNull('archived_at')->with(['payer:id,name', 'participant:id,name', 'paymentMethod', 'category:id,name', 'recurrence:id'])->whereBetween('purchased_at', [$periodStart, $month->copy()->endOfMonth()])->orderByDesc('purchased_at')->get();
@@ -57,6 +59,12 @@ class DashboardController extends Controller
             'selectedMonth' => $selectedMonth,
             'view' => $view,
             'summary' => $budgetSummary,
+            'charts' => [
+                'paymentMethodTotals' => $monthlyAnalysis['paymentMethodTotals'],
+                'movement' => $monthlyAnalysis['weeklyMovement'],
+                'categories' => $monthlyAnalysis['movementCategories'],
+                'selectedCategoryId' => $monthlyAnalysis['selectedMovementCategoryId'],
+            ],
             'pendingReview' => SpreadsheetImportRow::query()->where('status', 'pending_review')->count(),
             'monthTotalCents' => (int) ($view === 'invoice' ? $invoiceGroups->sum('totalCents') : $purchases->sum('amount_cents') + $occurrences->sum('amount_cents')),
             'purchases' => $view === 'calendar' ? $purchases->map(fn (Purchase $purchase) => $this->purchaseData($purchase, $selfId))->values() : [],

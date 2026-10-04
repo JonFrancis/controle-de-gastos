@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AppSetting;
+use App\Models\Category;
 use App\Models\Installment;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
@@ -27,9 +28,83 @@ class DashboardTest extends TestCase
                 ->where('monthLabel', 'Outubro de 2026')
                 ->where('pendingReview', 0)
                 ->has('summary')
+                ->where('charts.paymentMethodTotals', [])
+                ->where('charts.movement', [])
+                ->where('charts.categories', [])
                 ->has('catalogs.participants')
                 ->has('catalogs.categories')
                 ->has('catalogs.paymentMethods')
+            );
+    }
+
+    public function test_dashboard_exposes_real_payment_totals_and_own_weekly_movement_with_category_filter(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $other = Participant::create(['name' => 'Maria']);
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $credit = PaymentMethod::create(['name' => 'Cartão', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 10]);
+        $food = Category::create(['name' => 'Alimentação']);
+        $transport = Category::create(['name' => 'Transporte']);
+        $otherCategory = Category::create(['name' => 'Categoria de outra pessoa']);
+
+        $otherPurchase = Purchase::create([
+            'purchased_at' => '2026-10-03',
+            'description' => 'Compra de Maria',
+            'amount_cents' => 10000,
+            'payer_id' => $other->id,
+            'participant_id' => $other->id,
+            'payment_method_id' => $pix->id,
+            'category_id' => $otherCategory->id,
+        ]);
+        $sharedPurchase = Purchase::create([
+            'purchased_at' => '2026-10-10',
+            'description' => 'Compra compartilhada',
+            'amount_cents' => 12000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $credit->id,
+        ]);
+        PurchaseAllocation::create(['purchase_id' => $sharedPurchase->id, 'participant_id' => $self->id, 'category_id' => $food->id, 'amount_cents' => 3000]);
+        PurchaseAllocation::create(['purchase_id' => $sharedPurchase->id, 'participant_id' => $other->id, 'category_id' => $otherCategory->id, 'amount_cents' => 9000]);
+        Purchase::create([
+            'purchased_at' => '2026-10-18',
+            'description' => 'Transporte próprio',
+            'amount_cents' => 2000,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+            'category_id' => $transport->id,
+        ]);
+        Purchase::create([
+            'purchased_at' => '2026-09-30',
+            'description' => 'Fora do mês selecionado',
+            'amount_cents' => 99999,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+            'category_id' => $food->id,
+        ]);
+
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('charts.paymentMethodTotals', [
+                    ['name' => 'Pix', 'amountCents' => 12000],
+                    ['name' => 'Cartão', 'amountCents' => 12000],
+                ])
+                ->where('charts.movement', [
+                    ['week' => 2, 'label' => 'Semana 2', 'amountCents' => 3000],
+                    ['week' => 3, 'label' => 'Semana 3', 'amountCents' => 2000],
+                ])
+                ->where('charts.categories', [
+                    ['id' => $food->id, 'name' => 'Alimentação'],
+                    ['id' => $transport->id, 'name' => 'Transporte'],
+                ])
+                ->where('charts.selectedCategoryId', null)
+            );
+
+        $this->get('/?month=2026-10&category='.$food->id)
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('charts.movement', [
+                    ['week' => 2, 'label' => 'Semana 2', 'amountCents' => 3000],
+                ])
+                ->where('charts.selectedCategoryId', $food->id)
             );
     }
 
