@@ -14,6 +14,12 @@ type Props = {
         salaryCents: number | null;
         salaryRemainingCents: number | null;
     };
+    charts: {
+        paymentMethodTotals: ChartRow[];
+        movement: MovementRow[];
+        categories: { id: number; name: string }[];
+        selectedCategoryId: number | null;
+    };
     catalogs: {
         participants: { id: number; name: string }[];
         categories: { id: number; name: string }[];
@@ -23,6 +29,8 @@ type Props = {
 };
 type ExpenseItem = { id: number; origin: 'manual' | 'purchase' | 'installment' | 'recurrence'; editUrl: string; occurrenceNumber?: number | null; occurrenceCount?: number | null; purchasedAt: string; description: string; cardName: string | null; amountCents: number; payer: string | null; participant: string | null; paymentMethod: string | null; category: string | null; isAdjusted?: boolean };
 type InvoiceGroup = { paymentMethod: string; closingDate: string; totalCents: number; purchases: ExpenseItem[] };
+type ChartRow = { name: string; amountCents: number };
+type MovementRow = { week: number; label: string; amountCents: number };
 
 const navigation = [
     ['Visão geral', '/'],
@@ -36,7 +44,7 @@ const navigation = [
     ['Configurações', '/settings/catalogs'],
 ];
 
-export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, view, purchases, occurrences, invoiceGroups, pendingReview, summary, catalogs, flash }: Props) {
+export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, view, purchases, occurrences, invoiceGroups, pendingReview, summary, charts, catalogs, flash }: Props) {
     return (
         <>
             <Head title="Visão geral" />
@@ -96,15 +104,7 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                         </section>
 
                         <section className="mt-8 grid gap-5 xl:grid-cols-[1.35fr_1fr]">
-                            <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6">
-                            <div className="flex items-center justify-between">
-                                    <div><h2 className="font-semibold text-white">Movimentação do mês</h2><p className="mt-1 text-sm text-slate-400">Seus gastos por semana</p></div>
-                                    <button className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">Por categoria⌄</button>
-                                </div>
-                                <div className="mt-8 flex h-48 items-end justify-between gap-3 px-2">
-                                    {[28, 44, 36, 65, 52, 78, 60, 86, 42, 68, 55, 72].map((height, index) => <div key={index} className="flex flex-1 flex-col items-center gap-2"><div className="w-full rounded-t-lg bg-gradient-to-t from-emerald-500/40 to-emerald-300" style={{ height: `${height}%` }} /><span className="text-[10px] text-slate-500">{index + 1}</span></div>)}
-                                </div>
-                            </div>
+                            <MovementChart selectedMonth={selectedMonth} view={view} movement={charts.movement} categories={charts.categories} selectedCategoryId={charts.selectedCategoryId} />
                             <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6" id="compras">
                                 <div className="flex items-center justify-between"><div><h2 className="font-semibold text-white">Atalhos</h2><p className="mt-1 text-sm text-slate-400">Ações frequentes</p></div><span className="text-xl text-slate-500">⋯</span></div>
                                 <div className="mt-6 grid grid-cols-2 gap-3">
@@ -112,6 +112,8 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                                 </div>
                             </div>
                         </section>
+
+                        <PaymentMethodChart rows={charts.paymentMethodTotals} />
 
                         <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6" id="pessoas">
                             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h2 className="font-semibold text-white">Pessoas e saldos</h2><p className="mt-1 text-sm text-slate-400">Quando houver dados, seus saldos aparecerão aqui.</p></div><Link href="/balances" className="text-sm font-semibold text-emerald-300">Ver detalhes →</Link></div>
@@ -124,6 +126,18 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
             </div>
         </>
     );
+}
+
+function MovementChart({ selectedMonth, view, movement, categories, selectedCategoryId }: { selectedMonth: string; view: 'calendar' | 'invoice'; movement: MovementRow[]; categories: { id: number; name: string }[]; selectedCategoryId: number | null }) {
+    const maximum = Math.max(...movement.map((row) => row.amountCents), 0);
+
+    return <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><h2 className="font-semibold text-white">Movimentação do mês</h2><p className="mt-1 text-sm text-slate-400">Consumo próprio por semana</p></div><form method="get" action="/" className="flex items-center gap-2"><input type="hidden" name="month" value={selectedMonth} /><input type="hidden" name="view" value={view} /><label htmlFor="movement-category" className="sr-only">Filtrar movimentação por categoria</label><select id="movement-category" name="category" defaultValue={selectedCategoryId ?? ''} className="max-w-48 rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white"><option value="">Todas as categorias</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><button className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">Filtrar</button></form></div>{movement.length === 0 ? <p className="mt-8 rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Ainda não há consumo próprio neste mês para movimentar.</p> : <div className="mt-8 flex h-48 items-end justify-between gap-3 px-2" aria-label="Movimentação semanal"><div className="sr-only">{movement.map((row) => `${row.label}: ${formatMoney(row.amountCents)}`).join(', ')}</div>{movement.map((row) => <div key={row.week} className="flex min-w-0 flex-1 flex-col items-center gap-2"><div className="flex h-40 w-full items-end"><div className="w-full rounded-t-lg bg-gradient-to-t from-emerald-500/40 to-emerald-300" style={{ height: `${(row.amountCents / maximum) * 100}%` }} title={`${row.label}: ${formatMoney(row.amountCents)}`} /></div><span className="text-center text-[10px] text-slate-500">{row.label}</span></div>)}</div>}</section>;
+}
+
+function PaymentMethodChart({ rows }: { rows: ChartRow[] }) {
+    const maximum = Math.max(...rows.map((row) => row.amountCents), 0);
+
+    return <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6"><div><h2 className="font-semibold text-white">Gastos por forma de pagamento</h2><p className="mt-1 text-sm text-slate-400">Todos os lançamentos válidos do mês selecionado</p></div>{rows.length === 0 ? <p className="mt-6 rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Ainda não há lançamentos válidos neste mês.</p> : <div className="mt-6 space-y-4">{rows.map((row) => <div key={row.name}><div className="mb-2 flex items-center justify-between gap-3 text-sm"><span className="truncate text-slate-300">{row.name}</span><strong className="shrink-0 text-emerald-300">{formatMoney(row.amountCents)}</strong></div><div className="h-3 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full bg-gradient-to-r from-violet-400 to-fuchsia-300" style={{ width: `${(row.amountCents / maximum) * 100}%` }} /></div></div>)}</div>}</section>;
 }
 
 function CalendarPurchases({ purchases, occurrences }: { purchases: ExpenseItem[]; occurrences: ExpenseItem[] }) {
