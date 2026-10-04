@@ -2,9 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\AppSetting;
+use App\Models\Installment;
+use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
+use App\Models\PurchaseAllocation;
+use App\Models\Recurrence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -51,6 +56,89 @@ class DashboardTest extends TestCase
                 ->where('invoiceGroups.0.totalCents', 3000)
                 ->has('invoiceGroups.0.purchases', 3)
                 ->where('invoiceGroups.0.purchases.0.cardName', 'MERCADO CARTAO')
+            );
+    }
+
+    public function test_dashboard_calculates_own_consumption_for_selected_month_across_active_sources(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $other = Participant::create(['name' => 'Maria']);
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+
+        $sharedPurchase = Purchase::create([
+            'purchased_at' => '2026-10-05',
+            'description' => 'Compra compartilhada',
+            'amount_cents' => 10000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+        PurchaseAllocation::create(['purchase_id' => $sharedPurchase->id, 'participant_id' => $self->id, 'amount_cents' => 3000]);
+        PurchaseAllocation::create(['purchase_id' => $sharedPurchase->id, 'participant_id' => $other->id, 'amount_cents' => 7000]);
+
+        $recurrence = Recurrence::create([
+            'start_date' => '2026-10-10',
+            'day_of_month' => 10,
+            'description' => 'Assinatura',
+            'amount_cents' => 2000,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+            'active' => true,
+        ]);
+
+        $installment = Installment::create([
+            'start_date' => '2026-10-12',
+            'description' => 'Compra parcelada',
+            'total_cents' => 9000,
+            'installment_count' => 3,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+        InstallmentOccurrence::create([
+            'installment_id' => $installment->id,
+            'installment_number' => 1,
+            'purchased_at' => '2026-10-12',
+            'description' => 'Compra parcelada',
+            'amount_cents' => 3000,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+        Purchase::create([
+            'purchased_at' => '2026-09-30',
+            'description' => 'Fora do mês',
+            'amount_cents' => 9999,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-10')
+                ->where('summary.ownConsumptionCents', 8000)
+                ->where('summary.salaryCents', null)
+                ->where('summary.salaryRemainingCents', null)
+            );
+
+        $this->assertTrue($recurrence->occurrences()->whereDate('purchased_at', '2026-10-10')->exists());
+    }
+
+    public function test_dashboard_exposes_salary_configuration_state_and_negative_deficit(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        AppSetting::updateOrCreate(['id' => 1], ['monthly_salary_cents' => 10000]);
+        Purchase::create([
+            'purchased_at' => '2026-10-12',
+            'description' => 'Gasto acima do salário',
+            'amount_cents' => 12500,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.ownConsumptionCents', 12500)
+                ->where('summary.salaryCents', 10000)
+                ->where('summary.salaryRemainingCents', -2500)
             );
     }
 

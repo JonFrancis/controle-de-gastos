@@ -9,8 +9,8 @@ use App\Models\PaymentMethod;
 use App\Models\Purchase;
 use App\Models\RecurrenceOccurrence;
 use App\Models\SpreadsheetImportRow;
-use App\Services\BalanceService;
 use App\Services\InvoiceCycleService;
+use App\Services\MonthlyAnalysisService;
 use App\Services\RecurrenceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -19,7 +19,7 @@ use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request, InvoiceCycleService $invoiceCycleService, RecurrenceService $recurrenceService, BalanceService $balanceService): Response
+    public function __invoke(Request $request, InvoiceCycleService $invoiceCycleService, RecurrenceService $recurrenceService, MonthlyAnalysisService $monthlyAnalysisService): Response
     {
         $selectedMonth = $this->validMonth($request->query('month'));
         $view = $request->query('view') === 'invoice' ? 'invoice' : 'calendar';
@@ -27,6 +27,7 @@ class DashboardController extends Controller
         $selfId = Participant::query()->where('is_default', true)->value('id');
         $periodStart = $view === 'invoice' ? $month->copy()->subMonthNoOverflow()->startOfMonth() : $month->copy()->startOfMonth();
         $recurrenceService->ensureOccurrencesForRange($periodStart, $month->copy()->endOfMonth());
+        $budgetSummary = $monthlyAnalysisService->analyze($selectedMonth, 'calendar')['summary'];
         $allPurchases = Purchase::query()->active()->with(['payer:id,name', 'participant:id,name', 'paymentMethod', 'category:id,name', 'allocations.participant:id,name', 'allocations' => fn ($query) => $query->with('category:id,name')])->whereBetween('purchased_at', [$periodStart, $month->copy()->endOfMonth()])->orderByDesc('purchased_at')->get();
         $allInstallmentOccurrences = InstallmentOccurrence::query()->whereNull('archived_at')->with(['payer:id,name', 'participant:id,name', 'paymentMethod', 'category:id,name', 'installment:id,installment_count'])->whereBetween('purchased_at', [$periodStart, $month->copy()->endOfMonth()])->orderByDesc('purchased_at')->get();
         $allRecurrenceOccurrences = RecurrenceOccurrence::query()->whereNull('archived_at')->with(['payer:id,name', 'participant:id,name', 'paymentMethod', 'category:id,name', 'recurrence:id'])->whereBetween('purchased_at', [$periodStart, $month->copy()->endOfMonth()])->orderByDesc('purchased_at')->get();
@@ -55,7 +56,7 @@ class DashboardController extends Controller
             'monthLabel' => ucfirst($month->locale('pt_BR')->translatedFormat('F \d\e Y')),
             'selectedMonth' => $selectedMonth,
             'view' => $view,
-            'summary' => $this->summaryData($balanceService->summary($month->copy()->endOfMonth(), $month->copy()->startOfMonth())),
+            'summary' => $budgetSummary,
             'pendingReview' => SpreadsheetImportRow::query()->where('status', 'pending_review')->count(),
             'monthTotalCents' => (int) ($view === 'invoice' ? $invoiceGroups->sum('totalCents') : $purchases->sum('amount_cents') + $occurrences->sum('amount_cents')),
             'purchases' => $view === 'calendar' ? $purchases->map(fn (Purchase $purchase) => $this->purchaseData($purchase, $selfId))->values() : [],
@@ -67,21 +68,6 @@ class DashboardController extends Controller
                 'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type', 'closing_day']),
             ],
         ]);
-    }
-
-    /** @param array{ownConsumptionCents: int, paidForOthersCents: int, owedToOthersCents: int} $summary */
-    private function summaryData(array $summary): array
-    {
-        return [
-            'ownExpenses' => $this->formatMoney($summary['ownConsumptionCents']),
-            'toReceive' => $this->formatMoney($summary['paidForOthersCents']),
-            'owedToOthers' => $this->formatMoney($summary['owedToOthersCents']),
-        ];
-    }
-
-    private function formatMoney(int $cents): string
-    {
-        return 'R$ '.number_format($cents / 100, 2, ',', '.');
     }
 
     private function validMonth(mixed $value): string
