@@ -54,6 +54,22 @@ _Evitar_: mês do gasto, mensalidade do cartão.
 Valor dos rateios atribuídos a “Eu”, independentemente de quem pagou.
 _Evitar_: meus gastos, gasto pessoal, gasto pago.
 
+**Gasto total do mês**:
+Total do consumo próprio registrado no mês selecionado, somando os valores atribuídos a “Eu”.
+_Evitar_: total desembolsado, total da fatura.
+
+**Restante do salário**:
+Valor do salário mensal configurado depois de descontado o gasto total do mês; pode ser positivo ou negativo.
+_Evitar_: saldo bancário, dinheiro disponível.
+
+**Gasto por pessoa**:
+Soma dos valores atribuídos a cada participante nas compras do período selecionado.
+_Evitar_: saldo por pessoa, valor a receber.
+
+**Movimentação mensal**:
+Distribuição dos gastos próprios ao longo das semanas de um mês selecionado, com possibilidade de análise por categoria.
+_Evitar_: histórico de compras, saldo mensal.
+
 **Valor pago para terceiros**:
 Valor desembolsado pelo usuário em compras cujo rateio inclui outras pessoas.
 _Evitar_: gasto meu, consumo próprio.
