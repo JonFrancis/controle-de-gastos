@@ -18,6 +18,8 @@ use ZipArchive;
 
 class SpreadsheetImportService
 {
+    private bool $usesExcel1904DateSystem = false;
+
     public const FIELDS = [
         'purchased_at',
         'description',
@@ -194,6 +196,7 @@ class SpreadsheetImportService
     /** @return array{headers: list<string>, rows: list<array{sheet_name: string, row_number: int, raw_data: array<string, string>>>, sheet_name: string} */
     private function readDelimited(string $path, string $filename): array
     {
+        $this->usesExcel1904DateSystem = false;
         $handle = fopen($path, 'rb');
         if ($handle === false) {
             throw ValidationException::withMessages(['file' => 'Não foi possível ler a planilha.']);
@@ -251,6 +254,8 @@ class SpreadsheetImportService
 
         $workbook->registerXPathNamespace('main', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
         $relationships->registerXPathNamespace('rel', 'http://schemas.openxmlformats.org/package/2006/relationships');
+        $workbookProperties = $workbook->xpath('//main:workbookPr')[0] ?? null;
+        $this->usesExcel1904DateSystem = (string) ($workbookProperties['date1904'] ?? '') === '1';
         $sharedStringsXml = $archive->getFromName('xl/sharedStrings.xml');
         $sharedStrings = [];
         if ($sharedStringsXml !== false) {
@@ -459,7 +464,9 @@ class SpreadsheetImportService
     {
         if (is_numeric($value) && (float) $value >= 1) {
             try {
-                return Carbon::create(1899, 12, 30)->addDays((int) floor((float) $value))->format('Y-m-d');
+                $epoch = $this->usesExcel1904DateSystem ? Carbon::create(1904, 1, 1)->subDay() : Carbon::create(1899, 12, 30);
+
+                return $epoch->addDays((int) floor((float) $value))->format('Y-m-d');
             } catch (\Throwable) {
             }
         }
