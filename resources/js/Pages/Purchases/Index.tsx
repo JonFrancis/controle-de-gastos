@@ -2,7 +2,9 @@ import { Form, Head, Link } from '@inertiajs/react';
 
 type ExpenseItem = {
     id: number;
+    type: 'purchase' | 'occurrence';
     origin: 'manual' | 'installment' | 'recurrence';
+    canDelete: boolean;
     editUrl: string;
     occurrenceNumber?: number | null;
     occurrenceCount?: number | null;
@@ -117,9 +119,9 @@ function InvoiceGroups({ groups }: { groups: InvoiceGroup[] }) {
 }
 
 function PurchaseRow({ purchase }: { purchase: ExpenseItem }) {
-    const originLabel = purchase.origin === 'installment'
+    const originLabel = purchase.type === 'occurrence' && purchase.origin === 'installment'
         ? `Parcela ${purchase.occurrenceNumber}/${purchase.occurrenceCount}${purchase.isAdjusted ? ' · ajustada' : ''}`
-        : purchase.origin === 'recurrence'
+        : purchase.type === 'occurrence' && purchase.origin === 'recurrence'
             ? `Recorrência${purchase.isAdjusted ? ' · ajustada' : ''}`
             : null;
 
@@ -136,8 +138,8 @@ function PurchaseRow({ purchase }: { purchase: ExpenseItem }) {
             </div>
             <div className="flex shrink-0 items-center justify-between gap-4 sm:justify-end">
                 <strong className="text-sm text-white">{formatMoney(purchase.amountCents)}</strong>
-                <Link href={purchase.editUrl} className="text-xs font-semibold text-emerald-300">{purchase.origin === 'installment' || purchase.origin === 'recurrence' ? 'Ajustar' : 'Editar'}</Link>
-                {purchase.origin === 'manual' && <Form action={`/purchases/${purchase.id}`} method="delete" onBefore={() => window.confirm(`Excluir ${purchase.description} permanentemente?`)}><button type="submit" className="text-xs font-semibold text-rose-300">Excluir</button></Form>}
+                <Link href={purchase.editUrl} className="text-xs font-semibold text-emerald-300">{purchase.type === 'occurrence' ? 'Ajustar' : 'Editar'}</Link>
+                {purchase.canDelete && <Form action={`/purchases/${purchase.id}`} method="delete" onBefore={() => window.confirm(`Excluir ${purchase.description} permanentemente?`)}><button type="submit" className="text-xs font-semibold text-rose-300">Excluir</button></Form>}
             </div>
         </div>
     );

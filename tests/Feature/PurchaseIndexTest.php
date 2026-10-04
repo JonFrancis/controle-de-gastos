@@ -48,6 +48,29 @@ class PurchaseIndexTest extends TestCase
             );
     }
 
+    public function test_imported_purchase_keeps_purchase_actions_even_when_its_origin_is_installment(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $purchase = Purchase::create([
+            'purchased_at' => '2026-10-12',
+            'description' => 'Histórico importado',
+            'amount_cents' => 12500,
+            'origin' => Purchase::ORIGIN_INSTALLMENT,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+        ]);
+
+        $this->get('/purchases?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('purchases.0.type', 'purchase')
+                ->where('purchases.0.origin', Purchase::ORIGIN_INSTALLMENT)
+                ->where('purchases.0.editUrl', route('purchases.edit', $purchase, false))
+                ->where('purchases.0.canDelete', true)
+            );
+    }
+
     public function test_purchases_page_includes_active_installment_and_recurrence_occurrences_for_the_selected_month(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
@@ -80,6 +103,8 @@ class PurchaseIndexTest extends TestCase
                 ->has('occurrences', 2)
                 ->where('occurrences.0.description', 'Academia recorrente')
                 ->where('occurrences.1.description', 'Notebook parcelado')
+                ->where('occurrences.0.type', 'occurrence')
+                ->where('occurrences.0.canDelete', false)
                 ->where('monthTotalCents', 23000)
             );
 

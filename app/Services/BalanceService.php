@@ -116,15 +116,16 @@ class BalanceService
     {
         $selfId = $this->selfId();
         $rows = $this->expenseRows($until, $since);
-        $applications = $this->applicationsUntil($until, $since);
+        $applications = $this->applicationsUntil($until);
+        $receiptBalances = $this->receiptBalancesUntil($until);
 
-        return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($rows, $applications, $until, $since): array {
-            $receivableItems = $rows->filter(fn (array $row): bool => $row['payer_id'] === $this->selfId() && $row['participant_id'] === $participant->id)->map(fn (array $row): array => $this->itemWithOutstanding($row, $applications))->values();
-            $payableItems = $rows->filter(fn (array $row): bool => $row['payer_id'] === $participant->id && $row['participant_id'] === $this->selfId())->map(fn (array $row): array => $this->itemWithOutstanding($row, $applications))->values();
+        return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($rows, $applications, $receiptBalances, $selfId): array {
+            $receivableItems = $rows->filter(fn (array $row): bool => $row['payer_id'] === $selfId && $row['participant_id'] === $participant->id)->map(fn (array $row): array => $this->itemWithOutstanding($row, $applications))->values();
+            $payableItems = $rows->filter(fn (array $row): bool => $row['payer_id'] === $participant->id && $row['participant_id'] === $selfId)->map(fn (array $row): array => $this->itemWithOutstanding($row, $applications))->values();
             $receivable = (int) $receivableItems->sum('outstanding_cents');
             $payable = (int) $payableItems->sum('outstanding_cents');
-            $received = Receipt::query()->where('participant_id', $participant->id)->whereNull('archived_at')->whereDate('received_at', '<=', $until)->when($since, fn ($query, CarbonInterface $start) => $query->whereDate('received_at', '>=', $start))->with('applications')->get();
-            $credit = max(0, (int) $received->sum('amount_cents') - (int) $received->sum(fn (Receipt $receipt): int => $receipt->applications->sum('amount_cents')));
+            $receiptBalance = $receiptBalances->get($participant->id);
+            $credit = max(0, (int) ($receiptBalance?->received_amount_cents ?? 0) - (int) ($receiptBalance?->applied_amount_cents ?? 0));
 
             return [
                 'id' => $participant->id,
@@ -135,7 +136,7 @@ class BalanceService
                 'creditCents' => $credit,
                 'receivableItems' => $receivableItems->all(),
                 'payableItems' => $payableItems->all(),
-                'hasMovement' => $receivableItems->isNotEmpty() || $payableItems->isNotEmpty() || $received->isNotEmpty(),
+                'hasMovement' => $receivableItems->isNotEmpty() || $payableItems->isNotEmpty() || (int) ($receiptBalance?->receipt_count ?? 0) > 0,
             ];
         })->values()->all();
     }
@@ -169,7 +170,7 @@ class BalanceService
     {
         $selfId = $this->selfId();
         $rows = collect();
-        $purchases = Purchase::query()->active()->with('allocations')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get();
+        $purchases = Purchase::query()->active()->whereNotNull('payment_method_id')->with('allocations')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get();
         foreach ($purchases as $purchase) {
             if ($purchase->allocations->isEmpty()) {
                 $rows->push($this->row('purchase', $purchase->id, $purchase->purchased_at, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->description));
@@ -180,10 +181,10 @@ class BalanceService
                 $rows->push($this->row('purchase_allocation', $allocation->id, $purchase->purchased_at, $allocation->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $purchase->description));
             }
         }
-        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
+        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
             $rows->push($this->row('installment_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description));
         }
-        foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
+        foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
             $rows->push($this->row('recurrence_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description));
         }
 
@@ -191,9 +192,31 @@ class BalanceService
     }
 
     /** @return Collection<string, int> */
-    private function applicationsUntil(CarbonInterface $until, ?CarbonInterface $since = null): Collection
+    private function applicationsUntil(CarbonInterface $until): Collection
     {
-        return ReceiptApplication::query()->whereNull('superseded_at')->whereHas('receipt', fn ($query) => $query->whereNull('archived_at')->whereDate('received_at', '<=', $until)->when($since, fn ($query, CarbonInterface $start) => $query->whereDate('received_at', '>=', $start)))->get()->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)->map(fn (Collection $rows): int => (int) $rows->sum('amount_cents'));
+        return ReceiptApplication::query()->whereNull('superseded_at')->whereHas('receipt', fn ($query) => $query->whereNull('archived_at')->whereDate('received_at', '<=', $until))->get()->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)->map(fn (Collection $rows): int => (int) $rows->sum('amount_cents'));
+    }
+
+    /** @return Collection<int, object> */
+    private function receiptBalancesUntil(CarbonInterface $until): Collection
+    {
+        $applicationTotals = ReceiptApplication::query()
+            ->whereNull('superseded_at')
+            ->select('receipt_id')
+            ->selectRaw('SUM(amount_cents) as applied_amount_cents')
+            ->groupBy('receipt_id');
+
+        return Receipt::query()
+            ->leftJoinSub($applicationTotals, 'receipt_application_totals', fn ($join) => $join->on('receipts.id', '=', 'receipt_application_totals.receipt_id'))
+            ->whereNull('receipts.archived_at')
+            ->whereDate('receipts.received_at', '<=', $until)
+            ->select('receipts.participant_id')
+            ->selectRaw('SUM(receipts.amount_cents) as received_amount_cents')
+            ->selectRaw('COALESCE(SUM(receipt_application_totals.applied_amount_cents), 0) as applied_amount_cents')
+            ->selectRaw('COUNT(receipts.id) as receipt_count')
+            ->groupBy('receipts.participant_id')
+            ->get()
+            ->keyBy('participant_id');
     }
 
     /** @param array<string, mixed> $row */

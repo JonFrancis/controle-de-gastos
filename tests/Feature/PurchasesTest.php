@@ -28,13 +28,13 @@ class PurchasesTest extends TestCase
         $this->assertDatabaseHas('purchases', ['description' => 'Mercado', 'card_name' => 'SUPERMERCADO TESTE', 'amount_cents' => 12345, 'archived_at' => null]);
     }
 
-    public function test_dashboard_filters_active_purchases_by_month_and_total(): void
+    public function test_purchases_page_filters_active_purchases_by_month_and_total(): void
     {
         [$payer, $participant, $method, $category] = $this->catalogs();
         Purchase::create(['purchased_at' => '2026-10-12', 'description' => 'Outubro', 'amount_cents' => 10000, 'payer_id' => $payer->id, 'participant_id' => $participant->id, 'payment_method_id' => $method->id, 'category_id' => $category->id]);
         Purchase::create(['purchased_at' => '2026-09-12', 'description' => 'Setembro', 'amount_cents' => 20000, 'payer_id' => $payer->id, 'participant_id' => $participant->id, 'payment_method_id' => $method->id, 'category_id' => $category->id]);
 
-        $this->get('/?month=2026-10')->assertInertia(fn (Assert $page) => $page->component('Dashboard')->where('selectedMonth', '2026-10')->where('monthTotalCents', 10000)->has('purchases', 1)->where('purchases.0.description', 'Outubro'));
+        $this->get('/purchases?month=2026-10')->assertInertia(fn (Assert $page) => $page->component('Purchases/Index')->where('selectedMonth', '2026-10')->where('monthTotalCents', 10000)->has('purchases', 1)->where('purchases.0.description', 'Outubro'));
     }
 
     public function test_purchase_can_be_edited_archived_and_restored_without_deletion(): void
@@ -47,7 +47,7 @@ class PurchasesTest extends TestCase
 
         $this->patch("/purchases/{$purchase->id}/archive")->assertRedirect('/');
         $this->assertNotNull($purchase->fresh()->archived_at);
-        $this->get('/?month=2026-10')->assertInertia(fn (Assert $page) => $page->has('purchases', 0)->where('monthTotalCents', 0));
+        $this->get('/purchases?month=2026-10')->assertInertia(fn (Assert $page) => $page->has('purchases', 0)->where('monthTotalCents', 0));
 
         $this->patch("/purchases/{$purchase->id}/restore")->assertRedirect('/');
         $this->assertNull($purchase->fresh()->archived_at);

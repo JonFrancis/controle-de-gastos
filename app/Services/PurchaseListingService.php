@@ -76,7 +76,9 @@ class PurchaseListingService
     {
         return [
             'id' => $purchase->id,
+            'type' => 'purchase',
             'origin' => $purchase->origin ?: Purchase::ORIGIN_MANUAL,
+            'canDelete' => true,
             'editUrl' => route('purchases.edit', $purchase, false),
             'purchasedAt' => $purchase->purchased_at->toDateString(),
             'description' => $purchase->description,
@@ -96,7 +98,9 @@ class PurchaseListingService
 
         return [
             'id' => $occurrence->id,
+            'type' => 'occurrence',
             'origin' => $isInstallment ? Purchase::ORIGIN_INSTALLMENT : Purchase::ORIGIN_RECURRENCE,
+            'canDelete' => false,
             'editUrl' => $isInstallment
                 ? route('installment-occurrences.edit', $occurrence, false)
                 : route('recurrence-occurrences.edit', $occurrence, false),
