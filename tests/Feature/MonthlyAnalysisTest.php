@@ -79,7 +79,7 @@ class MonthlyAnalysisTest extends TestCase
         $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('participants.0.grossCents', 7000)->where('participants.0.abatementsCents', 4000)->where('participants.0.finalCents', 3000));
     }
 
-    public function test_quitted_participant_is_flagged_without_a_charge_message(): void
+    public function test_quitado_participant_is_flagged_without_a_charge_message(): void
     {
         [$self, $maria, $pix] = $this->catalogs();
         $purchase = Purchase::create(['purchased_at' => '2026-10-12', 'description' => 'Compra quitada', 'amount_cents' => 4000, 'payer_id' => $self->id, 'payment_method_id' => $pix->id]);
@@ -90,7 +90,8 @@ class MonthlyAnalysisTest extends TestCase
         $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.status', 'settled')
             ->where('participants.0.finalCents', 0)
-            ->where('fullMessage', 'Nenhuma cobrança a enviar neste período.'));
+            ->where('participants.0.message', "Olá, Maria!\n\nSua conta está quitada neste período. Nenhuma cobrança a enviar.")
+            ->where('fullMessage', "Nenhuma cobrança a enviar neste período.\n\nQuitados ou sem cobrança: Maria."));
     }
 
     public function test_monthly_salary_is_saved_and_remaining_amount_is_calculated_after_own_consumption(): void

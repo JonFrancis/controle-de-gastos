@@ -110,13 +110,15 @@ class MonthlyAnalysisService
     private function fullMessage(array $participants): string
     {
         $chargeable = collect($participants)->filter(fn (array $participant): bool => $participant['status'] === 'chargeable');
+        $settled = collect($participants)->filter(fn (array $participant): bool => $participant['status'] === 'settled')->pluck('name');
         if ($chargeable->isEmpty()) {
-            return 'Nenhuma cobrança a enviar neste período.';
+            return $settled->isEmpty()
+                ? 'Nenhuma cobrança a enviar neste período.'
+                : "Nenhuma cobrança a enviar neste período.\n\nQuitados ou sem cobrança: ".$settled->implode(', ').'.';
         }
 
         $sections = $chargeable->map(fn (array $participant): string => $participant['name'].":\n".$this->messageDetails($participant['items'])."\nTotal bruto: ".$this->formatMoney($participant['grossCents'])."\nAbatimentos: ".$this->formatMoney($participant['abatementsCents'])."\nValor líquido: ".$this->formatMoney($participant['finalCents']))->implode("\n\n");
 
-        $settled = collect($participants)->filter(fn (array $participant): bool => $participant['status'] === 'settled')->pluck('name');
         if ($settled->isNotEmpty()) {
             $sections .= "\n\nQuitados ou sem cobrança: ".$settled->implode(', ').'.';
         }
