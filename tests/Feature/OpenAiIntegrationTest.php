@@ -63,6 +63,23 @@ class OpenAiIntegrationTest extends TestCase
         Http::assertNothingSent();
     }
 
+    #[DataProvider('invalidContentProvider')]
+    public function test_request_validation_rejects_invalid_content_with_the_user_message(mixed $content, string $message): void
+    {
+        $this->from('/exports')->post('/openai/responses', ['content' => $content])
+            ->assertRedirect('/exports')
+            ->assertSessionHasErrors(['content' => $message]);
+    }
+
+    public static function invalidContentProvider(): array
+    {
+        return [
+            'required' => ['', 'Preencha o conteúdo antes de enviar à OpenAI.'],
+            'string' => [['not', 'text'], 'O conteúdo para a OpenAI precisa ser texto.'],
+            'maximum length' => [str_repeat('a', 50001), 'O conteúdo para a OpenAI não pode passar de 50.000 caracteres.'],
+        ];
+    }
+
     #[DataProvider('upstreamErrorProvider')]
     public function test_upstream_http_errors_return_recoverable_messages(int $status, string $message): void
     {

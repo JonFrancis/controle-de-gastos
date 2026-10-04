@@ -23,6 +23,8 @@ class AuditLog extends Model
 
     public const ACTION_IMPORT = 'import';
 
+    public const ACTION_DELETE = 'delete';
+
     /** @return list<string> */
     public static function actions(): array
     {
@@ -32,6 +34,7 @@ class AuditLog extends Model
             self::ACTION_ARCHIVE,
             self::ACTION_RESTORE,
             self::ACTION_IMPORT,
+            self::ACTION_DELETE,
         ];
     }
 

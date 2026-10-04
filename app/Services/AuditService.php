@@ -26,8 +26,9 @@ class AuditService
         return $log;
     }
 
-    public function recordImport(string $source, int $records): AuditLog
+    /** @param array<string, mixed> $metadata */
+    public function recordImport(string $source, int $records, array $metadata = []): AuditLog
     {
-        return $this->record(AuditLog::ACTION_IMPORT, metadata: ['source' => $source, 'records' => $records]);
+        return $this->record(AuditLog::ACTION_IMPORT, metadata: ['source' => $source, 'records' => $records, ...$metadata]);
     }
 }

@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdatePurchaseAllocationsRequest;
+use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
+use App\Services\AuditService;
 use App\Services\BalanceService;
 use App\Services\PurchaseAllocationService;
 use Illuminate\Http\RedirectResponse;
@@ -25,9 +27,11 @@ class PurchaseAllocationController extends Controller
         ]);
     }
 
-    public function update(UpdatePurchaseAllocationsRequest $request, Purchase $purchase, PurchaseAllocationService $service, BalanceService $balanceService): RedirectResponse
+    public function update(UpdatePurchaseAllocationsRequest $request, Purchase $purchase, PurchaseAllocationService $service, BalanceService $balanceService, AuditService $audit): RedirectResponse
     {
+        $oldAllocations = $purchase->allocations()->get()->toArray();
         $service->save($purchase, $request->string('allocation_mode')->toString(), $request->validated('allocations'));
+        $audit->record(AuditLog::ACTION_UPDATE, $purchase, oldValues: ['allocations' => $oldAllocations], newValues: ['allocations' => $purchase->fresh()->allocations()->get()->toArray()], metadata: ['type' => 'purchase_allocations']);
         $balanceService->reconcileAll();
 
         return to_route('dashboard')->with('success', 'Divisão salva com sucesso.');

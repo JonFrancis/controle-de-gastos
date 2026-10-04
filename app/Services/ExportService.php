@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Installment;
 use App\Models\Participant;
+use App\Models\PromptVersion;
 use App\Models\Purchase;
 use App\Models\PurchaseAllocation;
 use App\Models\Receipt;
@@ -131,6 +132,11 @@ class ExportService
 
     public function prompt(array $selection, ?array $data = null): string
     {
+        $savedPrompt = $this->savedPrompt($selection);
+        if ($savedPrompt !== null) {
+            return $savedPrompt;
+        }
+
         $data ??= $this->data($selection);
         $summary = $data['summary'];
 
@@ -154,9 +160,30 @@ class ExportService
             .'```json'."\n".json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n```\n";
     }
 
+    public function savePromptVersion(array $selection, string $content): PromptVersion
+    {
+        return PromptVersion::create([
+            'mode' => $selection['mode'],
+            'start_date' => $selection['start']?->toDateString(),
+            'end_date' => $selection['end']?->toDateString(),
+            'content' => $content,
+        ]);
+    }
+
+    private function savedPrompt(array $selection): ?string
+    {
+        return PromptVersion::query()
+            ->where('mode', $selection['mode'])
+            ->when($selection['mode'] === 'period', fn ($query) => $query
+                ->whereDate('start_date', $selection['start']->toDateString())
+                ->whereDate('end_date', $selection['end']->toDateString()))
+            ->latest('id')
+            ->value('content');
+    }
+
     private function purchases(array $selection): Collection
     {
-        return Purchase::query()->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type', 'category:id,name', 'allocations.participant:id,name', 'allocations.category:id,name'])
+        return Purchase::query()->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type', 'category:id,name', 'allocations.participant:id,name', 'allocations.category:id,name', 'spreadsheetImportRow.spreadsheetImport:id,original_filename'])
             ->when($selection['start'], fn ($query, CarbonImmutable $start) => $query->whereDate('purchased_at', '>=', $start))
             ->when($selection['end'], fn ($query, CarbonImmutable $end) => $query->whereDate('purchased_at', '<=', $end))
             ->orderBy('purchased_at')->orderBy('id')->get();
@@ -193,7 +220,7 @@ class ExportService
 
     private function purchaseRow(Purchase $purchase): array
     {
-        return ['id' => $purchase->id, 'purchased_at' => $purchase->purchased_at->toDateString(), 'description' => $purchase->description, 'card_name' => $purchase->card_name, 'amount_cents' => $purchase->amount_cents, 'payer' => $purchase->payer?->name, 'participant' => $purchase->participant?->name, 'payment_method' => $purchase->paymentMethod?->name, 'category' => $purchase->category?->name, 'allocation_mode' => $purchase->allocation_mode, 'archived_at' => $purchase->archived_at?->toIso8601String()];
+        return ['id' => $purchase->id, 'purchased_at' => $purchase->purchased_at->toDateString(), 'description' => $purchase->description, 'card_name' => $purchase->card_name, 'amount_cents' => $purchase->amount_cents, 'origin' => $purchase->origin, 'payer' => $purchase->payer?->name, 'participant' => $purchase->participant?->name, 'payment_method' => $purchase->paymentMethod?->name, 'category' => $purchase->category?->name, 'allocation_mode' => $purchase->allocation_mode, 'source_file' => $purchase->spreadsheetImportRow?->spreadsheetImport?->original_filename, 'source_sheet' => $purchase->spreadsheetImportRow?->sheet_name, 'source_row' => $purchase->spreadsheetImportRow?->row_number, 'archived_at' => $purchase->archived_at?->toIso8601String()];
     }
 
     private function allocationRows(Collection $purchases): Collection

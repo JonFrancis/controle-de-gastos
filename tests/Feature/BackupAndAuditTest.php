@@ -70,6 +70,25 @@ class BackupAndAuditTest extends TestCase
         $this->assertCount(0, File::glob($this->backupDirectory().'/*.json'));
     }
 
+    public function test_json_backup_with_missing_expected_tables_is_rejected_before_restore(): void
+    {
+        $purchase = $this->createPurchase('Compra preservada');
+        $payload = json_encode([
+            'format' => 'controle-de-gastos-backup',
+            'version' => 1,
+            'generated_at' => now()->toIso8601String(),
+            'source' => 'manual',
+            'tables' => [],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->from('/settings/backups')->post('/settings/backups/restore', [
+            'backup' => UploadedFile::fake()->createWithContent('malformed.json', $payload, 'application/json'),
+            'confirmation' => '1',
+        ])->assertRedirect('/settings/backups')->assertSessionHasErrors('backup');
+
+        $this->assertDatabaseHas('purchases', ['id' => $purchase->id, 'description' => 'Compra preservada']);
+    }
+
     public function test_restore_preserves_a_copy_of_the_previous_database(): void
     {
         $backupDirectory = $this->backupDirectory();

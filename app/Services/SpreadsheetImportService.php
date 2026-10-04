@@ -54,6 +54,11 @@ class SpreadsheetImportService
             'file_hash' => hash_file('sha256', $file->getRealPath()) ?: '',
             'status' => 'mapping',
             'headers' => $parsed['headers'],
+            'sheet_headers' => collect($parsed['rows'])
+                ->groupBy('sheet_name')
+                ->map(fn ($rows): array => array_keys($rows->first()['raw_data'] ?? []))
+                ->all(),
+            'uses_excel_1904_date_system' => $this->usesExcel1904DateSystem,
         ]);
 
         foreach ($parsed['rows'] as $row) {
@@ -71,6 +76,8 @@ class SpreadsheetImportService
     /** @param array<string, string|null> $mapping */
     public function map(SpreadsheetImport $import, array $mapping, ?string $periodStart, ?string $periodEnd): void
     {
+        $this->usesExcel1904DateSystem = (bool) $import->uses_excel_1904_date_system;
+
         if ($import->status === 'confirmed') {
             throw ValidationException::withMessages(['import' => 'Uma importação confirmada não pode ser remapeada.']);
         }
@@ -107,6 +114,8 @@ class SpreadsheetImportService
     /** @param array<string, mixed> $data */
     public function review(SpreadsheetImportRow $row, array $data): void
     {
+        $this->usesExcel1904DateSystem = (bool) $row->spreadsheetImport->uses_excel_1904_date_system;
+
         if ($row->status === 'imported') {
             throw ValidationException::withMessages(['row' => 'Uma linha já importada não pode ser alterada.']);
         }
@@ -179,7 +188,11 @@ class SpreadsheetImportService
             }
 
             $import->update(['status' => 'confirmed', 'confirmed_at' => now()]);
-            $this->auditService->recordImport($import->original_filename, $approvedRows->count());
+            $this->auditService->recordImport($import->original_filename, $approvedRows->count(), [
+                'import_id' => $import->id,
+                'sheets' => $approvedRows->pluck('sheet_name')->unique()->values()->all(),
+                'rows' => $approvedRows->map(fn (SpreadsheetImportRow $row): array => ['sheet_name' => $row->sheet_name, 'row_number' => $row->row_number, 'purchase_id' => $row->purchase_id])->values()->all(),
+            ]);
 
             return $approvedRows->count();
         });
@@ -245,7 +258,8 @@ class SpreadsheetImportService
             throw ValidationException::withMessages(['file' => 'Não foi possível abrir o arquivo XLSX.']);
         }
 
-        $workbook = simplexml_load_string((string) $archive->getFromName('xl/workbook.xml'));
+        $workbookXml = (string) $archive->getFromName('xl/workbook.xml');
+        $workbook = simplexml_load_string($workbookXml);
         $relationships = simplexml_load_string((string) $archive->getFromName('xl/_rels/workbook.xml.rels'));
         if ($workbook === false || $relationships === false) {
             $archive->close();
@@ -255,7 +269,9 @@ class SpreadsheetImportService
         $workbook->registerXPathNamespace('main', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
         $relationships->registerXPathNamespace('rel', 'http://schemas.openxmlformats.org/package/2006/relationships');
         $workbookProperties = $workbook->xpath('//main:workbookPr')[0] ?? null;
-        $this->usesExcel1904DateSystem = (string) ($workbookProperties['date1904'] ?? '') === '1';
+        $date1904 = strtolower((string) ($workbookProperties['date1904'] ?? ''));
+        $this->usesExcel1904DateSystem = in_array($date1904, ['1', 'true'], true)
+            || preg_match('/date1904\s*=\s*["\'](?:1|true)["\']/i', $workbookXml) === 1;
         $sharedStringsXml = $archive->getFromName('xl/sharedStrings.xml');
         $sharedStrings = [];
         if ($sharedStringsXml !== false) {
@@ -364,6 +380,20 @@ class SpreadsheetImportService
                 throw ValidationException::withMessages(["mapping.{$field}" => 'Mapeie esta coluna antes de continuar.']);
             }
         }
+
+        $sheetHeaders = $import->sheet_headers;
+        if ($sheetHeaders === null || count($sheetHeaders) < 2) {
+            return;
+        }
+
+        foreach (['purchased_at', 'description', 'amount'] as $field) {
+            $header = $mapping[$field] ?? null;
+            if (blank($header) || collect($sheetHeaders)->every(fn (array $headers): bool => in_array($header, $headers, true))) {
+                continue;
+            }
+
+            throw ValidationException::withMessages(["mapping.{$field}" => 'As abas possuem colunas diferentes. Use um mapeamento comum apenas quando a coluna existir em todas as abas.']);
+        }
     }
 
     /** @param array<string, string> $raw @param array<string, string|null> $mapping @return array<string, mixed> */
@@ -462,11 +492,19 @@ class SpreadsheetImportService
 
     private function parseDate(string $value): ?string
     {
-        if (is_numeric($value) && (float) $value >= 1) {
+        if (is_numeric($value) && (float) $value >= 0) {
             try {
-                $epoch = $this->usesExcel1904DateSystem ? Carbon::create(1904, 1, 1)->subDay() : Carbon::create(1899, 12, 30);
+                $serial = (float) $value;
+                if ($this->usesExcel1904DateSystem) {
+                    return Carbon::create(1904, 1, 1)->addDays((int) floor($serial))->format('Y-m-d');
+                }
 
-                return $epoch->addDays((int) floor((float) $value))->format('Y-m-d');
+                $epoch = Carbon::create(1899, 12, 31);
+                if ($serial >= 60) {
+                    $epoch->subDay();
+                }
+
+                return $epoch->addDays((int) floor($serial))->format('Y-m-d');
             } catch (\Throwable) {
             }
         }

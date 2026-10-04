@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StorePurchaseRequest;
 use App\Http\Requests\UpdatePurchaseRequest;
+use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
@@ -57,9 +58,11 @@ class PurchaseController extends Controller
         return to_route('dashboard')->with('success', 'Compra arquivada com sucesso.');
     }
 
-    public function destroy(Purchase $purchase): RedirectResponse
+    public function destroy(Purchase $purchase, AuditService $audit): RedirectResponse
     {
+        $oldValues = $purchase->getAttributes();
         $purchase->delete();
+        $audit->record(AuditLog::ACTION_DELETE, $purchase, oldValues: $oldValues);
 
         return to_route('dashboard')->with('success', 'Compra excluída com sucesso.');
     }

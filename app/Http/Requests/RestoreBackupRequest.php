@@ -15,7 +15,7 @@ class RestoreBackupRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'backup' => ['required', 'file', 'max:51200', 'extensions:json'],
+            'backup' => ['required', 'file', 'max:51200', 'mimes:json', 'extensions:json'],
             'confirmation' => ['accepted'],
         ];
     }

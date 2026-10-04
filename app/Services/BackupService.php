@@ -100,19 +100,32 @@ class BackupService
             throw new InvalidBackupException('O arquivo de backup não contém JSON válido.');
         }
 
-        if (! is_array($payload) || ($payload['format'] ?? null) !== self::FORMAT || ($payload['version'] ?? null) !== self::VERSION || ! is_array($payload['tables'] ?? null)) {
+        $requiredKeys = ['format', 'version', 'generated_at', 'source', 'tables'];
+        if (! is_array($payload)
+            || array_diff($requiredKeys, array_keys($payload)) !== []
+            || array_diff(array_keys($payload), $requiredKeys) !== []
+            || ($payload['format'] ?? null) !== self::FORMAT
+            || ($payload['version'] ?? null) !== self::VERSION
+            || ! is_string($payload['generated_at'] ?? null)
+            || ! is_string($payload['source'] ?? null)
+            || ! is_array($payload['tables'] ?? null)) {
             throw new InvalidBackupException('O arquivo não é um backup compatível com esta versão.');
         }
 
         $knownTables = $this->tableNames();
-        foreach ($payload['tables'] as $table => $rows) {
-            if (! is_string($table) || ! in_array($table, $knownTables, true) || ! is_array($rows)) {
+        $tables = $payload['tables'];
+        if (array_diff($knownTables, array_keys($tables)) !== [] || array_diff(array_keys($tables), $knownTables) !== []) {
+            throw new InvalidBackupException('O backup não contém exatamente todas as tabelas esperadas.');
+        }
+
+        foreach ($tables as $table => $rows) {
+            if (! is_string($table) || ! is_array($rows)) {
                 throw new InvalidBackupException('O backup contém uma tabela desconhecida ou inválida.');
             }
 
             $columns = Schema::getColumnListing($table);
             foreach ($rows as $row) {
-                if (! is_array($row) || array_diff(array_keys($row), $columns) !== []) {
+                if (! is_array($row) || array_diff($columns, array_keys($row)) !== [] || array_diff(array_keys($row), $columns) !== []) {
                     throw new InvalidBackupException('O backup contém colunas incompatíveis.');
                 }
             }

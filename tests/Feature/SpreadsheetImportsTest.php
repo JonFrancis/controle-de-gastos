@@ -98,6 +98,60 @@ class SpreadsheetImportsTest extends TestCase
         $this->assertSame($category->id, $rows[0]->fresh()->mapped_data['category_id']);
     }
 
+    public function test_xlsx_1904_epoch_maps_boundary_serials_to_the_correct_dates(): void
+    {
+        Storage::fake('local');
+        $this->catalogs();
+        $xlsx = $this->xlsxWithSheets([
+            'Janeiro' => [
+                ['Data', 'Descrição', 'Valor', 'Forma'],
+                ['0', 'Primeiro dia', '10,00', 'Pix'],
+                ['1', 'Segundo dia', '20,00', 'Pix'],
+            ],
+        ], true);
+        $this->post('/imports', [
+            'file' => UploadedFile::fake()->createWithContent('1904.xlsx', $xlsx, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+        ]);
+        $import = SpreadsheetImport::query()->firstOrFail();
+        $this->post(route('imports.map', $import), ['mapping' => [
+            'purchased_at' => 'Data',
+            'description' => 'Descrição',
+            'amount' => 'Valor',
+            'payment_method' => 'Forma',
+        ]])->assertRedirect(route('imports.review', $import));
+
+        $rows = $import->rows()->orderBy('row_number')->get();
+        $this->assertSame('1904-01-01', $rows[0]->mapped_data['purchased_at']);
+        $this->assertSame('1904-01-02', $rows[1]->mapped_data['purchased_at']);
+    }
+
+    public function test_multi_sheet_mapping_rejects_required_headers_missing_from_a_sheet(): void
+    {
+        Storage::fake('local');
+        $this->catalogs();
+        $xlsx = $this->xlsxWithSheets([
+            'Completa' => [
+                ['Data', 'Descrição', 'Valor'],
+                ['12/10/2026', 'Compra completa', '10,00'],
+            ],
+            'Incompleta' => [
+                ['Data', 'Descrição'],
+                ['13/10/2026', 'Compra sem valor'],
+            ],
+        ]);
+
+        $this->post('/imports', [
+            'file' => UploadedFile::fake()->createWithContent('abas.xlsx', $xlsx, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+        ]);
+        $import = SpreadsheetImport::query()->firstOrFail();
+
+        $this->from(route('imports.mapping', $import))->post(route('imports.map', $import), ['mapping' => [
+            'purchased_at' => 'Data',
+            'description' => 'Descrição',
+            'amount' => 'Valor',
+        ]])->assertRedirect(route('imports.mapping', $import))->assertSessionHasErrors('mapping.amount');
+    }
+
     public function test_mapping_detects_unknown_values_dates_and_duplicates_without_importing_them(): void
     {
         Storage::fake('local');
@@ -190,6 +244,11 @@ class SpreadsheetImportsTest extends TestCase
         ]);
         $this->assertSame('pending_review', $pending->fresh()->status);
         $this->assertDatabaseCount('purchases', 1);
+        $csv = $this->get('/exports/csv/purchases?mode=history');
+        $csv->assertDownload('purchases-historico-completo.csv');
+        $this->assertStringContainsString('historico.csv', $csv->streamedContent());
+        $this->assertStringContainsString('historico', $csv->streamedContent());
+        $this->assertStringContainsString(';2;', $csv->streamedContent());
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'import',
         ]);
@@ -246,7 +305,7 @@ class SpreadsheetImportsTest extends TestCase
     }
 
     /** @param array<string, list<list<string>>> $sheets */
-    private function xlsxWithSheets(array $sheets): string
+    private function xlsxWithSheets(array $sheets, bool $date1904 = false): string
     {
         $path = tempnam(sys_get_temp_dir(), 'spreadsheet-test-');
         $archive = new \ZipArchive;
@@ -269,7 +328,8 @@ class SpreadsheetImportsTest extends TestCase
             }
             $archive->addFromString('xl/worksheets/sheet'.$sheetNumber.'.xml', $sheetXml.'</sheetData></worksheet>');
         }
-        $archive->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'.implode('', $sheetNodes).'</sheets></workbook>');
+        $workbookProperties = $date1904 ? '<workbookPr date1904="1"/>' : '';
+        $archive->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'.$workbookProperties.'<sheets>'.implode('', $sheetNodes).'</sheets></workbook>');
         $archive->addFromString('xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'.implode('', $relationshipNodes).'</Relationships>');
         $archive->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/></Types>');
         $archive->close();

@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreInstallmentRequest;
+use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Installment;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
+use App\Services\AuditService;
 use App\Services\BalanceService;
 use App\Services\InstallmentService;
 use Illuminate\Http\RedirectResponse;
@@ -55,18 +57,21 @@ class InstallmentController extends Controller
         ]);
     }
 
-    public function store(StoreInstallmentRequest $request, InstallmentService $service, BalanceService $balanceService): RedirectResponse
+    public function store(StoreInstallmentRequest $request, InstallmentService $service, BalanceService $balanceService, AuditService $audit): RedirectResponse
     {
-        $service->create($request->validated());
+        $installment = $service->create($request->validated());
+        $audit->record(AuditLog::ACTION_CREATE, $installment, newValues: $installment->getAttributes());
         $balanceService->reconcileAll();
 
         return to_route('installments.index')->with('success', 'Parcelamento criado com sucesso.');
     }
 
-    public function archive(Installment $installment): RedirectResponse
+    public function archive(Installment $installment, AuditService $audit): RedirectResponse
     {
+        $oldValues = $installment->getAttributes();
         $installment->update(['archived_at' => now()]);
         $installment->occurrences()->whereDate('purchased_at', '>', now()->toDateString())->whereNull('archived_at')->update(['archived_at' => now()]);
+        $audit->record(AuditLog::ACTION_ARCHIVE, $installment, oldValues: $oldValues, newValues: $installment->fresh()->getAttributes());
 
         return to_route('installments.index')->with('success', 'Parcelamento encerrado.');
     }

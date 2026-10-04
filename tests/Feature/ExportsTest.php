@@ -126,6 +126,22 @@ class ExportsTest extends TestCase
         $this->assertStringNotContainsString('Cole os CSVs exportados', $response->streamedContent());
     }
 
+    public function test_saved_prompt_version_is_used_by_the_page_and_download(): void
+    {
+        $this->createExportData();
+
+        $this->from('/exports')->post('/exports/prompt-versions?mode=period&start_date=2026-10-01&end_date=2026-10-31', [
+            'content' => '# Prompt revisado pelo usuário',
+        ])->assertRedirect('/exports');
+
+        $this->assertDatabaseHas('prompt_versions', ['mode' => 'period', 'content' => '# Prompt revisado pelo usuário']);
+        $this->get('/exports?mode=period&start_date=2026-10-01&end_date=2026-10-31')
+            ->assertInertia(fn (Assert $page) => $page->where('prompt', '# Prompt revisado pelo usuário'));
+        $response = $this->get('/exports/prompt?mode=period&start_date=2026-10-01&end_date=2026-10-31');
+        $response->assertDownload('prompt-2026-10-01-2026-10-31.md');
+        $this->assertSame('# Prompt revisado pelo usuário', $response->streamedContent());
+    }
+
     public function test_period_export_requires_a_valid_date_range(): void
     {
         $this->get('/exports?mode=period&start_date=2026-11-01&end_date=2026-10-01')

@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreRecurrenceRequest;
 use App\Http\Requests\UpdateRecurrenceRequest;
+use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Recurrence;
+use App\Services\AuditService;
 use App\Services\BalanceService;
 use App\Services\RecurrenceService;
 use Illuminate\Http\RedirectResponse;
@@ -54,9 +56,10 @@ class RecurrenceController extends Controller
         return Inertia::render('Recurrences/Create', $this->catalogs());
     }
 
-    public function store(StoreRecurrenceRequest $request, RecurrenceService $service, BalanceService $balanceService): RedirectResponse
+    public function store(StoreRecurrenceRequest $request, RecurrenceService $service, BalanceService $balanceService, AuditService $audit): RedirectResponse
     {
-        $service->create($request->validated());
+        $recurrence = $service->create($request->validated());
+        $audit->record(AuditLog::ACTION_CREATE, $recurrence, newValues: $recurrence->getAttributes());
         $balanceService->reconcileAll();
 
         return to_route('recurrences.index')->with('success', 'Recorrência criada com sucesso.');
@@ -73,18 +76,21 @@ class RecurrenceController extends Controller
         ]]);
     }
 
-    public function update(UpdateRecurrenceRequest $request, Recurrence $recurrence, RecurrenceService $service, BalanceService $balanceService): RedirectResponse
+    public function update(UpdateRecurrenceRequest $request, Recurrence $recurrence, RecurrenceService $service, BalanceService $balanceService, AuditService $audit): RedirectResponse
     {
+        $oldValues = $recurrence->getAttributes();
         $data = $request->validated();
         $recurrence->update(['end_date' => $data['end_date'] ?? null, 'active' => $data['active']]);
         $this->synchronizeFutureOccurrences($recurrence, $service);
         $balanceService->reconcileAll();
+        $audit->record(AuditLog::ACTION_UPDATE, $recurrence, oldValues: $oldValues, newValues: $recurrence->fresh()->getAttributes());
 
         return to_route('recurrences.index')->with('success', 'Recorrência atualizada com sucesso.');
     }
 
-    public function activate(Recurrence $recurrence, RecurrenceService $service, BalanceService $balanceService): RedirectResponse
+    public function activate(Recurrence $recurrence, RecurrenceService $service, BalanceService $balanceService, AuditService $audit): RedirectResponse
     {
+        $oldValues = $recurrence->getAttributes();
         $recurrence->update(['active' => true]);
         $futureOccurrences = $recurrence->occurrences()->whereDate('purchased_at', '>=', now()->toDateString());
 
@@ -95,14 +101,17 @@ class RecurrenceController extends Controller
         $futureOccurrences->update(['archived_at' => null]);
         $service->ensureOccurrencesForRange(now()->startOfMonth(), now()->addMonthsNoOverflow(12)->endOfMonth());
         $balanceService->reconcileAll();
+        $audit->record(AuditLog::ACTION_UPDATE, $recurrence, oldValues: $oldValues, newValues: $recurrence->fresh()->getAttributes(), metadata: ['type' => 'activation']);
 
         return to_route('recurrences.index')->with('success', 'Recorrência ativada.');
     }
 
-    public function deactivate(Recurrence $recurrence): RedirectResponse
+    public function deactivate(Recurrence $recurrence, AuditService $audit): RedirectResponse
     {
+        $oldValues = $recurrence->getAttributes();
         $recurrence->update(['active' => false]);
         $recurrence->occurrences()->whereDate('purchased_at', '>', now()->toDateString())->whereNull('archived_at')->update(['archived_at' => now()]);
+        $audit->record(AuditLog::ACTION_ARCHIVE, $recurrence, oldValues: $oldValues, newValues: $recurrence->fresh()->getAttributes(), metadata: ['type' => 'deactivation']);
 
         return to_route('recurrences.index')->with('success', 'Recorrência desativada.');
     }

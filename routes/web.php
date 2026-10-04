@@ -28,7 +28,8 @@ Route::get('/exports/csv/{type}', [ExportController::class, 'csv'])->name('expor
 Route::get('/exports/excel', [ExportController::class, 'excel'])->name('exports.excel');
 Route::get('/exports/markdown', [ExportController::class, 'markdown'])->name('exports.markdown');
 Route::get('/exports/prompt', [ExportController::class, 'prompt'])->name('exports.prompt');
-Route::post('/openai/responses', OpenAiController::class)->name('openai.responses.store');
+Route::post('/exports/prompt-versions', [ExportController::class, 'savePromptVersion'])->name('exports.prompt-versions.store');
+Route::post('/openai/responses', OpenAiController::class)->middleware('throttle:openai')->name('openai.responses.store');
 Route::get('/history', [AuditLogController::class, 'index'])->name('history');
 Route::get('/settings/backups', [BackupController::class, 'index'])->name('settings.backups');
 Route::patch('/settings/backups', [BackupController::class, 'update'])->name('settings.backups.update');
@@ -39,7 +40,7 @@ Route::post('/imports', [SpreadsheetImportController::class, 'store'])->name('im
 Route::get('/imports/{import}/mapping', [SpreadsheetImportController::class, 'mapping'])->name('imports.mapping');
 Route::post('/imports/{import}/mapping', [SpreadsheetImportController::class, 'map'])->name('imports.map');
 Route::get('/imports/{import}/review', [SpreadsheetImportController::class, 'review'])->name('imports.review');
-Route::patch('/imports/{import}/rows/{row}', [SpreadsheetImportController::class, 'updateRow'])->name('imports.rows.update');
+Route::patch('/imports/{import}/rows/{row}', [SpreadsheetImportController::class, 'updateRow'])->scopeBindings()->name('imports.rows.update');
 Route::post('/imports/{import}/confirm', [SpreadsheetImportController::class, 'confirm'])->name('imports.confirm');
 Route::patch('/settings/salary', [SalaryController::class, 'update'])->name('settings.salary.update');
 Route::get('/balances', BalanceController::class)->name('balances');

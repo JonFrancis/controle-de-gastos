@@ -2,19 +2,21 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ExportSelectionRequest;
+use App\Http\Requests\SavePromptVersionRequest;
+use App\Models\AuditLog;
+use App\Services\AuditService;
 use App\Services\ExportService;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
+use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ExportController extends Controller
 {
-    public function index(Request $request, ExportService $service): Response
+    public function index(ExportSelectionRequest $request, ExportService $service): Response
     {
-        $selection = $this->selection($request, $service);
+        $selection = $service->selection($request->validated());
         $data = $service->data($selection);
 
         return Inertia::render('Exports/Index', [
@@ -28,14 +30,14 @@ class ExportController extends Controller
         ]);
     }
 
-    public function csv(Request $request, string $type, ExportService $service): StreamedResponse
+    public function csv(ExportSelectionRequest $request, string $type, ExportService $service): StreamedResponse
     {
-        return $service->csv($type, $this->selection($request, $service));
+        return $service->csv($type, $service->selection($request->validated()));
     }
 
-    public function excel(Request $request, ExportService $service): StreamedResponse
+    public function excel(ExportSelectionRequest $request, ExportService $service): StreamedResponse
     {
-        $export = $service->excel($this->selection($request, $service));
+        $export = $service->excel($service->selection($request->validated()));
 
         return response()->streamDownload(function () use ($export): void {
             try {
@@ -50,14 +52,14 @@ class ExportController extends Controller
         ]);
     }
 
-    public function markdown(Request $request, ExportService $service): StreamedResponse
+    public function markdown(ExportSelectionRequest $request, ExportService $service): StreamedResponse
     {
-        return $service->markdown($this->selection($request, $service));
+        return $service->markdown($service->selection($request->validated()));
     }
 
-    public function prompt(Request $request, ExportService $service): StreamedResponse
+    public function prompt(ExportSelectionRequest $request, ExportService $service): StreamedResponse
     {
-        $selection = $this->selection($request, $service);
+        $selection = $service->selection($request->validated());
         $content = $service->prompt($selection);
 
         return response()->streamDownload(function () use ($content): void {
@@ -65,21 +67,13 @@ class ExportController extends Controller
         }, 'prompt-'.$selection['label'].'.md', ['Content-Type' => 'text/markdown; charset=UTF-8']);
     }
 
-    private function selection(Request $request, ExportService $service): array
+    public function savePromptVersion(SavePromptVersionRequest $request, ExportService $service, AuditService $audit): RedirectResponse
     {
-        $defaultStart = now()->startOfMonth()->toDateString();
-        $defaultEnd = now()->endOfMonth()->toDateString();
-        $input = [
-            'mode' => $request->query('mode', 'period'),
-            'start_date' => $request->query('start_date', $defaultStart),
-            'end_date' => $request->query('end_date', $defaultEnd),
-        ];
-        $validated = Validator::make($input, [
-            'mode' => ['required', Rule::in(['period', 'history'])],
-            'start_date' => ['nullable', 'required_if:mode,period', 'date'],
-            'end_date' => ['nullable', 'required_if:mode,period', 'date', 'after_or_equal:start_date'],
-        ])->validate();
+        $validated = $request->validated();
+        $selection = $service->selection($validated);
+        $version = $service->savePromptVersion($selection, $validated['content']);
+        $audit->record(AuditLog::ACTION_CREATE, $version, newValues: $version->getAttributes(), metadata: ['type' => 'prompt_version', 'scope' => $selection['label']]);
 
-        return $service->selection($validated);
+        return back()->with('success', 'Versão do prompt salva.');
     }
 }
