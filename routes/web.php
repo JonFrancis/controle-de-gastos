@@ -20,6 +20,7 @@ Route::get('/', DashboardController::class)->name('dashboard');
 Route::get('/analysis', AnalysisController::class)->name('analysis');
 Route::patch('/settings/salary', [SalaryController::class, 'update'])->name('settings.salary.update');
 Route::get('/balances', BalanceController::class)->name('balances');
+Route::get('/receipts/create', [ReceiptController::class, 'create'])->name('receipts.create');
 Route::post('/receipts', [ReceiptController::class, 'store'])->name('receipts.store');
 Route::get('/receipts/{receipt}/edit', [ReceiptController::class, 'edit'])->name('receipts.edit');
 Route::put('/receipts/{receipt}/applications', [ReceiptController::class, 'updateApplications'])->name('receipts.applications.update');

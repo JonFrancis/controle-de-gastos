@@ -108,7 +108,7 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                             <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6" id="compras">
                                 <div className="flex items-center justify-between"><div><h2 className="font-semibold text-white">Atalhos</h2><p className="mt-1 text-sm text-slate-400">Ações frequentes</p></div><span className="text-xl text-slate-500">⋯</span></div>
                                 <div className="mt-6 grid grid-cols-2 gap-3">
-                                    {['Registrar compra', 'Cadastrar pessoa', 'Adicionar recebimento', 'Importar planilha'].map((label, index) => <Link key={label} href={label === 'Cadastrar pessoa' ? '/settings/catalogs' : label === 'Adicionar recebimento' ? '/balances' : '#'} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-emerald-300/40 hover:bg-emerald-300/5"><span className="text-xl">{['＋', '◎', '↗', '↥'][index]}</span><p className="mt-3 text-sm font-medium text-slate-200">{label}</p></Link>)}
+                                    {['Registrar compra', 'Cadastrar pessoa', 'Adicionar recebimento', 'Importar planilha'].map((label, index) => <Link key={label} href={label === 'Cadastrar pessoa' ? '/settings/catalogs' : label === 'Adicionar recebimento' ? '/receipts/create' : '#'} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-emerald-300/40 hover:bg-emerald-300/5"><span className="text-xl">{['＋', '◎', '↗', '↥'][index]}</span><p className="mt-3 text-sm font-medium text-slate-200">{label}</p></Link>)}
                                 </div>
                             </div>
                         </section>

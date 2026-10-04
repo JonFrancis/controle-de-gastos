@@ -4,14 +4,25 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreReceiptRequest;
 use App\Http\Requests\UpdateReceiptApplicationsRequest;
+use App\Models\Participant;
 use App\Models\Receipt;
 use App\Services\BalanceService;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ReceiptController extends Controller
 {
+    public function create(Request $request): Response
+    {
+        return Inertia::render('Balances/CreateReceipt', [
+            'selectedMonth' => $this->validMonth($request->query('month')),
+            'participants' => Participant::query()->where('active', true)->where('is_default', false)->orderBy('name')->get(['id', 'name']),
+        ]);
+    }
+
     public function edit(Receipt $receipt, BalanceService $service): Response
     {
         $receipt->load(['participant', 'applications']);
@@ -29,7 +40,7 @@ class ReceiptController extends Controller
         $receipt = Receipt::create($data);
         $service->reconcileParticipant($receipt->participant_id);
 
-        return to_route('balances')->with('success', 'Recebimento registrado e aplicado aos saldos mais antigos.');
+        return to_route('balances', array_filter(['month' => $request->query('month')]))->with('success', 'Recebimento registrado e aplicado aos saldos mais antigos.');
     }
 
     public function updateApplications(UpdateReceiptApplicationsRequest $request, Receipt $receipt, BalanceService $service): RedirectResponse
@@ -46,5 +57,22 @@ class ReceiptController extends Controller
         [$whole, $decimal] = array_pad(explode('.', $normalized, 2), 2, '');
 
         return ((int) $whole * 100) + (int) str_pad($decimal, 2, '0');
+    }
+
+    private function validMonth(mixed $value): string
+    {
+        $candidate = (string) $value;
+
+        if (! preg_match('/^\d{4}-\d{2}$/', $candidate)) {
+            return now()->format('Y-m');
+        }
+
+        try {
+            $month = Carbon::createFromFormat('!Y-m', $candidate);
+        } catch (\Throwable) {
+            return now()->format('Y-m');
+        }
+
+        return $month->format('Y-m') === $candidate ? $candidate : now()->format('Y-m');
     }
 }

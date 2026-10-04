@@ -2,9 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Category;
-use App\Models\Participant;
-use App\Models\PaymentMethod;
 use App\Services\BalanceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -23,7 +20,6 @@ class BalanceController extends Controller
             'summary' => $service->summary($until),
             'participants' => $service->participantBalances($until),
             'receipts' => $service->receipts($until),
-            'catalogs' => ['participants' => Participant::query()->where('active', true)->where('is_default', false)->orderBy('name')->get(['id', 'name']), 'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']), 'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name'])],
         ]);
     }
 

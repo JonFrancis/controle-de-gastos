@@ -17,6 +17,18 @@ class BalancesTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_receipt_registration_has_its_own_screen(): void
+    {
+        [, $maria] = $this->catalogs();
+
+        $this->get('/receipts/create?month=2026-10')
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Balances/CreateReceipt')
+                ->where('selectedMonth', '2026-10')
+                ->where('participants.0.id', $maria->id));
+    }
+
     public function test_balances_separate_own_consumption_paid_for_others_and_owed_to_others(): void
     {
         [$self, $maria] = $this->catalogs();
