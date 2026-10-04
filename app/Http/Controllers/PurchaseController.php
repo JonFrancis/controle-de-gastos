@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
+use App\Services\BalanceService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -39,9 +40,10 @@ class PurchaseController extends Controller
         ]);
     }
 
-    public function update(UpdatePurchaseRequest $request, Purchase $purchase): RedirectResponse
+    public function update(UpdatePurchaseRequest $request, Purchase $purchase, BalanceService $balanceService): RedirectResponse
     {
         $purchase->update($this->data($request->validated()));
+        $balanceService->reconcileAll();
 
         return to_route('dashboard');
     }

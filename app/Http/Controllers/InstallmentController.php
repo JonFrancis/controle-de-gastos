@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Installment;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
+use App\Services\BalanceService;
 use App\Services\InstallmentService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -54,9 +55,10 @@ class InstallmentController extends Controller
         ]);
     }
 
-    public function store(StoreInstallmentRequest $request, InstallmentService $service): RedirectResponse
+    public function store(StoreInstallmentRequest $request, InstallmentService $service, BalanceService $balanceService): RedirectResponse
     {
         $service->create($request->validated());
+        $balanceService->reconcileAll();
 
         return to_route('installments.index')->with('success', 'Parcelamento criado com sucesso.');
     }

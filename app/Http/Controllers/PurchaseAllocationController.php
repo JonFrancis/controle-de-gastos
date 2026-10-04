@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
+use App\Services\BalanceService;
 use App\Services\PurchaseAllocationService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -24,9 +25,10 @@ class PurchaseAllocationController extends Controller
         ]);
     }
 
-    public function update(UpdatePurchaseAllocationsRequest $request, Purchase $purchase, PurchaseAllocationService $service): RedirectResponse
+    public function update(UpdatePurchaseAllocationsRequest $request, Purchase $purchase, PurchaseAllocationService $service, BalanceService $balanceService): RedirectResponse
     {
         $service->save($purchase, $request->string('allocation_mode')->toString(), $request->validated('allocations'));
+        $balanceService->reconcileAll();
 
         return to_route('dashboard')->with('success', 'Divisão salva com sucesso.');
     }

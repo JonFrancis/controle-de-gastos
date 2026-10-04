@@ -1,0 +1,100 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Category;
+use App\Models\Participant;
+use App\Models\PaymentMethod;
+use App\Models\Purchase;
+use App\Models\PurchaseAllocation;
+use App\Models\Receipt;
+use App\Models\ReceiptApplication;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
+use Tests\TestCase;
+
+class BalancesTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_balances_separate_own_consumption_paid_for_others_and_owed_to_others(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $this->purchase('2026-10-01', 10000, $self, [[$self, 4000], [$maria, 6000]]);
+        $this->purchase('2026-10-02', 2000, $maria, [[$self, 2000]]);
+
+        $this->get('/balances?month=2026-10')
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Balances/Index')
+                ->where('summary.ownConsumptionCents', 6000)
+                ->where('summary.paidForOthersCents', 6000)
+                ->where('summary.owedToOthersCents', 2000)
+                ->where('participants.0.name', 'Maria')
+                ->where('participants.0.receivableCents', 6000)
+                ->where('participants.0.payableCents', 2000)
+                ->where('participants.0.netCents', 4000));
+    }
+
+    public function test_receipt_is_applied_to_oldest_debts_and_excess_becomes_credit(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $first = $this->purchase('2026-10-01', 5000, $self, [[$maria, 5000]])->allocations()->firstOrFail();
+        $second = $this->purchase('2026-10-02', 7000, $self, [[$maria, 7000]])->allocations()->firstOrFail();
+
+        $this->post('/receipts', ['participant_id' => $maria->id, 'received_at' => '2026-10-03', 'amount' => '150,00', 'note' => 'Pix'])
+            ->assertRedirect('/balances');
+
+        $this->assertDatabaseHas('receipt_applications', ['purchase_allocation_id' => $first->id, 'amount_cents' => 5000, 'source' => 'automatic']);
+        $this->assertDatabaseHas('receipt_applications', ['purchase_allocation_id' => $second->id, 'amount_cents' => 7000, 'source' => 'automatic']);
+        $this->assertSame(3000, Receipt::query()->firstOrFail()->amount_cents - ReceiptApplication::query()->whereNull('superseded_at')->sum('amount_cents'));
+
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('participants.0.receivableCents', 0)->where('participants.0.creditCents', 3000));
+    }
+
+    public function test_receipt_applications_can_be_adjusted_manually_without_losing_credit(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $first = $this->purchase('2026-10-01', 6000, $self, [[$maria, 6000]])->allocations()->firstOrFail();
+        $second = $this->purchase('2026-10-02', 6000, $self, [[$maria, 6000]])->allocations()->firstOrFail();
+        $this->post('/receipts', ['participant_id' => $maria->id, 'received_at' => '2026-10-03', 'amount' => '100,00']);
+        $receipt = Receipt::query()->firstOrFail();
+
+        $this->put("/receipts/{$receipt->id}/applications", ['applications' => [['source_type' => 'purchase_allocation', 'source_id' => $second->id, 'amount' => '60,00']]])
+            ->assertRedirect('/balances');
+
+        $this->assertDatabaseHas('receipt_applications', ['receipt_id' => $receipt->id, 'purchase_allocation_id' => $second->id, 'amount_cents' => 6000, 'source' => 'manual']);
+        $this->assertFalse(ReceiptApplication::query()->where('receipt_id', $receipt->id)->where('purchase_allocation_id', $first->id)->whereNull('superseded_at')->exists());
+        $this->assertTrue(ReceiptApplication::query()->where('receipt_id', $receipt->id)->where('purchase_allocation_id', $first->id)->whereNotNull('superseded_at')->exists());
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('participants.0.receivableCents', 6000)->where('participants.0.creditCents', 4000));
+    }
+
+    /** @return array{0: Participant, 1: Participant} */
+    private function catalogs(): array
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        Category::create(['name' => 'Casa']);
+
+        return [$self, $maria];
+    }
+
+    /** @param list<array{0: Participant, 1: int}> $allocations */
+    private function purchase(string $date, int $amountCents, Participant $payer, array $allocations): Purchase
+    {
+        $purchase = Purchase::create([
+            'purchased_at' => $date,
+            'description' => 'Compra '.$date,
+            'amount_cents' => $amountCents,
+            'payer_id' => $payer->id,
+            'payment_method_id' => PaymentMethod::query()->firstOrFail()->id,
+        ]);
+
+        foreach ($allocations as [$participant, $amount]) {
+            PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $participant->id, 'amount_cents' => $amount]);
+        }
+
+        return $purchase;
+    }
+}

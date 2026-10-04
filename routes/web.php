@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BalanceController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InstallmentController;
@@ -8,11 +9,16 @@ use App\Http\Controllers\ParticipantController;
 use App\Http\Controllers\PaymentMethodController;
 use App\Http\Controllers\PurchaseAllocationController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\ReceiptController;
 use App\Http\Controllers\RecurrenceController;
 use App\Http\Controllers\RecurrenceOccurrenceController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
+Route::get('/balances', BalanceController::class)->name('balances');
+Route::post('/receipts', [ReceiptController::class, 'store'])->name('receipts.store');
+Route::get('/receipts/{receipt}/edit', [ReceiptController::class, 'edit'])->name('receipts.edit');
+Route::put('/receipts/{receipt}/applications', [ReceiptController::class, 'updateApplications'])->name('receipts.applications.update');
 
 Route::get('/purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');
 Route::get('/purchases/create/simple', [PurchaseController::class, 'createSimple'])->name('purchases.create.simple');

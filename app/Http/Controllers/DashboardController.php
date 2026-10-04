@@ -8,6 +8,7 @@ use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
 use App\Models\RecurrenceOccurrence;
+use App\Services\BalanceService;
 use App\Services\InvoiceCycleService;
 use App\Services\RecurrenceService;
 use Carbon\Carbon;
@@ -17,9 +18,9 @@ use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request, InvoiceCycleService $invoiceCycleService, RecurrenceService $recurrenceService): Response
+    public function __invoke(Request $request, InvoiceCycleService $invoiceCycleService, RecurrenceService $recurrenceService, BalanceService $balanceService): Response
     {
-        $selectedMonth = preg_match('/^\d{4}-\d{2}$/', (string) $request->query('month')) ? $request->query('month') : now()->format('Y-m');
+        $selectedMonth = $this->validMonth($request->query('month'));
         $view = $request->query('view') === 'invoice' ? 'invoice' : 'calendar';
         $month = Carbon::createFromFormat('Y-m', $selectedMonth);
         $selfId = Participant::query()->where('is_default', true)->value('id');
@@ -53,7 +54,7 @@ class DashboardController extends Controller
             'monthLabel' => ucfirst($month->locale('pt_BR')->translatedFormat('F \d\e Y')),
             'selectedMonth' => $selectedMonth,
             'view' => $view,
-            'summary' => ['ownExpenses' => 'R$ 0,00', 'toReceive' => 'R$ 0,00', 'salaryRemaining' => 'R$ 0,00'],
+            'summary' => $this->summaryData($balanceService->summary($month->copy()->endOfMonth(), $month->copy()->startOfMonth())),
             'pendingReview' => 0,
             'monthTotalCents' => (int) ($view === 'invoice' ? $invoiceGroups->sum('totalCents') : $purchases->sum('amount_cents') + $occurrences->sum('amount_cents')),
             'purchases' => $view === 'calendar' ? $purchases->map(fn (Purchase $purchase) => $this->purchaseData($purchase, $selfId))->values() : [],
@@ -65,6 +66,38 @@ class DashboardController extends Controller
                 'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type', 'closing_day']),
             ],
         ]);
+    }
+
+    /** @param array{ownConsumptionCents: int, paidForOthersCents: int, owedToOthersCents: int} $summary */
+    private function summaryData(array $summary): array
+    {
+        return [
+            'ownExpenses' => $this->formatMoney($summary['ownConsumptionCents']),
+            'toReceive' => $this->formatMoney($summary['paidForOthersCents']),
+            'owedToOthers' => $this->formatMoney($summary['owedToOthersCents']),
+        ];
+    }
+
+    private function formatMoney(int $cents): string
+    {
+        return 'R$ '.number_format($cents / 100, 2, ',', '.');
+    }
+
+    private function validMonth(mixed $value): string
+    {
+        $candidate = (string) $value;
+
+        if (! preg_match('/^\d{4}-\d{2}$/', $candidate)) {
+            return now()->format('Y-m');
+        }
+
+        try {
+            $month = Carbon::createFromFormat('!Y-m', $candidate);
+        } catch (\Throwable) {
+            return now()->format('Y-m');
+        }
+
+        return $month->format('Y-m') === $candidate ? $candidate : now()->format('Y-m');
     }
 
     private function purchaseData(Purchase $purchase, ?int $selfId): array

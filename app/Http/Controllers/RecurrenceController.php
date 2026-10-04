@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Recurrence;
+use App\Services\BalanceService;
 use App\Services\RecurrenceService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -53,9 +54,10 @@ class RecurrenceController extends Controller
         return Inertia::render('Recurrences/Create', $this->catalogs());
     }
 
-    public function store(StoreRecurrenceRequest $request, RecurrenceService $service): RedirectResponse
+    public function store(StoreRecurrenceRequest $request, RecurrenceService $service, BalanceService $balanceService): RedirectResponse
     {
         $service->create($request->validated());
+        $balanceService->reconcileAll();
 
         return to_route('recurrences.index')->with('success', 'Recorrência criada com sucesso.');
     }
@@ -71,16 +73,17 @@ class RecurrenceController extends Controller
         ]]);
     }
 
-    public function update(UpdateRecurrenceRequest $request, Recurrence $recurrence, RecurrenceService $service): RedirectResponse
+    public function update(UpdateRecurrenceRequest $request, Recurrence $recurrence, RecurrenceService $service, BalanceService $balanceService): RedirectResponse
     {
         $data = $request->validated();
         $recurrence->update(['end_date' => $data['end_date'] ?? null, 'active' => $data['active']]);
         $this->synchronizeFutureOccurrences($recurrence, $service);
+        $balanceService->reconcileAll();
 
         return to_route('recurrences.index')->with('success', 'Recorrência atualizada com sucesso.');
     }
 
-    public function activate(Recurrence $recurrence, RecurrenceService $service): RedirectResponse
+    public function activate(Recurrence $recurrence, RecurrenceService $service, BalanceService $balanceService): RedirectResponse
     {
         $recurrence->update(['active' => true]);
         $futureOccurrences = $recurrence->occurrences()->whereDate('purchased_at', '>=', now()->toDateString());
@@ -91,6 +94,7 @@ class RecurrenceController extends Controller
 
         $futureOccurrences->update(['archived_at' => null]);
         $service->ensureOccurrencesForRange(now()->startOfMonth(), now()->addMonthsNoOverflow(12)->endOfMonth());
+        $balanceService->reconcileAll();
 
         return to_route('recurrences.index')->with('success', 'Recorrência ativada.');
     }

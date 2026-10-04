@@ -12,7 +12,7 @@ type Props = {
     summary: {
         ownExpenses: string;
         toReceive: string;
-        salaryRemaining: string;
+        owedToOthers: string;
     };
     catalogs: {
         participants: { id: number; name: string }[];
@@ -29,6 +29,7 @@ const navigation = [
     ['Compras', '#compras'],
     ['Parcelamentos', '/installments'],
     ['Recorrentes', '/recurrences'],
+    ['Saldos', '/balances'],
     ['Pessoas', '#pessoas'],
     ['Configurações', '/settings/catalogs'],
 ];
@@ -53,7 +54,7 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                                 href={href}
                                 className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${index === 0 ? 'bg-emerald-400/10 font-semibold text-emerald-300' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
                             >
-                                <span className="w-5 text-center text-xs">{['⌂', '＋', '◫', '↻', '◎', '⚙'][index]}</span>
+                                <span className="w-5 text-center text-xs">{['⌂', '＋', '◫', '↻', '∑', '◎', '⚙'][index]}</span>
                                 {label}
                             </Link>
                         ))}
@@ -85,7 +86,7 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                         <section className="mt-8 grid gap-4 md:grid-cols-3">
                             <SummaryCard label="Meu consumo no mês" value={summary.ownExpenses} note="Inclui compras próprias" accent="emerald" />
                             <SummaryCard label="A receber" value={summary.toReceive} note="De outras pessoas" accent="violet" />
-                            <SummaryCard label="Salário restante" value={summary.salaryRemaining} note="Após meus gastos" accent="amber" />
+                            <SummaryCard label="Pago por terceiros" value={summary.owedToOthers} note="Valores que devo" accent="amber" />
                         </section>
 
                         <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
@@ -95,7 +96,7 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
 
                         <section className="mt-8 grid gap-5 xl:grid-cols-[1.35fr_1fr]">
                             <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6">
-                                <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between">
                                     <div><h2 className="font-semibold text-white">Movimentação do mês</h2><p className="mt-1 text-sm text-slate-400">Seus gastos por semana</p></div>
                                     <button className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">Por categoria⌄</button>
                                 </div>
@@ -106,13 +107,13 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                             <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6" id="compras">
                                 <div className="flex items-center justify-between"><div><h2 className="font-semibold text-white">Atalhos</h2><p className="mt-1 text-sm text-slate-400">Ações frequentes</p></div><span className="text-xl text-slate-500">⋯</span></div>
                                 <div className="mt-6 grid grid-cols-2 gap-3">
-                                    {['Registrar compra', 'Cadastrar pessoa', 'Adicionar recebimento', 'Importar planilha'].map((label, index) => <Link key={label} href={label === 'Cadastrar pessoa' ? '/settings/catalogs' : '#'} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-emerald-300/40 hover:bg-emerald-300/5"><span className="text-xl">{['＋', '◎', '↗', '↥'][index]}</span><p className="mt-3 text-sm font-medium text-slate-200">{label}</p></Link>)}
+                                    {['Registrar compra', 'Cadastrar pessoa', 'Adicionar recebimento', 'Importar planilha'].map((label, index) => <Link key={label} href={label === 'Cadastrar pessoa' ? '/settings/catalogs' : label === 'Adicionar recebimento' ? '/balances' : '#'} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-emerald-300/40 hover:bg-emerald-300/5"><span className="text-xl">{['＋', '◎', '↗', '↥'][index]}</span><p className="mt-3 text-sm font-medium text-slate-200">{label}</p></Link>)}
                                 </div>
                             </div>
                         </section>
 
                         <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6" id="pessoas">
-                            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h2 className="font-semibold text-white">Pessoas e saldos</h2><p className="mt-1 text-sm text-slate-400">Quando houver dados, seus saldos aparecerão aqui.</p></div><Link href="#" className="text-sm font-semibold text-emerald-300">Ver detalhes →</Link></div>
+                            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h2 className="font-semibold text-white">Pessoas e saldos</h2><p className="mt-1 text-sm text-slate-400">Quando houver dados, seus saldos aparecerão aqui.</p></div><Link href="/balances" className="text-sm font-semibold text-emerald-300">Ver detalhes →</Link></div>
                             <div className="mt-6 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-5 py-8 text-center"><p className="text-sm text-slate-400">Ainda não há compras ou pessoas cadastradas.</p><button className="mt-4 rounded-xl border border-emerald-300/30 px-4 py-2 text-sm font-semibold text-emerald-300">Começar configuração</button></div>
                         </section>
 
