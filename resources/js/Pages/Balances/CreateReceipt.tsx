@@ -5,6 +5,7 @@ type Participant = { id: number; name: string };
 type Props = { selectedMonth: string; participants: Participant[] };
 
 const inputClass = 'w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-emerald-300/60';
+const selectClass = `${inputClass} [&>option]:bg-slate-800 [&>option]:text-white`;
 
 export default function CreateReceipt({ selectedMonth, participants }: Props) {
     const form = useForm({ participant_id: '', received_at: new Date().toISOString().slice(0, 10), amount: '', note: '' });
@@ -27,7 +28,7 @@ export default function CreateReceipt({ selectedMonth, participants }: Props) {
                     <form onSubmit={submit} className="mt-8 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
                         <div className="flex flex-col gap-4">
                             <Field label="Pessoa">
-                                <select required value={form.data.participant_id} onChange={(event) => form.setData('participant_id', event.target.value)} className={inputClass}>
+                                <select required value={form.data.participant_id} onChange={(event) => form.setData('participant_id', event.target.value)} className={selectClass}>
                                     <option value="">Selecione</option>
                                     {participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}
                                 </select>
