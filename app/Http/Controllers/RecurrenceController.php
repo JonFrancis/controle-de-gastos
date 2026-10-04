@@ -83,7 +83,13 @@ class RecurrenceController extends Controller
     public function activate(Recurrence $recurrence, RecurrenceService $service): RedirectResponse
     {
         $recurrence->update(['active' => true]);
-        $recurrence->occurrences()->whereDate('purchased_at', '>=', now()->toDateString())->update(['archived_at' => null]);
+        $futureOccurrences = $recurrence->occurrences()->whereDate('purchased_at', '>=', now()->toDateString());
+
+        if ($recurrence->end_date !== null) {
+            $futureOccurrences->whereDate('purchased_at', '<=', $recurrence->end_date->toDateString());
+        }
+
+        $futureOccurrences->update(['archived_at' => null]);
         $service->ensureOccurrencesForRange(now()->startOfMonth(), now()->addMonthsNoOverflow(12)->endOfMonth());
 
         return to_route('recurrences.index')->with('success', 'Recorrência ativada.');

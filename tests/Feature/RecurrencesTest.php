@@ -108,6 +108,18 @@ class RecurrencesTest extends TestCase
         $this->assertSame(2, $recurrence->fresh()->occurrences()->whereNull('archived_at')->count());
     }
 
+    public function test_reactivating_a_recurrence_does_not_restore_occurrences_after_its_end_date(): void
+    {
+        $this->travelTo('2026-10-15 12:00:00');
+        $recurrence = $this->createRecurrence(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-01', '50,00', null);
+
+        $this->patch("/recurrences/{$recurrence->id}", ['end_date' => '2026-11-30', 'active' => false]);
+        $this->patch("/recurrences/{$recurrence->id}/activate")->assertRedirect('/recurrences');
+
+        $this->get('/?month=2026-11')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1));
+        $this->get('/?month=2026-12')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 0)->has('occurrences', 0));
+    }
+
     private function createRecurrence(PaymentMethod $paymentMethod, string $startDate, string $amount, ?string $endDate): Recurrence
     {
         $this->post('/recurrences', [
