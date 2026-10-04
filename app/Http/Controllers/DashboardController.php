@@ -23,7 +23,6 @@ class DashboardController extends Controller
         $budgetSummary = $budgetAnalysis['summary'];
         $pendingReviewQuery = SpreadsheetImportRow::query()->where('status', 'pending_review');
         $pendingReview = (clone $pendingReviewQuery)->count();
-        $pendingReviewImportId = (clone $pendingReviewQuery)->value('spreadsheet_import_id');
         $personBalances = collect($balanceService->participantBalances($month->copy()->endOfMonth(), $month->copy()->startOfMonth()))
             ->filter(fn (array $balance): bool => $balance['hasMovement'])
             ->map(fn (array $balance): array => [
@@ -37,6 +36,7 @@ class DashboardController extends Controller
             ->sortByDesc(fn (array $balance): int => abs($balance['amountCents']))
             ->values()
             ->all();
+
         return Inertia::render('Dashboard', [
             'selectedMonth' => $selectedMonth,
             'summary' => $budgetSummary,
@@ -51,7 +51,7 @@ class DashboardController extends Controller
                 'selectedCategoryId' => $budgetAnalysis['selectedMovementCategoryId'],
             ],
             'pendingReview' => $pendingReview,
-            'pendingReviewUrl' => $pendingReviewImportId ? route('imports.review', $pendingReviewImportId, false) : null,
+            'pendingReviewUrl' => $pendingReview > 0 ? route('imports.queue', [], false) : null,
         ]);
     }
 

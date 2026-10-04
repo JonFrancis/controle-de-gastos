@@ -118,8 +118,9 @@ class BalanceService
         $rows = $this->expenseRows($until, $since);
         $applications = $this->applicationsUntil($until);
         $receiptBalances = $this->receiptBalancesUntil($until);
+        $receiptMovements = $this->receiptMovements($until, $since);
 
-        return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($rows, $applications, $receiptBalances, $selfId): array {
+        return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($rows, $applications, $receiptBalances, $receiptMovements, $selfId): array {
             $receivableItems = $rows->filter(fn (array $row): bool => $row['payer_id'] === $selfId && $row['participant_id'] === $participant->id)->map(fn (array $row): array => $this->itemWithOutstanding($row, $applications))->values();
             $payableItems = $rows->filter(fn (array $row): bool => $row['payer_id'] === $participant->id && $row['participant_id'] === $selfId)->map(fn (array $row): array => $this->itemWithOutstanding($row, $applications))->values();
             $receivable = (int) $receivableItems->sum('outstanding_cents');
@@ -136,7 +137,7 @@ class BalanceService
                 'creditCents' => $credit,
                 'receivableItems' => $receivableItems->all(),
                 'payableItems' => $payableItems->all(),
-                'hasMovement' => $receivableItems->isNotEmpty() || $payableItems->isNotEmpty() || (int) ($receiptBalance?->receipt_count ?? 0) > 0,
+                'hasMovement' => $receivableItems->isNotEmpty() || $payableItems->isNotEmpty() || (int) ($receiptMovements->get($participant->id) ?? 0) > 0,
             ];
         })->values()->all();
     }
@@ -217,6 +218,20 @@ class BalanceService
             ->groupBy('receipts.participant_id')
             ->get()
             ->keyBy('participant_id');
+    }
+
+    /** @return Collection<int, int> */
+    private function receiptMovements(CarbonInterface $until, ?CarbonInterface $since): Collection
+    {
+        return Receipt::query()
+            ->whereNull('archived_at')
+            ->whereDate('received_at', '<=', $until)
+            ->when($since, fn ($query, CarbonInterface $start) => $query->whereDate('received_at', '>=', $start))
+            ->select('participant_id')
+            ->selectRaw('COUNT(id) as receipt_count')
+            ->groupBy('participant_id')
+            ->get()
+            ->pluck('receipt_count', 'participant_id');
     }
 
     /** @param array<string, mixed> $row */

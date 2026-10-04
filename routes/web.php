@@ -37,6 +37,7 @@ Route::post('/settings/backups', [BackupController::class, 'store'])->name('sett
 Route::post('/settings/backups/restore', [BackupController::class, 'restore'])->name('settings.backups.restore');
 Route::get('/imports/create', [SpreadsheetImportController::class, 'create'])->name('imports.create');
 Route::post('/imports', [SpreadsheetImportController::class, 'store'])->name('imports.store');
+Route::get('/imports/review', [SpreadsheetImportController::class, 'queue'])->name('imports.queue');
 Route::get('/imports/{import}/mapping', [SpreadsheetImportController::class, 'mapping'])->name('imports.mapping');
 Route::post('/imports/{import}/mapping', [SpreadsheetImportController::class, 'map'])->name('imports.map');
 Route::get('/imports/{import}/review', [SpreadsheetImportController::class, 'review'])->name('imports.review');

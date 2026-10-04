@@ -48,7 +48,33 @@ class DashboardTest extends TestCase
         $this->get('/?month=2026-10')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('pendingReview', 1)
-                ->where('pendingReviewUrl', route('imports.review', $import, false)));
+                ->where('pendingReviewUrl', route('imports.queue', [], false)));
+    }
+
+    public function test_dashboard_review_queue_contains_pending_rows_from_multiple_imports(): void
+    {
+        $firstImport = SpreadsheetImport::factory()->create(['original_filename' => 'primeira.csv']);
+        SpreadsheetImportRow::factory()->create(['spreadsheet_import_id' => $firstImport->id, 'row_number' => 2]);
+        SpreadsheetImportRow::factory()->create(['spreadsheet_import_id' => $firstImport->id, 'row_number' => 3]);
+        $secondImport = SpreadsheetImport::factory()->create(['original_filename' => 'segunda.csv']);
+        SpreadsheetImportRow::factory()->create(['spreadsheet_import_id' => $secondImport->id]);
+
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('pendingReview', 3)
+                ->where('pendingReviewUrl', route('imports.queue', [], false)));
+
+        $this->get(route('imports.queue'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Imports/Queue')
+                ->where('pendingReview', 3)
+                ->has('imports', 2)
+                ->where('imports.0.filename', 'primeira.csv')
+                ->where('imports.0.pendingRows', 2)
+                ->where('imports.0.reviewUrl', route('imports.review', $firstImport, false))
+                ->where('imports.1.filename', 'segunda.csv')
+                ->where('imports.1.pendingRows', 1)
+                ->where('imports.1.reviewUrl', route('imports.review', $secondImport, false)));
     }
 
     public function test_dashboard_exposes_real_payment_totals_and_own_weekly_movement_with_category_filter(): void
@@ -360,6 +386,35 @@ class DashboardTest extends TestCase
                 ->where('personChart.balances.0.status', 'chargeable'));
     }
 
+    public function test_dashboard_does_not_show_a_participant_for_a_receipt_only_from_an_earlier_month(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $purchase = Purchase::create([
+            'purchased_at' => '2026-09-20',
+            'description' => 'Dívida quitada anteriormente',
+            'amount_cents' => 5000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+        $allocation = PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $maria->id, 'amount_cents' => 5000]);
+
+        $this->post(route('receipts.store'), [
+            'participant_id' => $maria->id,
+            'received_at' => '2026-09-21',
+            'amount' => '50,00',
+        ])->assertRedirect(route('balances'));
+
+        $this->assertDatabaseHas('receipt_applications', [
+            'purchase_allocation_id' => $allocation->id,
+            'amount_cents' => 5000,
+        ]);
+
+        $this->get(route('dashboard', ['month' => '2026-10']))
+            ->assertInertia(fn (Assert $page) => $page->where('personChart.balances', []));
+    }
+
     public function test_dashboard_exposes_empty_person_chart_series_without_movements(): void
     {
         $this->get('/?month=2026-10')
@@ -367,5 +422,4 @@ class DashboardTest extends TestCase
                 ->where('personChart.expenses', [])
                 ->where('personChart.balances', []));
     }
-
 }

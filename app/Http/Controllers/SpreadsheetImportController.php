@@ -29,6 +29,29 @@ class SpreadsheetImportController extends Controller
         return to_route('imports.mapping', $import);
     }
 
+    public function queue(): Response
+    {
+        $pendingImports = SpreadsheetImport::query()
+            ->whereHas('rows', fn ($query) => $query->where('status', 'pending_review'))
+            ->withCount(['rows as pending_rows_count' => fn ($query) => $query->where('status', 'pending_review')])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get(['id', 'original_filename', 'status'])
+            ->map(fn (SpreadsheetImport $import): array => [
+                'id' => $import->id,
+                'filename' => $import->original_filename,
+                'status' => $import->status,
+                'pendingRows' => (int) $import->pending_rows_count,
+                'reviewUrl' => route('imports.review', $import, false),
+            ])
+            ->values();
+
+        return Inertia::render('Imports/Queue', [
+            'pendingReview' => (int) $pendingImports->sum('pendingRows'),
+            'imports' => $pendingImports,
+        ]);
+    }
+
     public function mapping(SpreadsheetImport $import): Response
     {
         return Inertia::render('Imports/Mapping', [
