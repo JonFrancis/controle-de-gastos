@@ -30,6 +30,7 @@ const navigation = [
     ['Parcelamentos', '/installments'],
     ['Recorrentes', '/recurrences'],
     ['Saldos', '/balances'],
+    ['Análise', '/analysis'],
     ['Pessoas', '#pessoas'],
     ['Configurações', '/settings/catalogs'],
 ];
@@ -54,7 +55,7 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                                 href={href}
                                 className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${index === 0 ? 'bg-emerald-400/10 font-semibold text-emerald-300' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
                             >
-                                <span className="w-5 text-center text-xs">{['⌂', '＋', '◫', '↻', '∑', '◎', '⚙'][index]}</span>
+                                <span className="w-5 text-center text-xs">{['⌂', '＋', '◫', '↻', '∑', '▤', '◎', '⚙'][index]}</span>
                                 {label}
                             </Link>
                         ))}

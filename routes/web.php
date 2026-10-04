@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AnalysisController;
 use App\Http\Controllers\BalanceController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
@@ -12,9 +13,12 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReceiptController;
 use App\Http\Controllers\RecurrenceController;
 use App\Http\Controllers\RecurrenceOccurrenceController;
+use App\Http\Controllers\SalaryController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
+Route::get('/analysis', AnalysisController::class)->name('analysis');
+Route::patch('/settings/salary', [SalaryController::class, 'update'])->name('settings.salary.update');
 Route::get('/balances', BalanceController::class)->name('balances');
 Route::post('/receipts', [ReceiptController::class, 'store'])->name('receipts.store');
 Route::get('/receipts/{receipt}/edit', [ReceiptController::class, 'edit'])->name('receipts.edit');
