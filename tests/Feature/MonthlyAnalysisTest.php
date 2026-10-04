@@ -105,6 +105,27 @@ class MonthlyAnalysisTest extends TestCase
             ->where('purchaseReview.0.description', 'Assinatura mensal'));
     }
 
+    public function test_invoice_analysis_materializes_recurring_occurrences_for_the_selected_invoice(): void
+    {
+        [$self, , , , $card] = $this->catalogs();
+        Recurrence::create([
+            'start_date' => '2026-11-01',
+            'day_of_month' => 9,
+            'description' => 'Serviço na fatura',
+            'card_name' => 'SERVICO REAL',
+            'amount_cents' => 4200,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $card->id,
+            'active' => true,
+        ]);
+
+        $this->get('/analysis?month=2026-11&view=invoice')->assertInertia(fn (Assert $page) => $page
+            ->where('origins.recurrence.amountCents', 4200)
+            ->where('origins.recurrence.count', 1)
+            ->where('purchaseReview.0.cardName', 'SERVICO REAL'));
+    }
+
     /** @return array{0: Participant, 1: Participant, 2: PaymentMethod, 3: Category, 4: PaymentMethod} */
     private function catalogs(): array
     {
