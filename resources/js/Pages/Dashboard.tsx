@@ -5,7 +5,8 @@ type Props = {
     selectedMonth: string;
     monthTotalCents: number;
     view: 'calendar' | 'invoice';
-    purchases: Purchase[];
+    purchases: ExpenseItem[];
+    occurrences: ExpenseItem[];
     invoiceGroups: InvoiceGroup[];
     pendingReview: number;
     summary: {
@@ -20,17 +21,18 @@ type Props = {
     };
     flash?: { success?: string };
 };
-type Purchase = { id: number; purchasedAt: string; description: string; cardName: string | null; amountCents: number; payer: string | null; participant: string | null; paymentMethod: string | null; category: string | null };
-type InvoiceGroup = { paymentMethod: string; closingDate: string; totalCents: number; purchases: Purchase[] };
+type ExpenseItem = { id: number; origin: 'purchase' | 'installment'; editUrl: string; occurrenceNumber?: number; occurrenceCount?: number; purchasedAt: string; description: string; cardName: string | null; amountCents: number; payer: string | null; participant: string | null; paymentMethod: string | null; category: string | null; isAdjusted?: boolean };
+type InvoiceGroup = { paymentMethod: string; closingDate: string; totalCents: number; purchases: ExpenseItem[] };
 
 const navigation = [
     ['Visão geral', '/'],
     ['Compras', '#compras'],
+    ['Parcelamentos', '/installments'],
     ['Pessoas', '#pessoas'],
     ['Configurações', '/settings/catalogs'],
 ];
 
-export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, view, purchases, invoiceGroups, pendingReview, summary, catalogs, flash }: Props) {
+export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, view, purchases, occurrences, invoiceGroups, pendingReview, summary, catalogs, flash }: Props) {
     return (
         <>
             <Head title="Visão geral" />
@@ -50,7 +52,7 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
                                 href={href}
                                 className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${index === 0 ? 'bg-emerald-400/10 font-semibold text-emerald-300' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
                             >
-                                <span className="w-5 text-center text-xs">{['⌂', '＋', '◎', '⚙'][index]}</span>
+                                <span className="w-5 text-center text-xs">{['⌂', '＋', '◫', '◎', '⚙'][index]}</span>
                                 {label}
                             </Link>
                         ))}
@@ -87,7 +89,7 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
 
                         <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
                             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="font-semibold text-white">{view === 'invoice' ? 'Faturas de cartão' : 'Compras do período'}</h2><p className="mt-1 text-sm text-slate-400">{view === 'invoice' ? `${invoiceGroups.length} fatura(s)` : `${purchases.length} compra(s)`} · total de <strong className="text-emerald-300">{formatMoney(monthTotalCents)}</strong></p></div><form method="get" action="/" className="flex items-center gap-2"><input type="hidden" name="view" value={view} /><input type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" /><button className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200">Filtrar</button></form></div>
-                            {view === 'invoice' ? <InvoiceGroups groups={invoiceGroups} /> : <CalendarPurchases purchases={purchases} />}
+                            {view === 'invoice' ? <InvoiceGroups groups={invoiceGroups} /> : <CalendarPurchases purchases={purchases} occurrences={occurrences} />}
                         </section>
 
                         <section className="mt-8 grid gap-5 xl:grid-cols-[1.35fr_1fr]">
@@ -121,16 +123,18 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
     );
 }
 
-function CalendarPurchases({ purchases }: { purchases: Purchase[] }) {
-    return <div className="mt-5 space-y-2">{purchases.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Nenhuma compra ativa neste mês.</p>}{purchases.map((purchase) => <PurchaseRow key={purchase.id} purchase={purchase} />)}</div>;
+function CalendarPurchases({ purchases, occurrences }: { purchases: ExpenseItem[]; occurrences: ExpenseItem[] }) {
+    const items = [...purchases, ...occurrences].sort((left, right) => right.purchasedAt.localeCompare(left.purchasedAt));
+    return <div className="mt-5 space-y-2">{items.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Nenhuma compra ativa neste mês.</p>}{items.map((purchase) => <PurchaseRow key={`${purchase.origin}-${purchase.id}`} purchase={purchase} />)}</div>;
 }
 
 function InvoiceGroups({ groups }: { groups: InvoiceGroup[] }) {
-    return <div className="mt-5 space-y-4">{groups.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Nenhuma fatura de cartão neste mês.</p>}{groups.map((group) => <article key={`${group.paymentMethod}-${group.closingDate}`} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-white">{group.paymentMethod}</h3><p className="mt-1 text-xs text-slate-400">Fechamento em {formatDate(group.closingDate)}</p></div><strong className="text-sm text-emerald-300">{formatMoney(group.totalCents)}</strong></div><div className="mt-3 space-y-2">{group.purchases.map((purchase) => <PurchaseRow key={purchase.id} purchase={purchase} />)}</div></article>)}</div>;
+    return <div className="mt-5 space-y-4">{groups.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Nenhuma fatura de cartão neste mês.</p>}{groups.map((group) => <article key={`${group.paymentMethod}-${group.closingDate}`} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-white">{group.paymentMethod}</h3><p className="mt-1 text-xs text-slate-400">Fechamento em {formatDate(group.closingDate)}</p></div><strong className="text-sm text-emerald-300">{formatMoney(group.totalCents)}</strong></div><div className="mt-3 space-y-2">{group.purchases.map((purchase) => <PurchaseRow key={`${purchase.origin}-${purchase.id}`} purchase={purchase} />)}</div></article>)}</div>;
 }
 
-function PurchaseRow({ purchase }: { purchase: Purchase }) {
-    return <div className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-medium text-slate-200">{purchase.description}</p><p className="mt-1 text-xs text-slate-500">{formatDate(purchase.purchasedAt)} · {purchase.cardName ? `Fatura: ${purchase.cardName} · ` : ''}{purchase.category ?? 'Sem categoria'} · {purchase.paymentMethod ?? 'Sem forma'}</p><p className="mt-1 text-xs text-slate-500">Pagador: {purchase.payer ?? 'Eu'} · Participante: {purchase.participant ?? 'Eu'}</p></div><div className="flex items-center justify-between gap-4 sm:justify-end"><strong className="text-sm text-white">{formatMoney(purchase.amountCents)}</strong><Link href={`/purchases/${purchase.id}/edit`} className="text-xs font-semibold text-emerald-300">Editar</Link><Form action={`/purchases/${purchase.id}`} method="delete" onBefore={() => window.confirm(`Excluir ${purchase.description} permanentemente?`)}><button type="submit" className="text-xs font-semibold text-rose-300">Excluir</button></Form></div></div>;
+function PurchaseRow({ purchase }: { purchase: ExpenseItem }) {
+    const label = purchase.origin === 'installment' ? `Parcela ${purchase.occurrenceNumber}/${purchase.occurrenceCount}${purchase.isAdjusted ? ' · ajustada' : ''}` : null;
+    return <div className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-medium text-slate-200">{purchase.description}{label && <span className="ml-2 rounded-full bg-violet-300/10 px-2 py-1 text-[10px] font-semibold text-violet-300">{label}</span>}</p><p className="mt-1 text-xs text-slate-500">{formatDate(purchase.purchasedAt)} · {purchase.cardName ? `Fatura: ${purchase.cardName} · ` : ''}{purchase.category ?? 'Sem categoria'} · {purchase.paymentMethod ?? 'Sem forma'}</p><p className="mt-1 text-xs text-slate-500">Pagador: {purchase.payer ?? 'Eu'} · Participante: {purchase.participant ?? 'Eu'}</p></div><div className="flex items-center justify-between gap-4 sm:justify-end"><strong className="text-sm text-white">{formatMoney(purchase.amountCents)}</strong><Link href={purchase.editUrl} className="text-xs font-semibold text-emerald-300">{purchase.origin === 'installment' ? 'Ajustar' : 'Editar'}</Link>{purchase.origin === 'purchase' && <Form action={`/purchases/${purchase.id}`} method="delete" onBefore={() => window.confirm(`Excluir ${purchase.description} permanentemente?`)}><button type="submit" className="text-xs font-semibold text-rose-300">Excluir</button></Form>}</div></div>;
 }
 
 function formatMoney(cents: number): string { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100); }

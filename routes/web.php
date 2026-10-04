@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\InstallmentController;
+use App\Http\Controllers\InstallmentOccurrenceController;
 use App\Http\Controllers\ParticipantController;
 use App\Http\Controllers\PaymentMethodController;
 use App\Http\Controllers\PurchaseAllocationController;
@@ -19,6 +21,12 @@ Route::patch('/purchases/{purchase}/archive', [PurchaseController::class, 'archi
 Route::patch('/purchases/{purchase}/restore', [PurchaseController::class, 'restore'])->name('purchases.restore');
 Route::get('/purchases/{purchase}/allocations/edit', [PurchaseAllocationController::class, 'edit'])->name('purchases.allocations.edit');
 Route::put('/purchases/{purchase}/allocations', [PurchaseAllocationController::class, 'update'])->name('purchases.allocations.update');
+
+Route::get('/installments', [InstallmentController::class, 'index'])->name('installments.index');
+Route::post('/installments', [InstallmentController::class, 'store'])->name('installments.store');
+Route::patch('/installments/{installment}/archive', [InstallmentController::class, 'archive'])->name('installments.archive');
+Route::get('/installment-occurrences/{installmentOccurrence}/edit', [InstallmentOccurrenceController::class, 'edit'])->name('installment-occurrences.edit');
+Route::patch('/installment-occurrences/{installmentOccurrence}', [InstallmentOccurrenceController::class, 'update'])->name('installment-occurrences.update');
 
 Route::get('/settings/catalogs', [ParticipantController::class, 'index'])->name('settings.catalogs');
 Route::post('/participants', [ParticipantController::class, 'store'])->name('participants.store');
