@@ -26,7 +26,7 @@ type InvoiceGroup = { paymentMethod: string; closingDate: string; totalCents: nu
 
 const navigation = [
     ['Visão geral', '/'],
-    ['Compras', '#compras'],
+    ['Compras', '/purchases'],
     ['Parcelamentos', '/installments'],
     ['Recorrentes', '/recurrences'],
     ['Saldos', '/balances'],

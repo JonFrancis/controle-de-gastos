@@ -51,6 +51,7 @@ Route::put('/receipts/{receipt}/applications', [ReceiptController::class, 'updat
 
 Route::get('/purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');
 Route::get('/purchases/create/simple', [PurchaseController::class, 'createSimple'])->name('purchases.create.simple');
+Route::get('/purchases', [PurchaseController::class, 'index'])->name('purchases.index');
 Route::post('/purchases', [PurchaseController::class, 'store'])->name('purchases.store');
 Route::get('/purchases/{purchase}/edit', [PurchaseController::class, 'edit'])->name('purchases.edit');
 Route::patch('/purchases/{purchase}', [PurchaseController::class, 'update'])->name('purchases.update');
