@@ -10,6 +10,9 @@ use Illuminate\Support\Facades\DB;
 
 class RecurrenceService
 {
+    /**
+     * @param  array{start_date: string, end_date?: string|null, day_of_month: int|string, description: string, card_name?: string|null, amount: int|float|string, payer_id?: int|string|null, participant_id?: int|string|null, payment_method_id: int|string, category_id?: int|string|null}  $data
+     */
     public function create(array $data): Recurrence
     {
         $amountCents = $this->moneyToCents($data['amount']);

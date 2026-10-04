@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,7 +16,7 @@ class Recurrence extends Model
         return ['start_date' => 'date', 'end_date' => 'date', 'day_of_month' => 'integer', 'amount_cents' => 'integer', 'active' => 'boolean', 'archived_at' => 'datetime'];
     }
 
-    public function scopeActive($query)
+    public function scopeActive(Builder $query): Builder
     {
         return $query->where('active', true)->whereNull('archived_at');
     }
