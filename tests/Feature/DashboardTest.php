@@ -11,6 +11,8 @@ use App\Models\PaymentMethod;
 use App\Models\Purchase;
 use App\Models\PurchaseAllocation;
 use App\Models\Recurrence;
+use App\Models\SpreadsheetImport;
+use App\Models\SpreadsheetImportRow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -27,6 +29,7 @@ class DashboardTest extends TestCase
                 ->component('Dashboard')
                 ->where('monthLabel', 'Outubro de 2026')
                 ->where('pendingReview', 0)
+                ->where('pendingReviewUrl', null)
                 ->has('summary')
                 ->where('charts.paymentMethodTotals', [])
                 ->where('charts.movement', [])
@@ -35,6 +38,17 @@ class DashboardTest extends TestCase
                 ->has('catalogs.categories')
                 ->has('catalogs.paymentMethods')
             );
+    }
+
+    public function test_dashboard_exposes_a_direct_review_link_only_when_import_rows_are_pending(): void
+    {
+        $import = SpreadsheetImport::factory()->create();
+        SpreadsheetImportRow::factory()->create(['spreadsheet_import_id' => $import->id, 'status' => 'pending_review']);
+
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('pendingReview', 1)
+                ->where('pendingReviewUrl', route('imports.review', $import, false)));
     }
 
     public function test_dashboard_exposes_real_payment_totals_and_own_weekly_movement_with_category_filter(): void

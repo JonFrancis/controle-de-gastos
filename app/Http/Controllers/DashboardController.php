@@ -31,6 +31,9 @@ class DashboardController extends Controller
         $movementCategoryId = $request->integer('category') ?: null;
         $budgetAnalysis = $monthlyAnalysisService->analyze($selectedMonth, 'calendar', $movementCategoryId);
         $budgetSummary = $budgetAnalysis['summary'];
+        $pendingReviewQuery = SpreadsheetImportRow::query()->where('status', 'pending_review');
+        $pendingReview = (clone $pendingReviewQuery)->count();
+        $pendingReviewImportId = (clone $pendingReviewQuery)->value('spreadsheet_import_id');
         $personBalances = collect($balanceService->participantBalances($month->copy()->endOfMonth()))
             ->map(fn (array $balance): array => [
                 'id' => $balance['id'],
@@ -82,7 +85,8 @@ class DashboardController extends Controller
                 'categories' => $budgetAnalysis['movementCategories'],
                 'selectedCategoryId' => $budgetAnalysis['selectedMovementCategoryId'],
             ],
-            'pendingReview' => SpreadsheetImportRow::query()->where('status', 'pending_review')->count(),
+            'pendingReview' => $pendingReview,
+            'pendingReviewUrl' => $pendingReviewImportId ? route('imports.review', $pendingReviewImportId, false) : null,
             'monthTotalCents' => (int) ($view === 'invoice' ? $invoiceGroups->sum('totalCents') : $purchases->sum('amount_cents') + $occurrences->sum('amount_cents')),
             'purchases' => $view === 'calendar' ? $purchases->map(fn (Purchase $purchase) => $this->purchaseData($purchase, $selfId))->values() : [],
             'occurrences' => $view === 'calendar' ? $occurrences->map(fn (InstallmentOccurrence|RecurrenceOccurrence $occurrence) => $this->occurrenceData($occurrence))->values() : [],
