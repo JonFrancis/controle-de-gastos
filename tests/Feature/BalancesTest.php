@@ -126,7 +126,7 @@ class BalancesTest extends TestCase
 
         $this->get('/?month=2026-10')
             ->assertInertia(fn (Assert $page) => $page
-                ->where('personChart.balances.0.receivableCents', 3000)
+                ->where('personChart.balances.0.amountCents', 3000)
                 ->where('personChart.balances.0.creditCents', 0)
             );
     }

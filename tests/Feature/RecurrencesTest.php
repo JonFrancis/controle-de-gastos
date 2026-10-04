@@ -117,7 +117,7 @@ class RecurrencesTest extends TestCase
         $this->patch("/recurrences/{$recurrence->id}/activate")->assertRedirect('/recurrences');
 
         $this->get('/purchases?month=2026-11')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1));
-        $this->get('/?month=2026-12')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 0)->has('occurrences', 0));
+        $this->get('/purchases?month=2026-12')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 0)->has('occurrences', 0));
     }
 
     private function createRecurrence(PaymentMethod $paymentMethod, string $startDate, string $amount, ?string $endDate): Recurrence
