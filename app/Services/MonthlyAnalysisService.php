@@ -35,6 +35,19 @@ class MonthlyAnalysisService
     }
 
     /** @param Collection<int, array<string, mixed>> $items */
+    private function participantTotals(Collection $items): array
+    {
+        $totals = $items->groupBy('participantId')->map(fn (Collection $rows): int => (int) $rows->sum('amountCents'));
+        $names = Participant::query()->whereIn('id', $totals->keys())->pluck('name', 'id');
+
+        return $totals->map(fn (int $amountCents, int|string $participantId): array => [
+            'id' => (int) $participantId,
+            'name' => (string) $names->get($participantId),
+            'amountCents' => $amountCents,
+        ])->sortByDesc('amountCents')->values()->all();
+    }
+
+    /** @param Collection<int, array<string, mixed>> $items */
     private function buildAnalysis(Collection $items, ?CarbonInterface $periodStart, ?CarbonInterface $periodEnd, ?int $movementCategoryId = null): array
     {
         $chargeableItems = $items->reject(fn (array $item): bool => $this->isPending($item))->values();
@@ -47,6 +60,7 @@ class MonthlyAnalysisService
 
         return [
             'summary' => $this->summary($chargeableItems, $selfId),
+            'participantExpenses' => $this->participantTotals($chargeableItems),
             'participants' => $participants,
             'fullMessage' => $this->fullMessage($participants),
             'categories' => $this->groupOwnRows($chargeableItems, $selfId, 'categoryName'),

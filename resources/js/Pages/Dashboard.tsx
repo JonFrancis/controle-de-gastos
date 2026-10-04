@@ -1,4 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
+import { useState } from 'react';
 
 type Props = {
     monthLabel: string;
@@ -20,6 +21,7 @@ type Props = {
         categories: { id: number; name: string }[];
         selectedCategoryId: number | null;
     };
+    personChart: PersonChartData;
     catalogs: {
         participants: { id: number; name: string }[];
         categories: { id: number; name: string }[];
@@ -31,6 +33,8 @@ type ExpenseItem = { id: number; origin: 'manual' | 'purchase' | 'installment' |
 type InvoiceGroup = { paymentMethod: string; closingDate: string; totalCents: number; purchases: ExpenseItem[] };
 type ChartRow = { name: string; amountCents: number };
 type MovementRow = { week: number; label: string; amountCents: number };
+type PersonChartItem = { id: number; name: string; amountCents: number; netCents?: number; creditCents?: number };
+type PersonChartData = { expenses: PersonChartItem[]; balances: PersonChartItem[] };
 
 const navigation = [
     ['Visão geral', '/'],
@@ -44,7 +48,7 @@ const navigation = [
     ['Configurações', '/settings/catalogs'],
 ];
 
-export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, view, purchases, occurrences, invoiceGroups, pendingReview, summary, charts, catalogs, flash }: Props) {
+export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, view, purchases, occurrences, invoiceGroups, pendingReview, summary, charts, personChart, catalogs, flash }: Props) {
     return (
         <>
             <Head title="Visão geral" />
@@ -115,10 +119,7 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
 
                         <PaymentMethodChart rows={charts.paymentMethodTotals} />
 
-                        <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6" id="pessoas">
-                            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h2 className="font-semibold text-white">Pessoas e saldos</h2><p className="mt-1 text-sm text-slate-400">Quando houver dados, seus saldos aparecerão aqui.</p></div><Link href="/balances" className="text-sm font-semibold text-emerald-300">Ver detalhes →</Link></div>
-                            <div className="mt-6 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-5 py-8 text-center"><p className="text-sm text-slate-400">Ainda não há compras ou pessoas cadastradas.</p><button className="mt-4 rounded-xl border border-emerald-300/30 px-4 py-2 text-sm font-semibold text-emerald-300">Começar configuração</button></div>
-                        </section>
+                        <ParticipantChart chart={personChart} />
 
                         <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500"><span>{pendingReview} itens aguardando revisão</span><span>Dados locais · BRL · America/Sao_Paulo</span></footer>
                     </div>
@@ -152,6 +153,44 @@ function InvoiceGroups({ groups }: { groups: InvoiceGroup[] }) {
 function PurchaseRow({ purchase }: { purchase: ExpenseItem }) {
     const label = purchase.origin === 'installment' ? `Parcela ${purchase.occurrenceNumber}/${purchase.occurrenceCount}${purchase.isAdjusted ? ' · ajustada' : ''}` : purchase.origin === 'recurrence' ? `Recorrência${purchase.isAdjusted ? ' · ajustada' : ''}` : null;
     return <div className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-medium text-slate-200">{purchase.description}{label && <span className="ml-2 rounded-full bg-violet-300/10 px-2 py-1 text-[10px] font-semibold text-violet-300">{label}</span>}</p><p className="mt-1 text-xs text-slate-500">{formatDate(purchase.purchasedAt)} · {purchase.cardName ? `Fatura: ${purchase.cardName} · ` : ''}{purchase.category ?? 'Sem categoria'} · {purchase.paymentMethod ?? 'Sem forma'}</p><p className="mt-1 text-xs text-slate-500">Pagador: {purchase.payer ?? 'Eu'} · Participante: {purchase.participant ?? 'Eu'}</p></div><div className="flex items-center justify-between gap-4 sm:justify-end"><strong className="text-sm text-white">{formatMoney(purchase.amountCents)}</strong><Link href={purchase.editUrl} className="text-xs font-semibold text-emerald-300">{purchase.origin === 'installment' ? 'Ajustar' : 'Editar'}</Link>{purchase.origin !== 'installment' && <Form action={`/purchases/${purchase.id}`} method="delete" onBefore={() => window.confirm(`Excluir ${purchase.description} permanentemente?`)}><button type="submit" className="text-xs font-semibold text-rose-300">Excluir</button></Form>}</div></div>;
+}
+
+function ParticipantChart({ chart }: { chart: PersonChartData }) {
+    const [mode, setMode] = useState<'expenses' | 'balances'>('expenses');
+    const items = mode === 'expenses' ? chart.expenses : chart.balances;
+    const maximum = Math.max(...items.map((item) => Math.abs(item.amountCents)), 1);
+    const emptyMessage = mode === 'expenses' ? 'Nenhum gasto atribuído a pessoas neste mês.' : 'Nenhum saldo líquido para exibir neste período.';
+
+    return <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6" id="pessoas">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+            <div><h2 className="font-semibold text-white">Gastos e saldos por pessoa</h2><p className="mt-1 text-sm text-slate-400">Alterne entre o valor atribuído e o saldo líquido após recebimentos.</p></div>
+            <Link href="/balances" className="text-sm font-semibold text-emerald-300">Ver detalhes →</Link>
+        </div>
+        <div className="mt-5 inline-flex rounded-xl border border-white/10 bg-white/5 p-1" role="tablist" aria-label="Visualização por pessoa">
+            <button type="button" role="tab" aria-selected={mode === 'expenses'} onClick={() => setMode('expenses')} className={`rounded-lg px-3 py-2 text-sm ${mode === 'expenses' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300'}`}>Gastos</button>
+            <button type="button" role="tab" aria-selected={mode === 'balances'} onClick={() => setMode('balances')} className={`rounded-lg px-3 py-2 text-sm ${mode === 'balances' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300'}`}>Saldos</button>
+        </div>
+        {items.length === 0 ? <p className="mt-6 rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">{emptyMessage}</p> : <div className="mt-6 space-y-4" role="list">
+            {items.map((item) => {
+                const percentage = Math.max(6, Math.round((Math.abs(item.amountCents) / maximum) * 100));
+                const isCredit = mode === 'balances' && (item.creditCents ?? 0) > 0 && (item.netCents ?? 0) <= 0;
+                const barClass = mode === 'expenses' ? 'bg-emerald-300' : item.amountCents >= 0 ? 'bg-emerald-300' : isCredit ? 'bg-violet-300' : 'bg-amber-300';
+
+                return <div key={item.id} role="listitem">
+                    <div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium text-slate-200">{item.name}</span><span className="text-right text-slate-300">{mode === 'expenses' ? formatMoney(item.amountCents) : balanceLabel(item)}</span></div>
+                    <div className="mt-2 h-3 overflow-hidden rounded-full bg-white/5"><div className={`h-full rounded-full ${barClass}`} style={{ width: `${percentage}%` }} aria-label={`${item.name}: ${formatMoney(Math.abs(item.amountCents))}`} /></div>
+                </div>;
+            })}
+        </div>}
+    </section>;
+}
+
+function balanceLabel(item: PersonChartItem): string {
+    if ((item.creditCents ?? 0) > 0 && (item.netCents ?? 0) <= 0) {
+        return `Crédito ${formatMoney(item.creditCents ?? 0)}`;
+    }
+
+    return `${item.amountCents >= 0 ? 'A receber' : 'A pagar'} ${formatMoney(Math.abs(item.amountCents))}`;
 }
 
 function formatMoney(cents: number): string { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100); }
