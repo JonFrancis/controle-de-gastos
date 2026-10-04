@@ -68,7 +68,7 @@ class MonthlyAnalysisService
     /** @param Collection<int, array<string, mixed>> $items */
     private function participantRows(Collection $items, int $selfId, CarbonInterface $periodStart, CarbonInterface $periodEnd): array
     {
-        $sourceKeysByType = $items->pluck('sourceKey')->map(fn (string $sourceKey): array => explode(':', $sourceKey, 2))->groupBy(fn (array $parts): string => $parts[0])->map(fn (Collection $parts): array => $parts->pluck(1)->map(fn (string $id): int => (int) $id)->all());
+        $sourceKeysByType = $items->pluck('key')->map(fn (string $sourceKey): array => explode(':', $sourceKey, 2))->groupBy(fn (array $parts): string => $parts[0])->map(fn (Collection $parts): array => $parts->pluck(1)->map(fn (string $id): int => (int) $id)->all());
         $itemsByParticipant = $items->filter(fn (array $item): bool => $item['payerId'] === $selfId)->groupBy('participantId');
         $applicationsQuery = ReceiptApplication::query()->whereNull('superseded_at')
             ->whereHas('receipt', fn ($query) => $query->whereNull('archived_at')->whereBetween('received_at', [$periodStart, $periodEnd]));
@@ -86,7 +86,7 @@ class MonthlyAnalysisService
         return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($itemsByParticipant, $appliedBySource): array {
             $participantItems = $itemsByParticipant->get($participant->id, collect());
             $gross = (int) $participantItems->sum('amountCents');
-            $abatements = (int) $participantItems->sum(fn (array $item): int => min($item['amountCents'], $appliedBySource[$item['sourceKey']] ?? 0));
+            $abatements = (int) $participantItems->sum(fn (array $item): int => min($item['amountCents'], $appliedBySource[$item['key']] ?? 0));
 
             return ['id' => $participant->id, 'name' => $participant->name, 'grossCents' => $gross, 'abatementsCents' => $abatements, 'finalCents' => $gross - $abatements];
         })->filter(fn (array $row): bool => $row['grossCents'] > 0 || $row['abatementsCents'] > 0)->values()->all();

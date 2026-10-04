@@ -66,11 +66,12 @@ class MonthlyAnalysisTest extends TestCase
         $oldPurchase = Purchase::create(['purchased_at' => '2026-09-12', 'description' => 'Dívida antiga', 'amount_cents' => 4000, 'payer_id' => $self->id, 'payment_method_id' => $pix->id]);
         $oldAllocation = PurchaseAllocation::create(['purchase_id' => $oldPurchase->id, 'participant_id' => $maria->id, 'amount_cents' => 4000]);
         $currentPurchase = Purchase::create(['purchased_at' => '2026-10-12', 'description' => 'Dívida atual', 'amount_cents' => 7000, 'payer_id' => $self->id, 'payment_method_id' => $pix->id]);
-        PurchaseAllocation::create(['purchase_id' => $currentPurchase->id, 'participant_id' => $maria->id, 'amount_cents' => 7000]);
-        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-20', 'amount_cents' => 4000]);
+        $currentAllocation = PurchaseAllocation::create(['purchase_id' => $currentPurchase->id, 'participant_id' => $maria->id, 'amount_cents' => 7000]);
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-20', 'amount_cents' => 8000]);
         ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $oldAllocation->id, 'purchase_allocation_id' => $oldAllocation->id, 'amount_cents' => 4000, 'source' => 'manual']);
+        ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $currentAllocation->id, 'purchase_allocation_id' => $currentAllocation->id, 'amount_cents' => 4000, 'source' => 'manual']);
 
-        $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('participants.0.grossCents', 7000)->where('participants.0.abatementsCents', 0)->where('participants.0.finalCents', 7000));
+        $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('participants.0.grossCents', 7000)->where('participants.0.abatementsCents', 4000)->where('participants.0.finalCents', 3000));
     }
 
     public function test_monthly_salary_is_saved_and_remaining_amount_is_calculated_after_own_consumption(): void
