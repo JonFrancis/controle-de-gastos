@@ -10,9 +10,9 @@ type Props = {
     invoiceGroups: InvoiceGroup[];
     pendingReview: number;
     summary: {
-        ownExpenses: string;
-        toReceive: string;
-        owedToOthers: string;
+        ownConsumptionCents: number;
+        salaryCents: number | null;
+        salaryRemainingCents: number | null;
     };
     catalogs: {
         participants: { id: number; name: string }[];
@@ -85,10 +85,9 @@ export default function Dashboard({ monthLabel, selectedMonth, monthTotalCents, 
 
                         {flash?.success && <p role="status" className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{flash.success}</p>}
 
-                        <section className="mt-8 grid gap-4 md:grid-cols-3">
-                            <SummaryCard label="Meu consumo no mês" value={summary.ownExpenses} note="Inclui compras próprias" accent="emerald" />
-                            <SummaryCard label="A receber" value={summary.toReceive} note="De outras pessoas" accent="violet" />
-                            <SummaryCard label="Pago por terceiros" value={summary.owedToOthers} note="Valores que devo" accent="amber" />
+                        <section className="mt-8 grid gap-4 md:grid-cols-2">
+                            <SummaryCard label="Meus gastos totais do mês" value={formatMoney(summary.ownConsumptionCents)} note="Consumo próprio atribuído a Eu" accent="emerald" />
+                            <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} selectedMonth={selectedMonth} />
                         </section>
 
                         <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
@@ -147,4 +146,10 @@ function formatDate(value: string): string { return new Intl.DateTimeFormat('pt-
 function SummaryCard({ label, value, note, accent }: { label: string; value: string; note: string; accent: 'emerald' | 'violet' | 'amber' }) {
     const accents = { emerald: 'text-emerald-300 bg-emerald-300/10', violet: 'text-violet-300 bg-violet-300/10', amber: 'text-amber-300 bg-amber-300/10' };
     return <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-5"><div className="flex items-start justify-between"><p className="text-sm text-slate-400">{label}</p><span className={`rounded-lg px-2 py-1 text-xs ${accents[accent]}`}>●</span></div><p className="mt-5 text-2xl font-bold text-white">{value}</p><p className="mt-2 text-xs text-slate-500">{note}</p></div>;
+}
+
+function SalarySummaryCard({ salaryCents, remainingCents, selectedMonth }: { salaryCents: number | null; remainingCents: number | null; selectedMonth: string }) {
+    const hasDeficit = remainingCents !== null && remainingCents < 0;
+
+    return <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-5"><div className="flex items-start justify-between"><p className="text-sm text-slate-400">Restante do salário</p><span className={`rounded-lg px-2 py-1 text-xs ${hasDeficit ? 'bg-rose-300/10 text-rose-300' : 'bg-emerald-300/10 text-emerald-300'}`}>●</span></div><p className={`mt-5 text-2xl font-bold ${hasDeficit ? 'text-rose-300' : 'text-white'}`}>{remainingCents === null ? 'Salário não configurado' : formatMoney(remainingCents)}</p>{salaryCents === null ? <Link href={`/analysis?month=${selectedMonth}#salary`} className="mt-3 inline-block text-sm font-semibold text-emerald-300">Configurar salário →</Link> : <p className={`mt-2 text-xs ${hasDeficit ? 'text-rose-300' : 'text-slate-500'}`}>{hasDeficit ? 'Déficit do salário' : `Salário configurado: ${formatMoney(salaryCents)}`}</p>}</div>;
 }
