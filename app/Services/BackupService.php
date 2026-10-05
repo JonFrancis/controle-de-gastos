@@ -19,8 +19,10 @@ class BackupService
     /** @return array{path: string, filename: string} */
     public function create(?string $directory = null, string $source = 'manual'): array
     {
-        $directory = $this->ensureDirectory($directory ?? $this->configuredDirectory());
-        $filename = 'controle-de-gastos-backup-'.now()->format('Ymd_His_u').'.json';
+        $directory = $this->ensureDirectory($directory ?? ($source === 'automatic'
+            ? $this->automaticDirectory()
+            : $this->configuredDirectory()));
+        $filename = 'controle-de-gastos-backup-'.($source === 'automatic' ? 'automatic-' : '').now()->format('Ymd_His_u').'.json';
         $path = $directory.DIRECTORY_SEPARATOR.$filename;
         $tables = [];
 
@@ -52,6 +54,10 @@ class BackupService
             'last_backup_at' => now(),
         ]);
 
+        if ($source === 'automatic') {
+            $this->pruneAutomaticBackups($directory);
+        }
+
         return ['path' => $path, 'filename' => $filename];
     }
 
@@ -78,13 +84,77 @@ class BackupService
         return $previous;
     }
 
-    public function createAutomaticIfEnabled(): void
+    /** @return array{path: string, filename: string}|null */
+    public function createAutomaticIfEnabled(): ?array
     {
         $setting = AppSetting::query()->first();
 
-        if ($setting?->automatic_backup_enabled) {
-            $this->create(source: 'automatic');
+        if (! $setting?->automatic_backup_enabled) {
+            return null;
         }
+
+        return $this->createAutomaticIfNeeded();
+    }
+
+    /** @return array{path: string, filename: string}|null */
+    public function createAutomaticIfNeeded(): ?array
+    {
+        $setting = AppSetting::query()->first();
+        if (! $setting?->automatic_backup_enabled || ! $this->hasChangesSinceLastBackup($setting->last_backup_at)) {
+            return null;
+        }
+
+        return $this->create(source: 'automatic');
+    }
+
+    public function hasChangesSinceLastBackup(?\DateTimeInterface $lastBackupAt = null): bool
+    {
+        $lastBackupAt ??= AppSetting::query()->value('last_backup_at');
+        $lastBackupAt = $lastBackupAt instanceof \DateTimeInterface
+            ? $lastBackupAt
+            : ($lastBackupAt !== null ? new \DateTimeImmutable((string) $lastBackupAt) : null);
+
+        foreach ($this->tableNames() as $table) {
+            if (in_array($table, ['app_settings', 'migrations'], true)) {
+                continue;
+            }
+
+            $columns = Schema::getColumnListing($table);
+            if (! in_array('created_at', $columns, true) && ! in_array('updated_at', $columns, true)) {
+                continue;
+            }
+
+            $query = DB::table($table);
+            if ($lastBackupAt !== null) {
+                $query->where(function ($query) use ($columns, $lastBackupAt): void {
+                    if (in_array('created_at', $columns, true)) {
+                        $query->where('created_at', '>', $lastBackupAt);
+                    }
+                    if (in_array('updated_at', $columns, true)) {
+                        $query->orWhere('updated_at', '>', $lastBackupAt);
+                    }
+                });
+            }
+
+            if ($query->exists()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function defaultDirectory(): string
+    {
+        if ($configured = AppSetting::query()->value('backup_path')) {
+            return (string) $configured;
+        }
+
+        $documents = PHP_OS_FAMILY === 'Windows'
+            ? (string) (getenv('USERPROFILE') ?: storage_path('app'))
+            : (string) (getenv('HOME') ?: storage_path('app'));
+
+        return rtrim($documents, '\\/').DIRECTORY_SEPARATOR.'Documents'.DIRECTORY_SEPARATOR.'Controle de Gastos'.DIRECTORY_SEPARATOR.'Backups';
     }
 
     /** @return array<string, mixed> */
@@ -145,7 +215,20 @@ class BackupService
 
     private function configuredDirectory(): string
     {
-        return AppSetting::query()->value('backup_path') ?: storage_path('app/private/backups');
+        return $this->defaultDirectory();
+    }
+
+    private function automaticDirectory(): string
+    {
+        return $this->defaultDirectory();
+    }
+
+    private function pruneAutomaticBackups(string $directory): void
+    {
+        $files = collect(File::glob($directory.DIRECTORY_SEPARATOR.'controle-de-gastos-backup-automatic-*.json'))
+            ->sortByDesc(fn (string $path): int => (int) @filemtime($path));
+
+        $files->slice(30)->each(fn (string $path): bool => File::delete($path));
     }
 
     private function ensureDirectory(string $directory): string

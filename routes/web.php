@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AnalysisController;
+use App\Http\Controllers\ApplicationLifecycleController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\BackupController;
 use App\Http\Controllers\BalanceController;
@@ -22,6 +23,8 @@ use App\Http\Controllers\SpreadsheetImportController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', DashboardController::class)->name('dashboard');
+Route::get('/application/status', [ApplicationLifecycleController::class, 'status'])->name('application.status');
+Route::post('/application/shutdown', [ApplicationLifecycleController::class, 'shutdown'])->name('application.shutdown');
 Route::get('/analysis', AnalysisController::class)->name('analysis');
 Route::get('/exports', [ExportController::class, 'index'])->name('exports.index');
 Route::get('/exports/csv/{type}', [ExportController::class, 'csv'])->name('exports.csv');

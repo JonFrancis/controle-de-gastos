@@ -9,6 +9,7 @@ use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
 use App\Services\AuditService;
+use App\Services\BackupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
@@ -124,6 +125,31 @@ class BackupAndAuditTest extends TestCase
             'backup_path' => $backupDirectory,
         ]);
         $this->assertCount(1, File::glob($backupDirectory.'/*.json'));
+    }
+
+    public function test_automatic_backup_is_not_repeated_when_the_database_has_not_changed(): void
+    {
+        $backupDirectory = $this->backupDirectory();
+        AppSetting::query()->update(['automatic_backup_enabled' => true, 'backup_path' => $backupDirectory]);
+        $this->createPurchase('Compra única');
+
+        app(BackupService::class)->createAutomaticIfNeeded();
+
+        $this->assertCount(1, File::glob($backupDirectory.'/*.json'));
+    }
+
+    public function test_automatic_backup_retains_only_the_thirty_most_recent_files(): void
+    {
+        $backupDirectory = $this->backupDirectory();
+        AppSetting::query()->update(['automatic_backup_enabled' => true, 'backup_path' => $backupDirectory]);
+
+        for ($index = 0; $index < 31; $index++) {
+            AuditLog::create(['action' => 'backup-test-'.$index]);
+            app(BackupService::class)->create(source: 'automatic');
+        }
+
+        $this->assertCount(30, File::glob($backupDirectory.'/*.json'));
+        $this->assertStringContainsString('automatic', File::files($backupDirectory)[0]->getFilename());
     }
 
     public function test_history_can_be_filtered_for_purchase_lifecycle_and_import_events(): void

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\ApplicationLifecycleService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -40,6 +41,11 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'openai' => fn () => $request->session()->get('openai'),
+            ],
+            'lifecycle' => fn () => [
+                ...app(ApplicationLifecycleService::class)->status(),
+                'local' => in_array($request->ip(), ['127.0.0.1', '::1'], true)
+                    && in_array($request->getHost(), ['127.0.0.1', 'localhost', '[::1]'], true),
             ],
         ];
     }

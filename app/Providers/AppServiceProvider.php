@@ -2,6 +2,12 @@
 
 namespace App\Providers;
 
+use App\Contracts\AvailabilityChecker;
+use App\Contracts\BrowserLauncher;
+use App\Contracts\ProcessExecutor;
+use App\Services\HttpAvailabilityChecker;
+use App\Services\SymfonyProcessExecutor;
+use App\Services\SystemBrowserLauncher;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -14,7 +20,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(ProcessExecutor::class, SymfonyProcessExecutor::class);
+        $this->app->singleton(AvailabilityChecker::class, HttpAvailabilityChecker::class);
+        $this->app->singleton(BrowserLauncher::class, SystemBrowserLauncher::class);
     }
 
     /**

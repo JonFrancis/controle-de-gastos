@@ -18,7 +18,7 @@ class BackupController extends Controller
     public function index(): Response
     {
         $setting = AppSetting::query()->firstOrFail();
-        $directory = $setting->backup_path ?: storage_path('app/private/backups');
+        $directory = app(BackupService::class)->defaultDirectory();
         $backups = File::isDirectory($directory) ? collect(File::files($directory)) : collect();
 
         return Inertia::render('Settings/Backups', [
