@@ -8,7 +8,6 @@ use App\Exceptions\ApplicationLifecycleException;
 use App\Exceptions\OperationInProgressException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
-use Symfony\Component\Process\Process;
 
 class ApplicationLifecycleService
 {
@@ -128,15 +127,12 @@ class ApplicationLifecycleService
                 return;
             }
 
-            $termination = new Process([
+            $this->processes->startDetached([
                 PHP_BINARY,
                 base_path('artisan'),
                 'app:terminate',
                 (string) $status['pid'],
             ], base_path());
-            $termination->setOptions(['create_new_console' => true]);
-            $termination->disableOutput();
-            $termination->start();
         });
 
         return ['pid' => $status['pid'], 'backup' => $backup];
