@@ -6,6 +6,7 @@ use App\Contracts\AvailabilityChecker;
 use App\Contracts\BrowserLauncher;
 use App\Contracts\ProcessExecutor;
 use App\Services\HttpAvailabilityChecker;
+use App\Services\NativePackageManager;
 use App\Services\SymfonyProcessExecutor;
 use App\Services\SystemBrowserLauncher;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -30,6 +31,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if ($this->app->runningInConsole()) {
+            app(NativePackageManager::class)->activatePnpmFallback();
+        }
+
         RateLimiter::for('openai', function (Request $request): Limit {
             return Limit::perMinute(5)->by($request->ip());
         });
