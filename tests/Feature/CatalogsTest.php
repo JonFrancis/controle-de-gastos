@@ -275,6 +275,45 @@ class CatalogsTest extends TestCase
         $this->travelBack();
     }
 
+    public function test_updating_payment_method_metadata_preserves_a_future_invoice_version(): void
+    {
+        $this->travelTo('2026-10-06');
+        $this->post('/payment-methods', [
+            'name' => 'Cartão com metadados',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+        ]);
+        $paymentMethod = PaymentMethod::query()->where('name', 'Cartão com metadados')->firstOrFail();
+        $futureSetting = $paymentMethod->invoiceSettings()->create([
+            'closing_day' => 20,
+            'due_day' => 25,
+            'effective_from' => '2026-11-11',
+        ]);
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Cartão renomeado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'active' => false,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseCount('payment_method_invoice_settings', 2);
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'id' => $futureSetting->id,
+            'closing_day' => 20,
+            'due_day' => 25,
+            'effective_from' => '2026-11-11 00:00:00',
+            'retired_at' => null,
+        ]);
+        $this->assertDatabaseHas('payment_methods', [
+            'id' => $paymentMethod->id,
+            'name' => 'Cartão renomeado',
+            'active' => false,
+        ]);
+
+        $this->travelBack();
+    }
+
     public function test_historical_selection_falls_back_to_the_oldest_version_instead_of_a_future_version(): void
     {
         $this->travelTo('2026-10-06');

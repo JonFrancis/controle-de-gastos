@@ -40,7 +40,9 @@ class PaymentMethodInvoiceSettingService
     public function normalizeEffectiveFrom(PaymentMethod $paymentMethod, CarbonInterface $effectiveFrom): CarbonImmutable
     {
         $date = CarbonImmutable::instance($effectiveFrom)->startOfDay();
-        $closingDay = $this->forDate($paymentMethod, $date)?->closing_day ?? $paymentMethod->closing_day;
+        $closingDay = $this->forDate($paymentMethod, $date)?->closing_day
+            ?? $paymentMethod->closing_day
+            ?? $this->latestVersion($paymentMethod)?->closing_day;
 
         if ($closingDay === null) {
             return $date;
@@ -75,9 +77,10 @@ class PaymentMethodInvoiceSettingService
             ->values();
         $date = CarbonImmutable::instance($date)->startOfDay();
         $setting = $orderedSettings
+            ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $this->isAvailableForDate($invoiceSetting, $date))
             ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $this->firstApplicableCycleStart($invoiceSetting, $orderedSettings)->lte($date))
             ->first()
-            ?? $orderedSettings->sortBy('effective_from')->first();
+            ?? $this->historicalFallback($orderedSettings, $date);
 
         return $setting;
     }
@@ -158,6 +161,33 @@ class PaymentMethodInvoiceSettingService
             ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $invoiceSetting->retired_at === null)
             ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $this->firstApplicableCycleStart($invoiceSetting, $settings)->lte(now()))
             ->first()?->due_day;
+    }
+
+    /** @param Collection<int, PaymentMethodInvoiceSetting> $settings */
+    private function historicalFallback(Collection $settings, CarbonImmutable $date): ?PaymentMethodInvoiceSetting
+    {
+        $oldestSetting = $settings->sortBy('effective_from')->first();
+
+        if ($oldestSetting === null || ! $this->isAvailableForDate($oldestSetting, $date)) {
+            return null;
+        }
+
+        return $date->lt(CarbonImmutable::instance($oldestSetting->effective_from)->startOfDay())
+            ? $oldestSetting
+            : null;
+    }
+
+    private function isAvailableForDate(PaymentMethodInvoiceSetting $setting, CarbonImmutable $date): bool
+    {
+        return $setting->retired_at === null || $date->lessThan(CarbonImmutable::instance($setting->retired_at));
+    }
+
+    private function latestVersion(PaymentMethod $paymentMethod): ?PaymentMethodInvoiceSetting
+    {
+        return $paymentMethod->invoiceSettings()
+            ->orderByDesc('effective_from')
+            ->orderByDesc('id')
+            ->first();
     }
 
     /** @return Collection<int, PaymentMethodInvoiceSetting> */

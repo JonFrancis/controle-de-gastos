@@ -86,10 +86,16 @@ class PaymentMethodController extends Controller
     {
         $oldValues = $paymentMethod->getAttributes();
         $data = $request->validated();
-        $latestScheduledSetting = $invoiceSettings->latestScheduled($paymentMethod);
         $isCredit = $data['type'] === PaymentMethod::TYPE_CREDIT;
+        $wasCredit = $paymentMethod->type === PaymentMethod::TYPE_CREDIT;
+        $currentSetting = $wasCredit ? $invoiceSettings->currentForDate($paymentMethod) : null;
+        $invoiceConfigurationChanged = $this->invoiceConfigurationChanged($data, $paymentMethod, $currentSetting, $isCredit);
+        $creditTypeChanged = $wasCredit !== $isCredit;
+        $latestScheduledSetting = $invoiceConfigurationChanged && $isCredit
+            ? $invoiceSettings->latestScheduled($paymentMethod)
+            : null;
 
-        if ($isCredit) {
+        if ($invoiceConfigurationChanged && $isCredit) {
             $effectiveFrom = CarbonImmutable::parse($data['effective_from']);
             $nextSafeEffectiveFrom = $invoiceSettings->nextSafeEffectiveFrom($paymentMethod);
             $latestEffectiveFrom = $latestScheduledSetting?->effective_from?->toImmutable();
@@ -105,25 +111,25 @@ class PaymentMethodController extends Controller
             $data['effective_from'] = $invoiceSettings->normalizeEffectiveFrom($paymentMethod, $effectiveFrom)->toDateString();
         }
 
-        $changes = DB::transaction(function () use ($data, $isCredit, $latestScheduledSetting, $paymentMethod): array {
+        $changes = DB::transaction(function () use ($data, $creditTypeChanged, $invoiceConfigurationChanged, $isCredit, $latestScheduledSetting, $paymentMethod): array {
             $paymentMethod->update([
                 'name' => $data['name'],
                 'type' => $data['type'],
-                'closing_day' => $isCredit ? ($data['closing_day'] ?? null) : null,
+                'closing_day' => $isCredit ? ($data['closing_day'] ?? $paymentMethod->closing_day) : null,
                 'active' => $data['active'],
             ]);
 
             $createdSetting = null;
-            if ($isCredit && ($latestScheduledSetting === null || $latestScheduledSetting->closing_day !== (int) $data['closing_day'] || $latestScheduledSetting->due_day !== (int) $data['due_day'])) {
+            if ($isCredit && $invoiceConfigurationChanged) {
                 $createdSetting = $paymentMethod->invoiceSettings()->create([
-                    'closing_day' => $data['closing_day'],
-                    'due_day' => $data['due_day'],
+                    'closing_day' => $data['closing_day'] ?? $paymentMethod->closing_day,
+                    'due_day' => $data['due_day'] ?? $latestScheduledSetting?->due_day,
                     'effective_from' => $data['effective_from'],
                 ]);
             }
 
             $retiredSettings = [];
-            if (! $isCredit) {
+            if ($creditTypeChanged && ! $isCredit) {
                 $retiredAt = now();
                 $retiredSettings = $paymentMethod->invoiceSettings()->whereNull('retired_at')->get()->all();
                 $paymentMethod->invoiceSettings()->whereNull('retired_at')->update(['retired_at' => $retiredAt]);
@@ -146,6 +152,23 @@ class PaymentMethodController extends Controller
         }
 
         return to_route('settings.catalogs');
+    }
+
+    /** @param array<string, mixed> $data */
+    private function invoiceConfigurationChanged(array $data, PaymentMethod $paymentMethod, ?PaymentMethodInvoiceSetting $currentSetting, bool $isCredit): bool
+    {
+        if ($paymentMethod->type !== PaymentMethod::TYPE_CREDIT || ! $isCredit) {
+            return $paymentMethod->type !== $data['type'];
+        }
+
+        $closingDayChanged = array_key_exists('closing_day', $data)
+            && ($data['closing_day'] === null ? null : (int) $data['closing_day']) !== $currentSetting?->closing_day;
+        $dueDayChanged = array_key_exists('due_day', $data)
+            && ($data['due_day'] === null ? null : (int) $data['due_day']) !== $currentSetting?->due_day;
+        $effectiveFromChanged = array_key_exists('effective_from', $data)
+            && $currentSetting?->effective_from?->toDateString() !== $data['effective_from'];
+
+        return $currentSetting === null || $closingDayChanged || $dueDayChanged || $effectiveFromChanged;
     }
 
     /** @return array{type: string, closing_day: int|null, due_day: int|null, effective_from: string|null, retired_at: string|null} */

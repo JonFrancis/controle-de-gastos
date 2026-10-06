@@ -30,19 +30,19 @@ class PurchaseListingService
 
         $purchases = Purchase::query()
             ->active()
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'allocations.participant:id,name', 'allocations' => fn ($query) => $query->with('category:id,name')])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at', 'category:id,name', 'allocations.participant:id,name', 'allocations' => fn ($query) => $query->with('category:id,name')])
             ->whereBetween('purchased_at', [$periodStart, $periodEnd])
             ->orderByDesc('purchased_at')
             ->get();
         $installmentOccurrences = InstallmentOccurrence::query()
             ->whereNull('archived_at')
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'installment:id,installment_count'])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at', 'category:id,name', 'installment:id,installment_count'])
             ->whereBetween('purchased_at', [$periodStart, $periodEnd])
             ->orderByDesc('purchased_at')
             ->get();
         $recurrenceOccurrences = RecurrenceOccurrence::query()
             ->whereNull('archived_at')
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'recurrence:id'])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at', 'category:id,name', 'recurrence:id'])
             ->whereBetween('purchased_at', [$periodStart, $periodEnd])
             ->orderByDesc('purchased_at')
             ->get();
