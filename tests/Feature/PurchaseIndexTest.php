@@ -7,6 +7,7 @@ use App\Models\Installment;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
+use App\Models\PaymentMethodInvoiceSetting;
 use App\Models\Purchase;
 use App\Models\Recurrence;
 use App\Services\PaymentMethodInvoiceSettingService;
@@ -200,7 +201,7 @@ class PurchaseIndexTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $card = PaymentMethod::create(['name' => 'Cartão legado', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 1]);
         $card->latestInvoiceSetting()->update(['effective_from' => '2026-01-01', 'due_day' => null]);
-        $card->invoiceSettings()->create(['closing_day' => 1, 'due_day' => 1, 'effective_from' => '2026-10-01']);
+        PaymentMethodInvoiceSetting::factory()->for($card)->create(['closing_day' => 1, 'due_day' => 1, 'effective_from' => '2026-10-01']);
         $this->createPurchase($self, $card, 'Compra histórica aproximada', '2026-08-02', 2300);
 
         $this->get('/purchases?month=2026-10&view=invoice')
@@ -295,7 +296,7 @@ class PurchaseIndexTest extends TestCase
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $card = $this->createCreditCard('Cartão com histórico', 10, 15);
-        $card->invoiceSettings()->create([
+        PaymentMethodInvoiceSetting::factory()->for($card)->create([
             'closing_day' => 20,
             'due_day' => 25,
             'effective_from' => '2026-10-11',
@@ -430,7 +431,7 @@ class PurchaseIndexTest extends TestCase
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $card = $this->createCreditCard('Cartão com vigência no meio do ciclo', 10, 15);
-        $card->invoiceSettings()->create([
+        PaymentMethodInvoiceSetting::factory()->for($card)->create([
             'closing_day' => 20,
             'due_day' => 25,
             'effective_from' => '2026-10-12',
@@ -496,7 +497,7 @@ class PurchaseIndexTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $card = $this->createCreditCard('Cartão versionado', 10, 15);
         $card->invoiceSettings()->firstOrFail()->update(['effective_from' => '2026-01-01']);
-        $card->invoiceSettings()->create([
+        PaymentMethodInvoiceSetting::factory()->for($card)->create([
             'closing_day' => 20,
             'due_day' => 25,
             'effective_from' => '2026-10-11',

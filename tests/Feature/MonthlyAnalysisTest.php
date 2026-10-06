@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Category;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
+use App\Models\PaymentMethodInvoiceSetting;
 use App\Models\Purchase;
 use App\Models\PurchaseAllocation;
 use App\Models\Receipt;
@@ -107,7 +108,7 @@ class MonthlyAnalysisTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $card = PaymentMethod::create(['name' => 'Cartão legado', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 1]);
         $card->latestInvoiceSetting()->update(['effective_from' => '2026-01-01', 'due_day' => null]);
-        $card->invoiceSettings()->create(['closing_day' => 1, 'due_day' => 1, 'effective_from' => '2026-10-01']);
+        PaymentMethodInvoiceSetting::factory()->for($card)->create(['closing_day' => 1, 'due_day' => 1, 'effective_from' => '2026-10-01']);
         $this->purchaseWithoutAllocation('2026-08-02', 2300, $self, $card, 'Compra histórica aproximada');
 
         $this->get('/analysis?month=2026-10&view=invoice')
