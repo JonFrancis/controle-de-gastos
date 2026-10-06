@@ -100,7 +100,7 @@ class BalancesTest extends TestCase
         Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-09-30', 'amount_cents' => 3000]);
         $this->purchase('2026-10-03', 5000, $self, [[$maria, 5000]]);
 
-        $this->get('/?month=2026-10')
+        $this->get('/?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('personChart.balances.0.name', 'Maria')
                 ->where('personChart.balances.0.amountCents', 2000)
@@ -124,7 +124,7 @@ class BalancesTest extends TestCase
             'source' => 'manual',
         ]);
 
-        $this->get('/?month=2026-10')
+        $this->get('/?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('personChart.balances.0.amountCents', 3000)
                 ->where('personChart.balances.0.creditCents', 0)

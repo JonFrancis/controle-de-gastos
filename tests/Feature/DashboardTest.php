@@ -75,6 +75,41 @@ class DashboardTest extends TestCase
             );
     }
 
+    public function test_invoice_dashboard_uses_invoice_dataset_for_participant_balances(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $card = PaymentMethod::create(['name' => 'Cartão compartilhado', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
+        $card->latestInvoiceSetting()->update(['due_day' => 10, 'effective_from' => '2026-01-01']);
+
+        $selectedInvoicePurchase = Purchase::create([
+            'purchased_at' => '2026-09-20',
+            'description' => 'Compra na fatura selecionada',
+            'amount_cents' => 5000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $card->id,
+        ]);
+        PurchaseAllocation::create(['purchase_id' => $selectedInvoicePurchase->id, 'participant_id' => $maria->id, 'amount_cents' => 5000]);
+
+        $nextInvoicePurchase = Purchase::create([
+            'purchased_at' => '2026-10-20',
+            'description' => 'Compra na próxima fatura',
+            'amount_cents' => 7000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $card->id,
+        ]);
+        PurchaseAllocation::create(['purchase_id' => $nextInvoicePurchase->id, 'participant_id' => $maria->id, 'amount_cents' => 7000]);
+
+        $this->get('/?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.paidForOthersCents', 5000)
+                ->has('personChart.balances', 1)
+                ->where('personChart.balances.0.name', 'Maria')
+                ->where('personChart.balances.0.amountCents', 5000)
+                ->where('personChart.balances.0.netCents', 5000)
+                ->where('personChart.balances.0.creditCents', 0));
+    }
+
     public function test_dashboard_materializes_prior_source_month_occurrence_and_uses_it_in_payable_total(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
