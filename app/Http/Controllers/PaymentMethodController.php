@@ -88,7 +88,8 @@ class PaymentMethodController extends Controller
         $data = $request->validated();
         $isCredit = $data['type'] === PaymentMethod::TYPE_CREDIT;
         $wasCredit = $paymentMethod->type === PaymentMethod::TYPE_CREDIT;
-        $currentSetting = $wasCredit ? $invoiceSettings->currentForDate($paymentMethod) : null;
+        $hasInvoiceConfigurationInput = $this->hasInvoiceConfigurationInput($data);
+        $currentSetting = $wasCredit && $hasInvoiceConfigurationInput ? $invoiceSettings->currentForDate($paymentMethod) : null;
         $invoiceConfigurationChanged = $this->invoiceConfigurationChanged($data, $paymentMethod, $currentSetting, $isCredit);
         $creditTypeChanged = $wasCredit !== $isCredit;
         $latestScheduledSetting = $invoiceConfigurationChanged && $isCredit
@@ -161,6 +162,10 @@ class PaymentMethodController extends Controller
             return $paymentMethod->type !== $data['type'];
         }
 
+        if (! $this->hasInvoiceConfigurationInput($data)) {
+            return false;
+        }
+
         $closingDayChanged = array_key_exists('closing_day', $data)
             && ($data['closing_day'] === null ? null : (int) $data['closing_day']) !== $currentSetting?->closing_day;
         $dueDayChanged = array_key_exists('due_day', $data)
@@ -169,6 +174,14 @@ class PaymentMethodController extends Controller
             && $currentSetting?->effective_from?->toDateString() !== $data['effective_from'];
 
         return $currentSetting === null || $closingDayChanged || $dueDayChanged || $effectiveFromChanged;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function hasInvoiceConfigurationInput(array $data): bool
+    {
+        return array_key_exists('closing_day', $data)
+            || array_key_exists('due_day', $data)
+            || array_key_exists('effective_from', $data);
     }
 
     /** @return array{type: string, closing_day: int|null, due_day: int|null, effective_from: string|null, retired_at: string|null} */
