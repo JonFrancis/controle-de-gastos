@@ -145,6 +145,52 @@ class MonthlyAnalysisTest extends TestCase
             ->where('purchaseReview.0.cardName', 'SERVICO REAL'));
     }
 
+    public function test_invoice_analysis_classifies_recurrence_by_due_month(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = PaymentMethod::create(['name' => 'Sofisa análise', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 30]);
+        $card->latestInvoiceSetting()->update(['due_day' => 10, 'effective_from' => '2026-01-01']);
+        Recurrence::create([
+            'start_date' => '2026-10-01',
+            'day_of_month' => 15,
+            'description' => 'Recorrência na fatura de novembro',
+            'amount_cents' => 4200,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $card->id,
+            'active' => true,
+        ]);
+
+        $this->get('/analysis?month=2026-11&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.totalDisbursedCents', 4200)
+                ->where('purchaseReview.0.date', '2026-10-15')
+                ->where('purchaseReview.0.description', 'Recorrência na fatura de novembro')
+            );
+    }
+
+    public function test_invoice_analysis_marks_a_purchase_added_after_closing(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = PaymentMethod::create(['name' => 'Cartão retroativo análise', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
+        $card->latestInvoiceSetting()->update(['due_day' => 10, 'effective_from' => '2026-01-01']);
+        $purchase = Purchase::create([
+            'purchased_at' => '2026-10-03',
+            'description' => 'Compra retroativa na análise',
+            'amount_cents' => 1800,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $card->id,
+        ]);
+        $purchase->forceFill(['created_at' => '2026-10-06 12:00:00'])->saveQuietly();
+
+        $this->get('/analysis?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('purchaseReview.0.description', 'Compra retroativa na análise')
+                ->where('purchaseReview.0.addedAfterClosing', true)
+            );
+    }
+
     /** @return array{0: Participant, 1: Participant, 2: PaymentMethod, 3: Category, 4: PaymentMethod} */
     private function catalogs(): array
     {

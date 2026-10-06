@@ -17,6 +17,7 @@ type ExpenseItem = {
     paymentMethod: string | null;
     category: string | null;
     isAdjusted?: boolean;
+    addedAfterClosing?: boolean;
 };
 
 type InvoiceGroup = {
@@ -136,6 +137,7 @@ function PurchaseRow({ purchase }: { purchase: ExpenseItem }) {
                 <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium text-slate-200">{purchase.description}</p>
                     {originLabel && <span className="rounded-full bg-violet-300/10 px-2 py-1 text-[10px] font-semibold text-violet-300">{originLabel}</span>}
+                    {purchase.addedAfterClosing && <span className="rounded-full bg-amber-300/10 px-2 py-1 text-[10px] font-semibold text-amber-200">Adicionada após o fechamento</span>}
                 </div>
                 <p className="mt-1 text-xs text-slate-400">Data original: {formatDate(purchase.purchasedAt)}</p>
                 <p className="mt-1 text-xs text-slate-500">{purchase.cardName ? `Nome na fatura: ${purchase.cardName} · ` : ''}{purchase.category ?? 'Sem categoria'} · {purchase.paymentMethod ?? 'Sem forma'}</p>

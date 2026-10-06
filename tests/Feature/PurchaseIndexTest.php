@@ -161,6 +161,130 @@ class PurchaseIndexTest extends TestCase
             );
     }
 
+    public function test_invoice_view_classifies_each_installment_occurrence_by_its_own_due_month(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão parcelado', 10, 15);
+        $installment = $this->createInstallment($self, $card);
+        $installment->occurrences()->createMany([
+            [
+                'installment_number' => 1,
+                'purchased_at' => '2026-10-10',
+                'description' => 'Parcela de outubro',
+                'amount_cents' => 15000,
+                'payer_id' => $self->id,
+                'participant_id' => $self->id,
+                'payment_method_id' => $card->id,
+            ],
+            [
+                'installment_number' => 2,
+                'purchased_at' => '2026-10-11',
+                'description' => 'Parcela de novembro',
+                'amount_cents' => 15000,
+                'payer_id' => $self->id,
+                'participant_id' => $self->id,
+                'payment_method_id' => $card->id,
+            ],
+        ]);
+
+        $this->get('/purchases?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('invoiceGroups', 1)
+                ->where('invoiceGroups.0.dueDate', '2026-10-15')
+                ->where('invoiceGroups.0.totalCents', 15000)
+                ->where('invoiceGroups.0.purchases.0.description', 'Parcela de outubro')
+            );
+
+        $this->get('/purchases?month=2026-11&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('invoiceGroups', 1)
+                ->where('invoiceGroups.0.dueDate', '2026-11-15')
+                ->where('invoiceGroups.0.totalCents', 15000)
+                ->where('invoiceGroups.0.purchases.0.description', 'Parcela de novembro')
+            );
+    }
+
+    public function test_invoice_view_classifies_each_recurrence_occurrence_by_its_own_due_month(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Sofisa recorrente', 30, 10);
+        Recurrence::create([
+            'start_date' => '2026-10-01',
+            'day_of_month' => 15,
+            'description' => 'Assinatura recorrente',
+            'amount_cents' => 4200,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $card->id,
+            'active' => true,
+        ]);
+
+        $this->get('/purchases?month=2026-11&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('invoiceGroups', 1)
+                ->where('invoiceGroups.0.dueDate', '2026-11-10')
+                ->where('invoiceGroups.0.totalCents', 4200)
+                ->where('invoiceGroups.0.purchases.0.purchasedAt', '2026-10-15')
+            );
+    }
+
+    public function test_invoice_view_marks_a_purchase_added_after_closing(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão retroativo', 5, 10);
+        $purchase = $this->createPurchase($self, $card, 'Compra lançada depois', '2026-10-03', 1800);
+        $purchase->forceFill(['created_at' => '2026-10-06 12:00:00'])->saveQuietly();
+
+        $this->get('/purchases?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('invoiceGroups.0.purchases.0.description', 'Compra lançada depois')
+                ->where('invoiceGroups.0.purchases.0.addedAfterClosing', true)
+            );
+    }
+
+    public function test_invoice_view_keeps_occurrence_classification_stable_across_a_future_card_version(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão com histórico', 10, 15);
+        $card->invoiceSettings()->create([
+            'closing_day' => 20,
+            'due_day' => 25,
+            'effective_from' => '2026-10-11',
+        ]);
+        $installment = $this->createInstallment($self, $card);
+        $installment->occurrences()->createMany([
+            [
+                'installment_number' => 1,
+                'purchased_at' => '2026-10-09',
+                'description' => 'Ocorrência da regra antiga',
+                'amount_cents' => 1000,
+                'payer_id' => $self->id,
+                'participant_id' => $self->id,
+                'payment_method_id' => $card->id,
+            ],
+            [
+                'installment_number' => 2,
+                'purchased_at' => '2026-10-15',
+                'description' => 'Ocorrência da regra nova',
+                'amount_cents' => 2000,
+                'payer_id' => $self->id,
+                'participant_id' => $self->id,
+                'payment_method_id' => $card->id,
+            ],
+        ]);
+
+        $this->get('/purchases?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('invoiceGroups', 2)
+                ->where('invoiceGroups.0.closingDate', '2026-10-10')
+                ->where('invoiceGroups.0.totalCents', 1000)
+                ->where('invoiceGroups.0.purchases.0.description', 'Ocorrência da regra antiga')
+                ->where('invoiceGroups.1.closingDate', '2026-10-20')
+                ->where('invoiceGroups.1.totalCents', 2000)
+                ->where('invoiceGroups.1.purchases.0.description', 'Ocorrência da regra nova')
+            );
+    }
+
     public function test_invoice_view_uses_due_month_for_sofisa_and_excludes_non_credit_purchases(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
