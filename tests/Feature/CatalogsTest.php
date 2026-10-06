@@ -7,6 +7,8 @@ use App\Models\Category;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\PaymentMethodInvoiceSetting;
+use App\Services\PaymentMethodInvoiceSettingService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -269,6 +271,110 @@ class CatalogsTest extends TestCase
                 ->where('paymentMethods.0.effective_from', '2026-10-06')
                 ->where('paymentMethods.0.suggested_effective_from', '2026-11-21')
             );
+
+        $this->travelBack();
+    }
+
+    public function test_historical_selection_falls_back_to_the_oldest_version_instead_of_a_future_version(): void
+    {
+        $this->travelTo('2026-10-06');
+        $this->post('/payment-methods', [
+            'name' => 'Cartão com histórico aproximado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+        ]);
+        $paymentMethod = PaymentMethod::query()->where('name', 'Cartão com histórico aproximado')->firstOrFail();
+        $paymentMethod->invoiceSettings()->create([
+            'closing_day' => 20,
+            'due_day' => 25,
+            'effective_from' => '2026-11-11',
+        ]);
+
+        $setting = app(PaymentMethodInvoiceSettingService::class)->currentForDate($paymentMethod, CarbonImmutable::parse('2026-09-15'));
+
+        $this->assertNotNull($setting);
+        $this->assertSame(10, $setting->closing_day);
+        $this->assertSame('2026-10-06', $setting->effective_from?->toDateString());
+
+        $this->travelBack();
+    }
+
+    public function test_scheduling_a_change_after_a_future_version_compares_with_the_last_scheduled_version(): void
+    {
+        $this->travelTo('2026-10-06');
+        $this->post('/payment-methods', [
+            'name' => 'Cartão com agendamento encadeado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+        ]);
+        $paymentMethod = PaymentMethod::query()->where('name', 'Cartão com agendamento encadeado')->firstOrFail();
+        $paymentMethod->invoiceSettings()->create([
+            'closing_day' => 20,
+            'due_day' => 25,
+            'effective_from' => '2026-11-11',
+        ]);
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Cartão com agendamento encadeado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+            'effective_from' => '2026-12-21',
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseCount('payment_method_invoice_settings', 3);
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'payment_method_id' => $paymentMethod->id,
+            'closing_day' => 10,
+            'due_day' => 15,
+            'effective_from' => '2026-12-21 00:00:00',
+            'retired_at' => null,
+        ]);
+
+        $this->travelBack();
+    }
+
+    public function test_reactivating_credit_creates_a_new_active_version_after_retirement(): void
+    {
+        $this->travelTo('2026-10-06');
+        $this->post('/payment-methods', [
+            'name' => 'Cartão reativado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+        ]);
+        $paymentMethod = PaymentMethod::query()->where('name', 'Cartão reativado')->firstOrFail();
+        $initialSetting = $paymentMethod->invoiceSettings()->firstOrFail();
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Pix temporário',
+            'type' => PaymentMethod::TYPE_PIX,
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Cartão reativado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+            'effective_from' => '2026-10-31',
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'id' => $initialSetting->id,
+            'retired_at' => '2026-10-06 00:00:00',
+        ]);
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'payment_method_id' => $paymentMethod->id,
+            'closing_day' => 10,
+            'due_day' => 15,
+            'effective_from' => '2026-11-11 00:00:00',
+            'retired_at' => null,
+        ]);
 
         $this->travelBack();
     }
