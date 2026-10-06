@@ -12,6 +12,16 @@ Use the repository's five default triage labels: `needs-triage`, `needs-info`, `
 
 This is a single-context repository. Use the root `GLOSSARY.md` and `docs/adr/` for domain vocabulary and architecture decisions when they exist. See `docs/agents/domain.md`.
 
+### Git workflow
+
+Keep `main` as the latest approved version of the application. Never commit or implement code changes directly on `main`.
+
+For every implementation, create a dedicated branch from the current `main`, using the `codex/` prefix and preferably including the issue number and a short description (for example, `codex/issue-24-invoice-due-dates`). Keep each branch scoped to one issue or one explicitly approved change.
+
+Before merging an approved branch, preserve the exact pre-change `main` commit with an immutable annotated tag named `backup/main-before-<issue-or-change>-<date>`. After approval, merge the branch into `main` only after the relevant tests and review pass. Use the backup tag or the corresponding merge commit to restore the previous version; do not keep `main` artificially behind the approved implementation.
+
+When a change needs to be reverted, create a new revert branch and revert the specific merge commit or restore from the identified backup tag. Do not rewrite shared history or reset `main` destructively.
+
 <laravel-boost-guidelines>
 === foundation rules ===
 
