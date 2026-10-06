@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
+use App\Models\PaymentMethodInvoiceSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -165,6 +167,68 @@ class CatalogsTest extends TestCase
                 ->has('paymentMethods.0.invoice_settings', 2)
                 ->where('paymentMethods.0.invoice_settings.0.closing_day', 28)
                 ->where('paymentMethods.0.invoice_settings.1.closing_day', 30));
+
+        $this->travelBack();
+    }
+
+    public function test_invoice_setting_lifecycle_is_audited_with_its_version_fields(): void
+    {
+        $this->travelTo('2026-10-06 12:00:00');
+        $this->post('/payment-methods', [
+            'name' => 'Cartão auditado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+        ])->assertRedirect('/settings/catalogs');
+        $paymentMethod = PaymentMethod::query()->where('name', 'Cartão auditado')->firstOrFail();
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Cartão auditado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 20,
+            'due_day' => 25,
+            'effective_from' => '2026-10-15',
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $setting = PaymentMethodInvoiceSetting::query()
+            ->where('payment_method_id', $paymentMethod->id)
+            ->where('closing_day', 20)
+            ->firstOrFail();
+        $createdAudit = AuditLog::query()
+            ->where('action', AuditLog::ACTION_CREATE)
+            ->where('auditable_type', PaymentMethodInvoiceSetting::class)
+            ->where('auditable_id', $setting->id)
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->assertSame(20, $createdAudit->new_values['closing_day']);
+        $this->assertSame(25, $createdAudit->new_values['due_day']);
+        $this->assertSame('2026-11-11 00:00:00', $createdAudit->new_values['effective_from']);
+        $this->assertSame(null, $createdAudit->new_values['retired_at']);
+        $this->assertSame(20, $createdAudit->metadata['closing_day']);
+        $this->assertSame(25, $createdAudit->metadata['due_day']);
+        $this->assertSame('2026-11-11', $createdAudit->metadata['effective_from']);
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Cartão auditado',
+            'type' => PaymentMethod::TYPE_PIX,
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $retiredAudit = AuditLog::query()
+            ->where('action', AuditLog::ACTION_ARCHIVE)
+            ->where('auditable_type', PaymentMethodInvoiceSetting::class)
+            ->where('auditable_id', $setting->id)
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->assertSame(20, $retiredAudit->old_values['closing_day']);
+        $this->assertSame(25, $retiredAudit->old_values['due_day']);
+        $this->assertSame('2026-11-11 00:00:00', $retiredAudit->old_values['effective_from']);
+        $this->assertSame(null, $retiredAudit->old_values['retired_at']);
+        $this->assertSame('2026-10-06 12:00:00', $retiredAudit->new_values['retired_at']);
+        $this->assertSame('2026-10-06 12:00:00', $retiredAudit->metadata['retired_at']);
 
         $this->travelBack();
     }

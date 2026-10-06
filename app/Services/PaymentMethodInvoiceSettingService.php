@@ -23,6 +23,21 @@ class PaymentMethodInvoiceSettingService
         return $this->invoiceCycleService->closingDate($referenceDate, $closingDay)->addDay()->startOfDay();
     }
 
+    public function normalizeEffectiveFrom(PaymentMethod $paymentMethod, CarbonInterface $effectiveFrom): CarbonImmutable
+    {
+        $date = CarbonImmutable::instance($effectiveFrom)->startOfDay();
+        $closingDay = $paymentMethod->latestInvoiceSetting?->closing_day ?? $paymentMethod->closing_day;
+
+        if ($closingDay === null) {
+            return $date;
+        }
+
+        $closingDate = $this->invoiceCycleService->closingDate($date, $closingDay);
+        $cycleStart = $this->invoiceCycleService->previousClosingDate($closingDate, $closingDay)->addDay()->startOfDay();
+
+        return $cycleStart->lessThan($date) ? $closingDate->addDay()->startOfDay() : $cycleStart;
+    }
+
     public function forDate(PaymentMethod $paymentMethod, CarbonInterface $date): ?PaymentMethodInvoiceSetting
     {
         $settings = $paymentMethod->relationLoaded('invoiceSettings')
