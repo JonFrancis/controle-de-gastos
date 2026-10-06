@@ -250,6 +250,49 @@ class MonthlyAnalysisTest extends TestCase
             );
     }
 
+    public function test_middle_of_cycle_effective_date_starts_next_cycle_in_listing_and_analysis(): void
+    {
+        $this->travelTo('2026-10-06 12:00:00');
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = PaymentMethod::create(['name' => 'Cartão com vigência futura', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 10]);
+        $card->latestInvoiceSetting()->update(['due_day' => 15, 'effective_from' => '2026-01-01']);
+        $this->patch("/payment-methods/{$card->id}", [
+            'name' => 'Cartão com vigência futura',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 20,
+            'due_day' => 25,
+            'effective_from' => '2026-10-15',
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+        $this->createPurchase($self, $card, 'Compra no ciclo antigo', '2026-10-16', 1000);
+        $this->createPurchase($self, $card, 'Compra no ciclo novo', '2026-11-12', 2000);
+
+        $this->get('/purchases?month=2026-11&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('invoiceGroups', 2)
+                ->where('invoiceGroups.0.closingDate', '2026-11-10')
+                ->where('invoiceGroups.0.dueDate', '2026-11-15')
+                ->where('invoiceGroups.0.totalCents', 1000)
+                ->where('invoiceGroups.1.closingDate', '2026-11-20')
+                ->where('invoiceGroups.1.dueDate', '2026-11-25')
+                ->where('invoiceGroups.1.totalCents', 2000)
+            );
+
+        $this->get('/analysis?month=2026-11&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.totalDisbursedCents', 3000)
+                ->has('purchaseReview', 2)
+            );
+
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'payment_method_id' => $card->id,
+            'closing_day' => 20,
+            'due_day' => 25,
+            'effective_from' => '2026-11-11 00:00:00',
+        ]);
+        $this->travelBack();
+    }
+
     /** @return array{0: Participant, 1: Participant, 2: PaymentMethod, 3: Category, 4: PaymentMethod} */
     private function catalogs(): array
     {
@@ -265,5 +308,17 @@ class MonthlyAnalysisTest extends TestCase
     private function purchaseWithoutAllocation(string $date, int $amountCents, Participant $self, ?PaymentMethod $method, string $description): void
     {
         Purchase::create(['purchased_at' => $date, 'description' => $description, 'amount_cents' => $amountCents, 'payer_id' => $self->id, 'participant_id' => $self->id, 'payment_method_id' => $method?->id]);
+    }
+
+    private function createPurchase(Participant $self, PaymentMethod $paymentMethod, string $description, string $date, int $amount): Purchase
+    {
+        return Purchase::create([
+            'purchased_at' => $date,
+            'description' => $description,
+            'amount_cents' => $amount,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+        ]);
     }
 }

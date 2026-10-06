@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Participant;
 use App\Models\SpreadsheetImportRow;
 use App\Services\BalanceService;
+use App\Services\InvoiceCycleService;
 use App\Services\MonthlyAnalysisService;
 use App\Services\PurchaseListingService;
 use App\Services\RecurrenceService;
@@ -15,12 +16,15 @@ use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request, MonthlyAnalysisService $monthlyAnalysisService, BalanceService $balanceService, RecurrenceService $recurrenceService, PurchaseListingService $purchaseListingService): Response
+    public function __invoke(Request $request, MonthlyAnalysisService $monthlyAnalysisService, BalanceService $balanceService, RecurrenceService $recurrenceService, PurchaseListingService $purchaseListingService, InvoiceCycleService $invoiceCycleService): Response
     {
         $selectedMonth = $this->validMonth($request->query('month'));
         $view = $request->query('view') === 'calendar' ? 'calendar' : 'invoice';
         $month = Carbon::createFromFormat('Y-m', $selectedMonth);
-        $recurrenceService->ensureOccurrencesForRange($month->copy()->startOfMonth(), $month->copy()->endOfMonth());
+        $range = $view === 'invoice'
+            ? $invoiceCycleService->sourceRangeForInvoiceMonth($month)
+            : ['start' => $month->copy()->startOfMonth(), 'end' => $month->copy()->endOfMonth()];
+        $recurrenceService->ensureOccurrencesForRange($range['start'], $range['end']);
         $movementCategoryId = $request->integer('category') ?: null;
         $budgetAnalysis = $monthlyAnalysisService->analyze($selectedMonth, $view, $movementCategoryId);
         $budgetSummary = $budgetAnalysis['summary'];

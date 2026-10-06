@@ -75,6 +75,32 @@ class DashboardTest extends TestCase
             );
     }
 
+    public function test_dashboard_materializes_prior_source_month_occurrence_and_uses_it_in_payable_total(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = PaymentMethod::create(['name' => 'Cartão recorrente', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
+        $card->latestInvoiceSetting()->update(['due_day' => 10, 'effective_from' => '2026-01-01']);
+        $recurrence = Recurrence::create([
+            'start_date' => '2026-09-01',
+            'day_of_month' => 15,
+            'description' => 'Recorrência da fatura',
+            'amount_cents' => 1800,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $card->id,
+            'active' => true,
+        ]);
+
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.totalDisbursedCents', 1800)
+                ->has('invoiceGroups', 1)
+                ->where('invoiceGroups.0.totalCents', 1800)
+                ->where('invoiceGroups.0.purchases.0.purchasedAt', '2026-09-15')
+            );
+
+    }
+
     public function test_dashboard_exposes_a_direct_review_link_only_when_import_rows_are_pending(): void
     {
         $import = SpreadsheetImport::factory()->create();
