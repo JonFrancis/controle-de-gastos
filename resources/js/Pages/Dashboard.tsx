@@ -3,13 +3,16 @@ import { useState } from 'react';
 
 type Props = {
     selectedMonth: string;
+    view: 'calendar' | 'invoice';
     pendingReview: number;
     pendingReviewUrl: string | null;
     summary: {
         ownConsumptionCents: number;
+        totalDisbursedCents: number;
         salaryCents: number | null;
         salaryRemainingCents: number | null;
     };
+    invoiceGroups: InvoiceGroup[];
     charts: {
         paymentMethodTotals: ChartRow[];
         movement: MovementRow[];
@@ -23,10 +26,13 @@ type ChartRow = { name: string; amountCents: number };
 type MovementRow = { week: number; label: string; amountCents: number };
 type PersonChartItem = { id: number; name: string; amountCents: number; netCents?: number; creditCents?: number; status?: 'chargeable' | 'settled' };
 type PersonChartData = { expenses: PersonChartItem[]; balances: PersonChartItem[] };
+type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStart: string; periodEnd: string; closingDate: string; dueDate: string | null; totalCents: number; purchases: { id: number }[] };
 
-const navigation = [
-    ['Visão geral', '/'],
-    ['Compras', '/purchases'],
+const navigation = (selectedMonth: string) => [
+    ['Faturas', `/purchases?month=${selectedMonth}&view=invoice`],
+    ['Movimentações', `/purchases?month=${selectedMonth}&view=calendar`],
+    ['Visão geral', `/?month=${selectedMonth}&view=invoice`],
+    ['Compras', `/purchases?month=${selectedMonth}&view=invoice`],
     ['Parcelamentos', '/installments'],
     ['Recorrentes', '/recurrences'],
     ['Saldos', '/balances'],
@@ -36,10 +42,10 @@ const navigation = [
     ['Configurações', '/settings/catalogs'],
 ];
 
-export default function Dashboard({ selectedMonth, pendingReview, pendingReviewUrl, summary, charts, personChart, flash }: Props) {
+export default function Dashboard({ selectedMonth, view, pendingReview, pendingReviewUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
     return (
         <>
-            <Head title="Visão geral" />
+            <Head title={view === 'invoice' ? 'Faturas' : 'Movimentação'} />
             <div className="min-h-screen bg-slate-950">
                 <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-white/10 bg-slate-900/80 px-5 py-6 lg:block">
                     <div className="flex items-center gap-3 px-2">
@@ -50,7 +56,7 @@ export default function Dashboard({ selectedMonth, pendingReview, pendingReviewU
                         </div>
                     </div>
                     <nav className="mt-10 space-y-2">
-                        {navigation.map(([label, href], index) => (
+                        {navigation(selectedMonth).map(([label, href], index) => (
                             <Link
                                 key={label}
                                 href={href}
@@ -67,13 +73,14 @@ export default function Dashboard({ selectedMonth, pendingReview, pendingReviewU
                     <div className="mx-auto max-w-7xl px-5 py-6 sm:px-8 lg:px-12 lg:py-10">
                         <header className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
                             <div>
-                                <p className="text-sm font-medium text-emerald-300">Visão geral</p>
-                                <h1 className="mt-1 text-3xl font-bold tracking-tight text-white">Olá, João <span aria-hidden>👋</span></h1>
-                                <p className="mt-2 text-sm text-slate-400">Acompanhe seu mês sem depender de fórmulas.</p>
+                                <p className="text-sm font-medium text-emerald-300">{view === 'invoice' ? 'Faturas' : 'Movimentação'}</p>
+                                <h1 className="mt-1 text-3xl font-bold tracking-tight text-white">{view === 'invoice' ? 'O que precisa ser pago' : 'Movimentação mensal'} <span aria-hidden>👋</span></h1>
+                                <p className="mt-2 text-sm text-slate-400">{view === 'invoice' ? 'Consulte as faturas pelo mês de vencimento.' : 'Consulte os lançamentos pelo mês-calendário.'}</p>
                             </div>
                             <div className="flex flex-wrap items-center gap-3">
                                 <form method="get" action="/" className="flex items-center gap-2">
-                                    <label htmlFor="dashboard-month" className="sr-only">Mês</label>
+                                    <input type="hidden" name="view" value={view} />
+                                    <label htmlFor="dashboard-month" className="sr-only">{view === 'invoice' ? 'Mês de vencimento' : 'Mês'}</label>
                                     <input id="dashboard-month" type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white" />
                                     <button className="rounded-xl border border-white/10 px-3 py-2.5 text-sm text-slate-200">Aplicar</button>
                                 </form>
@@ -84,16 +91,18 @@ export default function Dashboard({ selectedMonth, pendingReview, pendingReviewU
 
                         {flash?.success && <p role="status" className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{flash.success}</p>}
 
-                        <section className="mt-8 grid gap-4 md:grid-cols-2">
-                            <SummaryCard label="Meus gastos totais do mês" value={formatMoney(summary.ownConsumptionCents)} note="Consumo próprio atribuído a Eu" accent="emerald" />
-                            <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} selectedMonth={selectedMonth} />
-                        </section>
+                        {view === 'invoice' ? <InvoiceOverview groups={invoiceGroups} selectedMonth={selectedMonth} totalCents={summary.totalDisbursedCents} /> : <>
+                            <section className="mt-8 grid gap-4 md:grid-cols-2">
+                                <SummaryCard label="Meus gastos totais do mês" value={formatMoney(summary.ownConsumptionCents)} note="Consumo próprio atribuído a Eu" accent="emerald" />
+                                <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} selectedMonth={selectedMonth} />
+                            </section>
 
-                        <MovementChart selectedMonth={selectedMonth} movement={charts.movement} categories={charts.categories} selectedCategoryId={charts.selectedCategoryId} />
+                            <MovementChart selectedMonth={selectedMonth} movement={charts.movement} categories={charts.categories} selectedCategoryId={charts.selectedCategoryId} />
 
-                        <PaymentMethodChart rows={charts.paymentMethodTotals} />
+                            <PaymentMethodChart rows={charts.paymentMethodTotals} />
 
-                        <ParticipantChart chart={personChart} />
+                            <ParticipantChart chart={personChart} />
+                        </>}
 
                         {pendingReview > 0 && pendingReviewUrl && <div className="mt-6 flex flex-col justify-between gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100 sm:flex-row sm:items-center"><span>{pendingReview} item(ns) aguardando revisão.</span><Link href={pendingReviewUrl} className="font-semibold text-amber-200 hover:text-white">Revisar agora →</Link></div>}
 
@@ -103,6 +112,19 @@ export default function Dashboard({ selectedMonth, pendingReview, pendingReviewU
             </div>
         </>
     );
+}
+
+function InvoiceOverview({ groups, selectedMonth, totalCents }: { groups: InvoiceGroup[]; selectedMonth: string; totalCents: number }) {
+    return <section className="mt-8 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+            <div><p className="text-sm font-medium text-emerald-300">Faturas com vencimento em {formatMonth(selectedMonth)}</p><h2 className="mt-1 text-xl font-semibold text-white">Total a pagar: {formatMoney(totalCents)}</h2><p className="mt-1 text-sm text-slate-400">{groups.length} fatura(s) de cartão, separadas por cartão e ciclo.</p></div>
+            <Link href={`/analysis?month=${selectedMonth}&view=invoice`} className="text-sm font-semibold text-emerald-300">Abrir análise das faturas →</Link>
+        </div>
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {groups.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-center text-sm text-slate-500 md:col-span-2">Nenhuma fatura de cartão com vencimento neste mês.</p>}
+            {groups.map((group) => <article key={`${group.paymentMethodId}-${group.closingDate}`} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-white">{group.paymentMethod}</h3><p className="mt-1 text-xs text-slate-400">Período: {formatDate(group.periodStart)} a {formatDate(group.periodEnd)}</p><p className="mt-1 text-xs text-slate-400">Fecha em {formatDate(group.closingDate)} · vence em {group.dueDate ? formatDate(group.dueDate) : 'não configurado'}</p></div><strong className="text-sm text-emerald-300">{formatMoney(group.totalCents)}</strong></div><p className="mt-4 text-xs text-slate-500">{group.purchases.length} lançamento(s) · <Link href={`/purchases?month=${selectedMonth}&view=invoice`} className="text-emerald-300">ver detalhes</Link></p></article>)}
+        </div>
+    </section>;
 }
 
 function MovementChart({ selectedMonth, movement, categories, selectedCategoryId }: { selectedMonth: string; movement: MovementRow[]; categories: { id: number; name: string }[]; selectedCategoryId: number | null }) {
@@ -160,6 +182,8 @@ function balanceLabel(item: PersonChartItem): string {
 }
 
 function formatMoney(cents: number): string { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100); }
+function formatMonth(value: string): string { return new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(`${value}-15T12:00:00`)); }
+function formatDate(value: string): string { return new Intl.DateTimeFormat('pt-BR').format(new Date(`${value}T12:00:00`)); }
 
 function SummaryCard({ label, value, note, accent }: { label: string; value: string; note: string; accent: 'emerald' | 'violet' | 'amber' }) {
     const accents = { emerald: 'text-emerald-300 bg-emerald-300/10', violet: 'text-violet-300 bg-violet-300/10', amber: 'text-amber-300 bg-amber-300/10' };

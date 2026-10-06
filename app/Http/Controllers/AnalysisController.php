@@ -15,7 +15,7 @@ class AnalysisController extends Controller
     public function __invoke(Request $request, MonthlyAnalysisService $service, RecurrenceService $recurrenceService): Response
     {
         $selectedMonth = $this->validMonth($request->query('month'));
-        $view = $request->query('view') === 'invoice' ? 'invoice' : 'calendar';
+        $view = $request->query('view') === 'calendar' ? 'calendar' : 'invoice';
         $month = Carbon::createFromFormat('!Y-m', $selectedMonth);
         $periodStart = $view === 'invoice' ? $month->copy()->subMonthNoOverflow()->startOfMonth() : $month->copy()->startOfMonth();
         $recurrenceService->ensureOccurrencesForRange($periodStart, $month->copy()->endOfMonth());

@@ -57,7 +57,7 @@ class InstallmentsTest extends TestCase
         $card = PaymentMethod::create(['name' => 'Cartão', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 10]);
         $this->createInstallment($card, '2026-10-12', 2);
 
-        $this->get('/purchases?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1)->where('occurrences.0.description', 'Compra parcelada'));
+        $this->get('/purchases?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1)->where('occurrences.0.description', 'Compra parcelada'));
         $this->get('/purchases?view=invoice&month=2026-11')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('invoiceGroups', 1)->has('invoiceGroups.0.purchases', 1)->where('invoiceGroups.0.purchases.0.origin', 'installment'));
     }
 
@@ -83,7 +83,7 @@ class InstallmentsTest extends TestCase
         $this->assertNotNull($installment->fresh()->archived_at);
         $this->assertNull($installment->occurrences()->where('installment_number', 1)->firstOrFail()->archived_at);
         $this->assertNotNull($installment->occurrences()->where('installment_number', 2)->firstOrFail()->archived_at);
-        $this->get('/purchases?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 3333)->has('occurrences', 1));
+        $this->get('/purchases?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 3333)->has('occurrences', 1));
     }
 
     private function createInstallment(PaymentMethod $paymentMethod, string $startDate, int $count): Installment

@@ -30,13 +30,48 @@ class DashboardTest extends TestCase
                 ->where('pendingReview', 0)
                 ->where('pendingReviewUrl', null)
                 ->has('summary')
+                ->where('view', 'invoice')
                 ->where('charts.paymentMethodTotals', [])
                 ->where('charts.movement', [])
                 ->where('charts.categories', [])
                 ->missing('purchases')
                 ->missing('occurrences')
-                ->missing('invoiceGroups')
+                ->has('invoiceGroups', 0)
                 ->missing('catalogs')
+            );
+    }
+
+    public function test_dashboard_defaults_to_due_month_invoices_and_excludes_non_credit_movements(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $card = PaymentMethod::create(['name' => 'Nubank', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
+        $card->latestInvoiceSetting()->update(['due_day' => 10, 'effective_from' => '2026-01-01']);
+        Purchase::create([
+            'purchased_at' => '2026-09-06',
+            'description' => 'Compra na fatura de outubro',
+            'amount_cents' => 1000,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $card->id,
+        ]);
+        Purchase::create([
+            'purchased_at' => '2026-10-12',
+            'description' => 'Movimentação fora da fatura',
+            'amount_cents' => 2000,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('view', 'invoice')
+                ->where('summary.totalDisbursedCents', 1000)
+                ->has('invoiceGroups', 1)
+                ->where('invoiceGroups.0.paymentMethod', 'Nubank')
+                ->where('invoiceGroups.0.dueDate', '2026-10-10')
+                ->where('invoiceGroups.0.totalCents', 1000)
             );
     }
 
@@ -45,7 +80,7 @@ class DashboardTest extends TestCase
         $import = SpreadsheetImport::factory()->create();
         SpreadsheetImportRow::factory()->create(['spreadsheet_import_id' => $import->id, 'status' => 'pending_review']);
 
-        $this->get('/?month=2026-10')
+        $this->get('/?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('pendingReview', 1)
                 ->where('pendingReviewUrl', route('imports.queue', [], false)));
@@ -59,7 +94,7 @@ class DashboardTest extends TestCase
         $secondImport = SpreadsheetImport::factory()->create(['original_filename' => 'segunda.csv']);
         SpreadsheetImportRow::factory()->create(['spreadsheet_import_id' => $secondImport->id]);
 
-        $this->get('/?month=2026-10')
+        $this->get('/?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('pendingReview', 3)
                 ->where('pendingReviewUrl', route('imports.queue', [], false)));
@@ -122,7 +157,7 @@ class DashboardTest extends TestCase
             'category_id' => $food->id,
         ]);
 
-        $this->get('/?month=2026-10')
+        $this->get('/?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('charts.paymentMethodTotals', [
                     ['name' => 'Pix', 'amountCents' => 12000],
@@ -139,7 +174,7 @@ class DashboardTest extends TestCase
                 ->where('charts.selectedCategoryId', null)
             );
 
-        $this->get('/?month=2026-10&category='.$food->id)
+        $this->get('/?month=2026-10&view=calendar&category='.$food->id)
             ->assertInertia(fn (Assert $page) => $page
                 ->where('charts.movement', [
                     ['week' => 2, 'label' => 'Semana 2', 'amountCents' => 3000],
@@ -153,11 +188,11 @@ class DashboardTest extends TestCase
         $this->get('/?view=invoice&month=2026-10')
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Dashboard')
-                ->missing('view')
+                ->where('view', 'invoice')
                 ->missing('monthTotalCents')
                 ->missing('purchases')
                 ->missing('occurrences')
-                ->missing('invoiceGroups')
+                ->has('invoiceGroups', 0)
             );
     }
 
@@ -212,7 +247,7 @@ class DashboardTest extends TestCase
             'payment_method_id' => $pix->id,
         ]);
 
-        $this->get('/?month=2026-10')
+        $this->get('/?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('selectedMonth', '2026-10')
                 ->where('summary.ownConsumptionCents', 8000)
@@ -239,7 +274,7 @@ class DashboardTest extends TestCase
             'payment_method_id' => $pix->id,
         ]);
 
-        $this->get('/?month=2026-10')
+        $this->get('/?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.ownConsumptionCents', 12500)
                 ->where('summary.salaryCents', 10000)
@@ -276,7 +311,7 @@ class DashboardTest extends TestCase
         $this->post('/receipts', ['participant_id' => $maria->id, 'received_at' => '2026-10-07', 'amount' => '30,00'])
             ->assertRedirect('/balances');
 
-        $this->get('/?month=2026-10')
+        $this->get('/?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->has('personChart.expenses', 2)
                 ->where('personChart.expenses.0.name', 'Maria')
@@ -314,7 +349,7 @@ class DashboardTest extends TestCase
         $this->post('/receipts', ['participant_id' => $maria->id, 'received_at' => '2026-10-07', 'amount' => '30,00'])
             ->assertRedirect('/balances');
 
-        $this->get('/?month=2026-10')
+        $this->get('/?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->has('personChart.balances', 1)
                 ->where('personChart.balances.0.name', 'Maria')
@@ -344,7 +379,7 @@ class DashboardTest extends TestCase
             'amount' => '60,00',
         ])->assertRedirect(route('balances'));
 
-        $this->get(route('dashboard', ['month' => '2026-10']))
+        $this->get(route('dashboard', ['month' => '2026-10', 'view' => 'calendar']))
             ->assertInertia(fn (Assert $page) => $page
                 ->has('personChart.balances', 1)
                 ->where('personChart.balances.0.name', 'Maria')
@@ -374,10 +409,10 @@ class DashboardTest extends TestCase
         ]);
         PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $maria->id, 'amount_cents' => 5000]);
 
-        $this->get(route('dashboard', ['month' => '2026-10']))
+        $this->get(route('dashboard', ['month' => '2026-10', 'view' => 'calendar']))
             ->assertInertia(fn (Assert $page) => $page->where('selectedMonth', '2026-10')->where('personChart.balances', []));
 
-        $this->get(route('dashboard', ['month' => '2026-09']))
+        $this->get(route('dashboard', ['month' => '2026-09', 'view' => 'calendar']))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('selectedMonth', '2026-09')
                 ->has('personChart.balances', 1)
@@ -411,13 +446,13 @@ class DashboardTest extends TestCase
             'amount_cents' => 5000,
         ]);
 
-        $this->get(route('dashboard', ['month' => '2026-10']))
+        $this->get(route('dashboard', ['month' => '2026-10', 'view' => 'calendar']))
             ->assertInertia(fn (Assert $page) => $page->where('personChart.balances', []));
     }
 
     public function test_dashboard_exposes_empty_person_chart_series_without_movements(): void
     {
-        $this->get('/?month=2026-10')
+        $this->get('/?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('personChart.expenses', [])
                 ->where('personChart.balances', []));

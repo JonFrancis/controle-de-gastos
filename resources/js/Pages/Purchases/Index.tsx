@@ -47,7 +47,7 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
 
     return (
         <>
-            <Head title="Compras" />
+            <Head title={view === 'invoice' ? 'Faturas' : 'Movimentações'} />
             <main className="min-h-screen bg-slate-950 px-5 py-6 text-white sm:px-8 lg:px-12 lg:py-10">
                 <div className="mx-auto max-w-6xl">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -58,12 +58,12 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
                     <header className="mt-6 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
                         <div>
                             <p className="text-sm font-medium text-emerald-300">Consulta de lançamentos</p>
-                            <h1 className="mt-1 text-3xl font-bold tracking-tight">Compras</h1>
-                            <p className="mt-2 text-sm text-slate-400">Consulte compras, parcelas e recorrências pelo mês ou pelo ciclo da fatura.</p>
+                            <h1 className="mt-1 text-3xl font-bold tracking-tight">{view === 'invoice' ? 'Faturas' : 'Movimentações'}</h1>
+                            <p className="mt-2 text-sm text-slate-400">{view === 'invoice' ? 'Consulte o que precisa ser pago pelo mês de vencimento.' : 'Consulte lançamentos que não possuem uma fatura, pelo mês-calendário.'}</p>
                         </div>
                         <form method="get" action="/purchases" className="flex flex-wrap items-center gap-2">
                             <input type="hidden" name="view" value={view} />
-                            <label htmlFor="purchases-month" className="text-sm text-slate-400">{view === 'invoice' ? 'Faturas com vencimento em' : 'Mês'}</label>
+                            <label htmlFor="purchases-month" className="text-sm text-slate-400">{view === 'invoice' ? 'Faturas com vencimento em' : 'Mês-calendário'}</label>
                             <input id="purchases-month" type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
                             <button className="rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/40">Filtrar</button>
                         </form>
@@ -75,11 +75,11 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
                         <div className="flex flex-col justify-between gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-center">
                             <div>
                                 <p className="text-sm font-medium text-emerald-300">{monthLabel}</p>
-                                <h2 className="mt-1 text-xl font-semibold text-white">{view === 'invoice' ? 'Faturas' : 'Compras do mês'}</h2>
+                                <h2 className="mt-1 text-xl font-semibold text-white">{view === 'invoice' ? 'Faturas' : 'Movimentações'}</h2>
                                 <p className="mt-1 text-sm text-slate-400">{view === 'invoice' ? `${invoiceGroups.length} fatura(s)` : `${itemCount} lançamento(s)`} · total de <strong className="text-emerald-300">{formatMoney(monthTotalCents)}</strong></p>
                             </div>
                             <div className="flex rounded-xl border border-white/10 bg-white/5 p-1 text-sm" aria-label="Visão de compras">
-                                <Link href={`/purchases?month=${selectedMonth}&view=calendar`} className={`rounded-lg px-3 py-2 ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Compras do mês</Link>
+                                <Link href={`/purchases?month=${selectedMonth}&view=calendar`} className={`rounded-lg px-3 py-2 ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Movimentações</Link>
                                 <Link href={`/purchases?month=${selectedMonth}&view=invoice`} className={`rounded-lg px-3 py-2 ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Faturas</Link>
                             </div>
                         </div>

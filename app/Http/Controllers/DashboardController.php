@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Participant;
 use App\Models\SpreadsheetImportRow;
 use App\Services\BalanceService;
 use App\Services\MonthlyAnalysisService;
+use App\Services\PurchaseListingService;
 use App\Services\RecurrenceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -13,13 +15,14 @@ use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request, MonthlyAnalysisService $monthlyAnalysisService, BalanceService $balanceService, RecurrenceService $recurrenceService): Response
+    public function __invoke(Request $request, MonthlyAnalysisService $monthlyAnalysisService, BalanceService $balanceService, RecurrenceService $recurrenceService, PurchaseListingService $purchaseListingService): Response
     {
         $selectedMonth = $this->validMonth($request->query('month'));
+        $view = $request->query('view') === 'calendar' ? 'calendar' : 'invoice';
         $month = Carbon::createFromFormat('Y-m', $selectedMonth);
         $recurrenceService->ensureOccurrencesForRange($month->copy()->startOfMonth(), $month->copy()->endOfMonth());
         $movementCategoryId = $request->integer('category') ?: null;
-        $budgetAnalysis = $monthlyAnalysisService->analyze($selectedMonth, 'calendar', $movementCategoryId);
+        $budgetAnalysis = $monthlyAnalysisService->analyze($selectedMonth, $view, $movementCategoryId);
         $budgetSummary = $budgetAnalysis['summary'];
         $pendingReviewQuery = SpreadsheetImportRow::query()->where('status', 'pending_review');
         $pendingReview = (clone $pendingReviewQuery)->count();
@@ -36,9 +39,13 @@ class DashboardController extends Controller
             ->sortByDesc(fn (array $balance): int => abs($balance['amountCents']))
             ->values()
             ->all();
+        $invoiceGroups = $view === 'invoice'
+            ? $purchaseListingService->forMonth($selectedMonth, 'invoice', Participant::query()->where('is_default', true)->value('id'))['invoiceGroups']
+            : collect();
 
         return Inertia::render('Dashboard', [
             'selectedMonth' => $selectedMonth,
+            'view' => $view,
             'summary' => $budgetSummary,
             'personChart' => [
                 'expenses' => $budgetAnalysis['participantExpenses'],
@@ -52,6 +59,7 @@ class DashboardController extends Controller
             ],
             'pendingReview' => $pendingReview,
             'pendingReviewUrl' => $pendingReview > 0 ? route('imports.queue', [], false) : null,
+            'invoiceGroups' => $invoiceGroups,
         ]);
     }
 
