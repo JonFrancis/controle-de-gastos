@@ -422,6 +422,29 @@ class CatalogsTest extends TestCase
         $this->travelBack();
     }
 
+    public function test_editing_a_legacy_credit_payment_method_name_and_status_does_not_require_invoice_configuration(): void
+    {
+        $paymentMethod = PaymentMethod::withoutEvents(fn (): PaymentMethod => PaymentMethod::create([
+            'name' => 'Cartão legado sem versão',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'active' => true,
+        ]));
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Cartão legado renomeado',
+            'active' => false,
+        ])->assertRedirect('/settings/catalogs')->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('payment_methods', [
+            'id' => $paymentMethod->id,
+            'name' => 'Cartão legado renomeado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'active' => false,
+        ]);
+        $this->assertDatabaseCount('payment_method_invoice_settings', 0);
+    }
+
     public function test_historical_selection_falls_back_to_the_oldest_version_instead_of_a_future_version(): void
     {
         $this->travelTo('2026-10-06');

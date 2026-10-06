@@ -26,11 +26,11 @@ class UpdatePaymentMethodRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:100', Rule::unique('payment_methods', 'name')->ignore($this->route('payment_method'))],
-            'type' => ['required', Rule::in(PaymentMethod::types())],
-            'closing_day' => ['nullable', 'integer', 'between:1,31'],
-            'due_day' => ['nullable', 'integer', 'between:1,31'],
-            'effective_from' => ['nullable', 'date'],
-            'active' => ['required', 'boolean'],
+            'type' => ['sometimes', Rule::in(PaymentMethod::types())],
+            'closing_day' => ['sometimes', 'nullable', 'integer', 'between:1,31'],
+            'due_day' => ['sometimes', 'nullable', 'integer', 'between:1,31'],
+            'effective_from' => ['sometimes', 'nullable', 'date'],
+            'active' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -43,7 +43,8 @@ class UpdatePaymentMethodRequest extends FormRequest
                 return;
             }
 
-            $isCredit = $this->input('type') === PaymentMethod::TYPE_CREDIT;
+            $requestedType = $this->input('type', $paymentMethod->type);
+            $isCredit = $requestedType === PaymentMethod::TYPE_CREDIT;
             $wasCredit = $paymentMethod->type === PaymentMethod::TYPE_CREDIT;
 
             if (! $isCredit || ! $wasCredit) {
@@ -78,7 +79,7 @@ class UpdatePaymentMethodRequest extends FormRequest
     {
         return array_key_exists('closing_day', $this->all())
             || array_key_exists('due_day', $this->all())
-            || array_key_exists('effective_from', $this->all());
+            || $this->filled('effective_from');
     }
 
     private function requireInvoiceConfiguration(Validator $validator): void

@@ -9,6 +9,8 @@ use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
 use App\Models\Recurrence;
+use App\Services\PaymentMethodInvoiceSettingService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -339,7 +341,7 @@ class PurchaseIndexTest extends TestCase
         $card = PaymentMethod::create(['name' => 'Cartão aposentado', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 10]);
         $card->latestInvoiceSetting()->update(['due_day' => 15]);
         $beforeRetirement = $this->createPurchase($self, $card, 'Compra histórica', '2026-10-05', 1000);
-        $afterRetirement = $this->createPurchase($self, $card, 'Compra posterior', '2026-10-08', 2000);
+        $this->createPurchase($self, $card, 'Compra posterior', '2026-10-08', 2000);
         $installment = Installment::create([
             'start_date' => '2026-10-05',
             'description' => 'Parcelamento aposentado',
@@ -359,7 +361,7 @@ class PurchaseIndexTest extends TestCase
             'participant_id' => $self->id,
             'payment_method_id' => $card->id,
         ]);
-        $afterRetirementOccurrence = InstallmentOccurrence::create([
+        InstallmentOccurrence::create([
             'installment_id' => $installment->id,
             'installment_number' => 2,
             'purchased_at' => '2026-10-08',
@@ -389,16 +391,37 @@ class PurchaseIndexTest extends TestCase
 
         $this->get('/purchases?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
-                ->has('invoiceGroups', 2)
+                ->has('invoiceGroups', 1)
                 ->where('invoiceGroups.0.closingDate', '2026-10-10')
                 ->where('invoiceGroups.0.totalCents', 4000)
                 ->where('invoiceGroups.0.purchases.0.id', $beforeRetirement->id)
                 ->where('invoiceGroups.0.purchases.1.id', $beforeRetirementOccurrence->id)
-                ->where('invoiceGroups.1.closingDate', '2026-10-20')
-                ->where('invoiceGroups.1.totalCents', 6000)
-                ->where('invoiceGroups.1.purchases.0.id', $afterRetirement->id)
-                ->where('invoiceGroups.1.purchases.1.id', $afterRetirementOccurrence->id)
             );
+
+        $this->travelBack();
+    }
+
+    public function test_retired_invoice_settings_preserve_history_but_do_not_classify_later_items(): void
+    {
+        $this->travelTo('2026-10-01 12:00:00');
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão aposentado sem substituição', 10, 15);
+        $setting = $card->latestInvoiceSetting()->firstOrFail();
+        $setting->update(['retired_at' => '2026-10-06 12:00:00']);
+        $card->refresh();
+        $historicalPurchase = $this->createPurchase($self, $card, 'Compra histórica preservada', '2026-10-05', 1000);
+        $this->createPurchase($self, $card, 'Compra posterior sem classificação', '2026-10-08', 2000);
+
+        $invoiceSettings = app(PaymentMethodInvoiceSettingService::class);
+        $this->assertNotNull($invoiceSettings->forDate($card, CarbonImmutable::parse('2026-10-05')));
+        $this->assertNull($invoiceSettings->forDate($card, CarbonImmutable::parse('2026-10-08')));
+        $this->assertNull($invoiceSettings->detailsFor($card, CarbonImmutable::parse('2026-10-08')));
+
+        $this->get('/purchases?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('invoiceGroups', 1)
+                ->where('invoiceGroups.0.totalCents', 1000)
+                ->where('invoiceGroups.0.purchases.0.id', $historicalPurchase->id));
 
         $this->travelBack();
     }
@@ -410,7 +433,7 @@ class PurchaseIndexTest extends TestCase
         $card->invoiceSettings()->create([
             'closing_day' => 20,
             'due_day' => 25,
-            'effective_from' => '2026-10-15',
+            'effective_from' => '2026-10-12',
         ]);
         $this->createPurchase($self, $card, 'Compra do ciclo antigo', '2026-10-16', 1000);
         $this->createPurchase($self, $card, 'Compra do ciclo novo', '2026-11-12', 2000);

@@ -40,7 +40,8 @@ class PaymentMethodInvoiceSettingService
     public function normalizeEffectiveFrom(PaymentMethod $paymentMethod, CarbonInterface $effectiveFrom): CarbonImmutable
     {
         $date = CarbonImmutable::instance($effectiveFrom)->startOfDay();
-        $closingDay = $this->forDate($paymentMethod, $date)?->closing_day
+        $setting = $this->forDate($paymentMethod, $date);
+        $closingDay = $setting?->closing_day
             ?? $paymentMethod->closing_day
             ?? $this->latestVersion($paymentMethod)?->closing_day;
 
@@ -76,8 +77,9 @@ class PaymentMethodInvoiceSettingService
             ->sortByDesc('effective_from')
             ->values();
         $date = CarbonImmutable::instance($date)->startOfDay();
-        $setting = $orderedSettings
-            ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $this->isAvailableForDate($invoiceSetting, $date))
+        $availableSettings = $orderedSettings
+            ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $this->isAvailableForDate($invoiceSetting, $date));
+        $setting = $availableSettings
             ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $this->firstApplicableCycleStart($invoiceSetting, $orderedSettings)->lte($date))
             ->first()
             ?? $this->historicalFallback($orderedSettings, $date);
@@ -88,17 +90,26 @@ class PaymentMethodInvoiceSettingService
     /** @return array{periodStart: CarbonImmutable, periodEnd: CarbonImmutable, closingDate: CarbonImmutable, dueDate: CarbonImmutable|null}|null */
     public function detailsFor(PaymentMethod $paymentMethod, CarbonInterface $purchaseDate): ?array
     {
-        if ($paymentMethod->type !== PaymentMethod::TYPE_CREDIT || $paymentMethod->closing_day === null) {
+        if ($paymentMethod->type !== PaymentMethod::TYPE_CREDIT) {
             return null;
         }
 
+        $settings = $this->settingsFor($paymentMethod);
         $setting = $this->forDate($paymentMethod, $purchaseDate);
+        if ($setting === null && $settings->isNotEmpty()) {
+            return null;
+        }
+
         $closingDay = $setting?->closing_day ?? $paymentMethod->closing_day;
+        if ($closingDay === null) {
+            return null;
+        }
+
         $closingDate = $this->invoiceCycleService->closingDate($purchaseDate, $closingDay);
         $previousClosingDate = $this->invoiceCycleService->previousClosingDate($closingDate, $closingDay);
         $periodStart = $previousClosingDate->addDay()->startOfDay();
         $firstApplicableCycleStart = $setting?->effective_from?->lte($purchaseDate)
-            ? $this->firstApplicableCycleStart($setting, $this->settingsFor($paymentMethod))
+            ? $this->firstApplicableCycleStart($setting, $settings)
             : $periodStart;
         $dueDay = $this->dueDayFor($paymentMethod, $setting);
 
