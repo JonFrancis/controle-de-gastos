@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['payment_method_id', 'closing_day', 'due_day', 'effective_from'])]
+#[Fillable(['payment_method_id', 'closing_day', 'due_day', 'effective_from', 'retired_at'])]
 class PaymentMethodInvoiceSetting extends Model
 {
     public function paymentMethod(): BelongsTo
@@ -20,6 +20,7 @@ class PaymentMethodInvoiceSetting extends Model
             'closing_day' => 'integer',
             'due_day' => 'integer',
             'effective_from' => 'date',
+            'retired_at' => 'datetime',
         ];
     }
 }

@@ -32,10 +32,44 @@ class PaymentMethodInvoiceSettingService
         $orderedSettings = $settings
             ->sortByDesc('effective_from')
             ->values();
-
-        return $orderedSettings
-            ->filter(fn (PaymentMethodInvoiceSetting $setting): bool => $setting->effective_from?->startOfDay()->lte($date))
+        $setting = $orderedSettings
+            ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $invoiceSetting->effective_from?->startOfDay()->lte($date))
             ->first() ?? $orderedSettings->first();
+
+        if ($setting?->due_day !== null) {
+            return $setting;
+        }
+
+        // Migrated versions do not know the historical due day; the active version is the documented approximation.
+        return $orderedSettings->first(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $invoiceSetting->retired_at === null)
+            ?? $setting;
+    }
+
+    /** @return array{periodStart: CarbonImmutable, periodEnd: CarbonImmutable, closingDate: CarbonImmutable, dueDate: CarbonImmutable|null}|null */
+    public function detailsFor(PaymentMethod $paymentMethod, CarbonInterface $purchaseDate): ?array
+    {
+        if ($paymentMethod->type !== PaymentMethod::TYPE_CREDIT || $paymentMethod->closing_day === null) {
+            return null;
+        }
+
+        $setting = $this->forDate($paymentMethod, $purchaseDate);
+        $closingDay = $setting?->closing_day ?? $paymentMethod->closing_day;
+        $closingDate = $this->invoiceCycleService->closingDate($purchaseDate, $closingDay);
+        $previousClosingDate = $this->invoiceCycleService->previousClosingDate($closingDate, $closingDay);
+        $periodStart = $previousClosingDate->addDay()->startOfDay();
+
+        if ($setting?->effective_from !== null
+            && $purchaseDate->greaterThanOrEqualTo($setting->effective_from)
+            && $setting->effective_from->greaterThan($previousClosingDate)) {
+            $periodStart = $setting->effective_from->toImmutable()->startOfDay();
+        }
+
+        return [
+            'periodStart' => $periodStart,
+            'periodEnd' => $closingDate,
+            'closingDate' => $closingDate,
+            'dueDate' => $setting?->due_day === null ? null : $this->invoiceCycleService->dueDate($closingDate, $setting->due_day),
+        ];
     }
 
     public function createInitialVersion(PaymentMethod $paymentMethod, int $closingDay, ?int $dueDay): PaymentMethodInvoiceSetting

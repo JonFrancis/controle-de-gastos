@@ -7,6 +7,17 @@ use Carbon\CarbonInterface;
 
 class InvoiceCycleService
 {
+    /** @return array{start: CarbonImmutable, end: CarbonImmutable} */
+    public function sourceRangeForInvoiceMonth(CarbonInterface $invoiceMonth): array
+    {
+        $month = CarbonImmutable::instance($invoiceMonth);
+
+        return [
+            'start' => $month->subMonthsNoOverflow(2)->startOfMonth(),
+            'end' => $month->endOfMonth(),
+        ];
+    }
+
     public function closingDate(CarbonInterface $purchaseDate, int $closingDay): CarbonImmutable
     {
         $date = CarbonImmutable::instance($purchaseDate);

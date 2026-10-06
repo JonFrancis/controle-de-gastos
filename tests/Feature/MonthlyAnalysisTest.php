@@ -89,6 +89,33 @@ class MonthlyAnalysisTest extends TestCase
         $this->get('/analysis?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page->where('view', 'invoice')->where('summary.totalDisbursedCents', 1000)->has('purchaseReview', 1)->where('purchaseReview.0.description', 'Antes do fechamento'));
     }
 
+    public function test_invoice_analysis_includes_the_previous_previous_month_when_due_on_the_first(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = PaymentMethod::create(['name' => 'Cartão dia um', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 1]);
+        $card->latestInvoiceSetting()->update(['due_day' => 1, 'effective_from' => '2026-01-01']);
+        $this->purchaseWithoutAllocation('2026-08-02', 1700, $self, $card, 'Compra no limite da fatura');
+
+        $this->get('/analysis?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.totalDisbursedCents', 1700)
+                ->where('purchaseReview.0.description', 'Compra no limite da fatura'));
+    }
+
+    public function test_invoice_analysis_uses_the_current_configuration_as_approximation_for_legacy_settings_without_due_day(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = PaymentMethod::create(['name' => 'Cartão legado', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 1]);
+        $card->latestInvoiceSetting()->update(['effective_from' => '2026-01-01', 'due_day' => null]);
+        $card->invoiceSettings()->create(['closing_day' => 1, 'due_day' => 1, 'effective_from' => '2026-10-01']);
+        $this->purchaseWithoutAllocation('2026-08-02', 2300, $self, $card, 'Compra histórica aproximada');
+
+        $this->get('/analysis?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.totalDisbursedCents', 2300)
+                ->where('purchaseReview.0.description', 'Compra histórica aproximada'));
+    }
+
     public function test_missing_payment_method_is_reported_as_pending_without_being_charged(): void
     {
         [$self] = $this->catalogs();
