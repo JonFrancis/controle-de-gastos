@@ -250,6 +250,45 @@ class MonthlyAnalysisTest extends TestCase
             );
     }
 
+    public function test_invoice_analysis_exposes_separate_card_groups_with_closing_due_and_added_after_closing(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $firstCard = PaymentMethod::create(['name' => 'Nubank análise', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
+        $firstCard->latestInvoiceSetting()->update(['due_day' => 10, 'effective_from' => '2026-01-01']);
+        $secondCard = PaymentMethod::create(['name' => 'Sofisa análise', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 30]);
+        $secondCard->latestInvoiceSetting()->update(['due_day' => 10, 'effective_from' => '2026-01-01']);
+        $purchase = $this->createPurchase($self, $firstCard, 'Compra adicionada depois', '2026-10-03', 1800);
+        $purchase->forceFill(['created_at' => '2026-10-06 12:00:00'])->saveQuietly();
+        $this->createPurchase($self, $secondCard, 'Compra Sofisa análise', '2026-09-15', 2200);
+
+        $this->get('/analysis?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('invoiceGroups', 2)
+                ->where('invoiceGroups.0.paymentMethod', 'Nubank análise')
+                ->where('invoiceGroups.0.periodStart', '2026-09-06')
+                ->where('invoiceGroups.0.periodEnd', '2026-10-05')
+                ->where('invoiceGroups.0.closingDate', '2026-10-05')
+                ->where('invoiceGroups.0.dueDate', '2026-10-10')
+                ->where('invoiceGroups.0.totalCents', 1800)
+                ->where('invoiceGroups.0.purchases.0.addedAfterClosing', true)
+                ->where('invoiceGroups.1.paymentMethod', 'Sofisa análise')
+                ->where('invoiceGroups.1.periodStart', '2026-08-31')
+                ->where('invoiceGroups.1.periodEnd', '2026-09-30')
+                ->where('invoiceGroups.1.closingDate', '2026-09-30')
+                ->where('invoiceGroups.1.dueDate', '2026-10-10')
+                ->where('invoiceGroups.1.totalCents', 2200)
+            );
+    }
+
+    public function test_calendar_analysis_keeps_movement_view_without_invoice_groups(): void
+    {
+        $this->get('/analysis?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('view', 'calendar')
+                ->where('invoiceGroups', [])
+            );
+    }
+
     public function test_middle_of_cycle_effective_date_starts_next_cycle_in_listing_and_analysis(): void
     {
         $this->travelTo('2026-10-06 12:00:00');

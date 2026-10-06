@@ -181,6 +181,19 @@ class CatalogsTest extends TestCase
             'due_day' => 15,
         ])->assertRedirect('/settings/catalogs');
         $paymentMethod = PaymentMethod::query()->where('name', 'Cartão auditado')->firstOrFail();
+        $initialSetting = $paymentMethod->invoiceSettings()->firstOrFail();
+        $initialAudit = AuditLog::query()
+            ->where('action', AuditLog::ACTION_CREATE)
+            ->where('auditable_type', PaymentMethodInvoiceSetting::class)
+            ->where('auditable_id', $initialSetting->id)
+            ->firstOrFail();
+
+        $this->assertSame(PaymentMethodInvoiceSetting::class, $initialAudit->auditable_type);
+        $this->assertSame($initialSetting->id, $initialAudit->auditable_id);
+        $this->assertSame(10, $initialAudit->metadata['closing_day']);
+        $this->assertSame(15, $initialAudit->metadata['due_day']);
+        $this->assertSame('2026-10-06', $initialAudit->metadata['effective_from']);
+        $this->assertSame(null, $initialAudit->metadata['retired_at']);
 
         $this->patch("/payment-methods/{$paymentMethod->id}", [
             'name' => 'Cartão auditado',
@@ -229,6 +242,33 @@ class CatalogsTest extends TestCase
         $this->assertSame(null, $retiredAudit->old_values['retired_at']);
         $this->assertSame('2026-10-06 12:00:00', $retiredAudit->new_values['retired_at']);
         $this->assertSame('2026-10-06 12:00:00', $retiredAudit->metadata['retired_at']);
+
+        $this->travelBack();
+    }
+
+    public function test_catalogs_use_the_current_version_and_suggest_after_a_future_version(): void
+    {
+        $this->travelTo('2026-10-06');
+        $this->post('/payment-methods', [
+            'name' => 'Cartão com versão futura',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+        ]);
+        $paymentMethod = PaymentMethod::query()->where('name', 'Cartão com versão futura')->firstOrFail();
+        $paymentMethod->invoiceSettings()->create([
+            'closing_day' => 20,
+            'due_day' => 25,
+            'effective_from' => '2026-11-11',
+        ]);
+
+        $this->get('/settings/catalogs')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('paymentMethods.0.closing_day', 10)
+                ->where('paymentMethods.0.due_day', 15)
+                ->where('paymentMethods.0.effective_from', '2026-10-06')
+                ->where('paymentMethods.0.suggested_effective_from', '2026-11-21')
+            );
 
         $this->travelBack();
     }

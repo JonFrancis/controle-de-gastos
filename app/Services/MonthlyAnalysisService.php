@@ -31,7 +31,7 @@ class MonthlyAnalysisService
         $periodEnd = $range['end'];
         $items = $this->items($periodStart, $periodEnd)->filter(fn (array $item): bool => $view !== 'invoice' || $this->inInvoice($item, $selectedMonth))->values();
 
-        return $this->buildAnalysis($items, $periodStart, $periodEnd, $movementCategoryId);
+        return $this->buildAnalysis($items, $periodStart, $periodEnd, $movementCategoryId, $view === 'invoice');
     }
 
     /** @return array<string, mixed> */
@@ -54,7 +54,7 @@ class MonthlyAnalysisService
     }
 
     /** @param Collection<int, array<string, mixed>> $items */
-    private function buildAnalysis(Collection $items, ?CarbonInterface $periodStart, ?CarbonInterface $periodEnd, ?int $movementCategoryId = null): array
+    private function buildAnalysis(Collection $items, ?CarbonInterface $periodStart, ?CarbonInterface $periodEnd, ?int $movementCategoryId = null, bool $invoiceView = false): array
     {
         $chargeableItems = $items->reject(fn (array $item): bool => $this->isPending($item))->values();
         $selfId = $this->selfId();
@@ -88,8 +88,44 @@ class MonthlyAnalysisService
                 'pending' => $item['paymentMethodId'] === null,
                 'addedAfterClosing' => $item['addedAfterClosing'],
             ])->unique('key')->values()->all(),
+            'invoiceGroups' => $invoiceView ? $this->invoiceGroups($items) : [],
             'pendingReview' => $items->filter(fn (array $item): bool => $item['paymentMethodId'] === null)->unique('sourceKey')->count(),
         ];
+    }
+
+    /** @param Collection<int, array<string, mixed>> $items */
+    private function invoiceGroups(Collection $items): array
+    {
+        return $items
+            ->filter(fn (array $item): bool => $item['paymentType'] === PaymentMethod::TYPE_CREDIT && $item['closingDate'] !== null)
+            ->unique('sourceKey')
+            ->groupBy(fn (array $item): string => $item['paymentMethodId'].'-'.$item['closingDate'])
+            ->map(function (Collection $group): array {
+                $first = $group->first();
+
+                return [
+                    'paymentMethod' => $first['paymentMethodName'],
+                    'paymentMethodId' => $first['paymentMethodId'],
+                    'periodStart' => $first['periodStart'],
+                    'periodEnd' => $first['periodEnd'],
+                    'closingDate' => $first['closingDate'],
+                    'dueDate' => $first['dueDate'],
+                    'totalCents' => (int) $group->sum('sourceAmountCents'),
+                    'purchases' => $group->map(fn (array $item): array => [
+                        'key' => $item['sourceKey'],
+                        'date' => $item['date'],
+                        'description' => $item['description'],
+                        'cardName' => $item['cardName'],
+                        'amountCents' => $item['sourceAmountCents'],
+                        'origin' => $item['origin'],
+                        'paymentMethodName' => $item['paymentMethodName'],
+                        'addedAfterClosing' => $item['addedAfterClosing'],
+                    ])->values()->all(),
+                ];
+            })
+            ->sortBy(fn (array $group): string => ($group['dueDate'] ?? $group['closingDate']).'-'.$group['paymentMethod'])
+            ->values()
+            ->all();
     }
 
     /** @param Collection<int, array<string, mixed>> $items */
@@ -380,7 +416,7 @@ class MonthlyAnalysisService
             ? $this->invoiceSettings->detailsFor($paymentMethod, $data['date'])
             : null;
 
-        return ['key' => $data['sourceType'].':'.$data['sourceId'], 'sourceKey' => $data['sourceKey'], 'origin' => $data['origin'], 'date' => $data['date']->toDateString(), 'description' => $data['description'], 'cardName' => $data['cardName'], 'amountCents' => $data['amountCents'], 'sourceAmountCents' => $data['sourceAmountCents'], 'payerId' => $data['payerId'], 'participantId' => $data['participantId'], 'participantName' => $participantNames->get($data['participantId']), 'categoryId' => $data['categoryId'], 'categoryName' => $data['categoryName'], 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $data['paymentMethodId'], 'paymentType' => $paymentMethod?->type, 'closingDay' => $invoiceDetails === null ? null : $invoiceDetails['closingDate']->day, 'dueDay' => $invoiceDetails === null ? null : $invoiceDetails['dueDate']?->day, 'invoiceMonth' => ($invoiceDetails['dueDate'] ?? $invoiceDetails['closingDate'] ?? null)?->format('Y-m'), 'addedAfterClosing' => $data['createdAt'] instanceof CarbonInterface && $invoiceDetails !== null && $invoiceDetails['closingDate']->endOfDay()->lt($data['createdAt'])];
+        return ['key' => $data['sourceType'].':'.$data['sourceId'], 'sourceKey' => $data['sourceKey'], 'origin' => $data['origin'], 'date' => $data['date']->toDateString(), 'description' => $data['description'], 'cardName' => $data['cardName'], 'amountCents' => $data['amountCents'], 'sourceAmountCents' => $data['sourceAmountCents'], 'payerId' => $data['payerId'], 'participantId' => $data['participantId'], 'participantName' => $participantNames->get($data['participantId']), 'categoryId' => $data['categoryId'], 'categoryName' => $data['categoryName'], 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $data['paymentMethodId'], 'paymentType' => $paymentMethod?->type, 'periodStart' => $invoiceDetails === null ? null : $invoiceDetails['periodStart']->toDateString(), 'periodEnd' => $invoiceDetails === null ? null : $invoiceDetails['periodEnd']->toDateString(), 'closingDate' => $invoiceDetails === null ? null : $invoiceDetails['closingDate']->toDateString(), 'dueDate' => $invoiceDetails === null ? null : $invoiceDetails['dueDate']?->toDateString(), 'closingDay' => $invoiceDetails === null ? null : $invoiceDetails['closingDate']->day, 'dueDay' => $invoiceDetails === null ? null : $invoiceDetails['dueDate']?->day, 'invoiceMonth' => ($invoiceDetails['dueDate'] ?? $invoiceDetails['closingDate'] ?? null)?->format('Y-m'), 'addedAfterClosing' => $data['createdAt'] instanceof CarbonInterface && $invoiceDetails !== null && $invoiceDetails['closingDate']->endOfDay()->lt($data['createdAt'])];
     }
 
     private function selfId(): int

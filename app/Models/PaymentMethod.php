@@ -46,6 +46,7 @@ class PaymentMethod extends Model
     {
         return $this->hasOne(PaymentMethodInvoiceSetting::class)
             ->whereNull('retired_at')
+            ->whereDate('effective_from', '<=', today())
             ->latestOfMany('effective_from');
     }
 

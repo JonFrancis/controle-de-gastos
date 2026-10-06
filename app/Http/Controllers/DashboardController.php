@@ -46,6 +46,9 @@ class DashboardController extends Controller
         $invoiceGroups = $view === 'invoice'
             ? $purchaseListingService->forMonth($selectedMonth, 'invoice', Participant::query()->where('is_default', true)->value('id'))['invoiceGroups']
             : collect();
+        $invoiceTotalCents = $view === 'invoice'
+            ? (int) $invoiceGroups->sum('totalCents')
+            : 0;
 
         return Inertia::render('Dashboard', [
             'selectedMonth' => $selectedMonth,
@@ -64,6 +67,7 @@ class DashboardController extends Controller
             'pendingReview' => $pendingReview,
             'pendingReviewUrl' => $pendingReview > 0 ? route('imports.queue', [], false) : null,
             'invoiceGroups' => $invoiceGroups,
+            'invoiceTotalCents' => $invoiceTotalCents,
         ]);
     }
 
