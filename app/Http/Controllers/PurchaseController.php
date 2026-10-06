@@ -32,7 +32,9 @@ class PurchaseController extends Controller
         $invoiceGroups = $purchaseListing['invoiceGroups'];
 
         return Inertia::render('Purchases/Index', [
-            'monthLabel' => ucfirst($month->locale('pt_BR')->translatedFormat('F \d\e Y')),
+            'monthLabel' => $view === 'invoice'
+                ? 'Faturas com vencimento em '.ucfirst($month->locale('pt_BR')->translatedFormat('F \d\e Y'))
+                : ucfirst($month->locale('pt_BR')->translatedFormat('F \d\e Y')),
             'selectedMonth' => $selectedMonth,
             'view' => $view,
             'monthTotalCents' => (int) ($view === 'invoice' ? $invoiceGroups->sum('totalCents') : $purchases->sum('amount_cents') + $occurrences->sum('amount_cents')),

@@ -13,6 +13,7 @@ class PurchaseListingService
 {
     public function __construct(
         private readonly InvoiceCycleService $invoiceCycleService,
+        private readonly PaymentMethodInvoiceSettingService $invoiceSettings,
         private readonly RecurrenceService $recurrenceService,
     ) {}
 
@@ -20,14 +21,14 @@ class PurchaseListingService
     public function forMonth(string $selectedMonth, string $view, ?int $selfId): array
     {
         $month = Carbon::createFromFormat('Y-m', $selectedMonth);
-        $periodStart = $view === 'invoice' ? $month->copy()->subMonthNoOverflow()->startOfMonth() : $month->copy()->startOfMonth();
+        $periodStart = $view === 'invoice' ? $month->copy()->subMonthsNoOverflow(2)->startOfMonth() : $month->copy()->startOfMonth();
         $periodEnd = $month->copy()->endOfMonth();
 
         $this->recurrenceService->ensureOccurrencesForRange($periodStart, $periodEnd);
 
         $purchases = Purchase::query()
             ->active()
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'category:id,name', 'allocations.participant:id,name', 'allocations' => fn ($query) => $query->with('category:id,name')])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'allocations.participant:id,name', 'allocations' => fn ($query) => $query->with('category:id,name')])
             ->whereBetween('purchased_at', [$periodStart, $periodEnd])
             ->orderByDesc('purchased_at')
             ->get();
@@ -60,12 +61,16 @@ class PurchaseListingService
 
                 return [
                     'paymentMethod' => $first['paymentMethod'],
+                    'paymentMethodId' => $first['paymentMethodId'],
+                    'periodStart' => $first['periodStart'],
+                    'periodEnd' => $first['periodEnd'],
                     'closingDate' => $first['closingDate'],
+                    'dueDate' => $first['dueDate'],
                     'totalCents' => (int) $group->sum(fn (array $item): int => $item['data']['amountCents']),
                     'purchases' => $group->map(fn (array $item): array => $item['data'])->values(),
                 ];
             })
-            ->sortBy('closingDate')
+            ->sortBy(fn (array $group): string => ($group['dueDate'] ?? $group['closingDate']).'-'.$group['paymentMethod'])
             ->values();
 
         return compact('month', 'purchases', 'occurrences', 'invoiceGroups');
@@ -120,21 +125,54 @@ class PurchaseListingService
 
     private function belongsToInvoice(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item, string $selectedMonth): bool
     {
-        return $item->paymentMethod?->type === PaymentMethod::TYPE_CREDIT
-            && $item->paymentMethod->closing_day
-            && $this->invoiceCycleService->closingDate($item->purchased_at, $item->paymentMethod->closing_day)->format('Y-m') === $selectedMonth;
+        $details = $this->invoiceDetails($item);
+
+        return $details !== null
+            && ($details['dueDate'] ?? $details['closingDate'])->format('Y-m') === $selectedMonth;
     }
 
     /** @return array<string, mixed> */
     private function invoiceItem(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item, ?int $selfId): array
     {
-        $closingDate = $this->invoiceCycleService->closingDate($item->purchased_at, $item->paymentMethod->closing_day);
+        $details = $this->invoiceDetails($item);
 
         return [
             'paymentMethodId' => $item->payment_method_id,
             'paymentMethod' => $item->paymentMethod->name,
-            'closingDate' => $closingDate->toDateString(),
+            'periodStart' => $details['periodStart']->toDateString(),
+            'periodEnd' => $details['periodEnd']->toDateString(),
+            'closingDate' => $details['closingDate']->toDateString(),
+            'dueDate' => $details['dueDate']?->toDateString(),
             'data' => $item instanceof Purchase ? $this->purchaseData($item, $selfId) : $this->occurrenceData($item),
+        ];
+    }
+
+    /** @return array{periodStart: Carbon, periodEnd: Carbon, closingDate: Carbon, dueDate: Carbon|null}|null */
+    private function invoiceDetails(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item): ?array
+    {
+        if ($item->paymentMethod?->type !== PaymentMethod::TYPE_CREDIT || ! $item->paymentMethod->closing_day) {
+            return null;
+        }
+
+        $setting = $item instanceof Purchase
+            ? $this->invoiceSettings->forDate($item->paymentMethod, $item->purchased_at)
+            : null;
+        $closingDay = $setting?->closing_day ?? $item->paymentMethod->closing_day;
+        $closingDate = $this->invoiceCycleService->closingDate($item->purchased_at, $closingDay);
+        $previousClosingDate = $this->invoiceCycleService->previousClosingDate($closingDate, $closingDay);
+        $periodStart = $previousClosingDate->addDay()->startOfDay();
+
+        if ($setting?->effective_from !== null
+            && $item->purchased_at->greaterThanOrEqualTo($setting->effective_from)
+            && $setting->effective_from->greaterThan($previousClosingDate)) {
+            $periodStart = $setting->effective_from->toImmutable()->startOfDay();
+        }
+
+        return [
+            'periodStart' => $periodStart,
+            'periodEnd' => $closingDate,
+            'closingDate' => $closingDate,
+            'dueDate' => $setting?->due_day === null ? null : $this->invoiceCycleService->dueDate($closingDate, $setting->due_day),
         ];
     }
 }

@@ -20,8 +20,12 @@ type ExpenseItem = {
 };
 
 type InvoiceGroup = {
+    paymentMethodId: number;
     paymentMethod: string;
+    periodStart: string;
+    periodEnd: string;
     closingDate: string;
+    dueDate: string | null;
     totalCents: number;
     purchases: ExpenseItem[];
 };
@@ -58,7 +62,7 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
                         </div>
                         <form method="get" action="/purchases" className="flex flex-wrap items-center gap-2">
                             <input type="hidden" name="view" value={view} />
-                            <label htmlFor="purchases-month" className="text-sm text-slate-400">Mês</label>
+                            <label htmlFor="purchases-month" className="text-sm text-slate-400">{view === 'invoice' ? 'Faturas com vencimento em' : 'Mês'}</label>
                             <input id="purchases-month" type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
                             <button className="rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/40">Filtrar</button>
                         </form>
@@ -103,11 +107,12 @@ function InvoiceGroups({ groups }: { groups: InvoiceGroup[] }) {
         <div className="mt-5 space-y-5">
             {groups.length === 0 && <EmptyState text="Nenhuma fatura de cartão neste mês." />}
             {groups.map((group) => (
-                <article key={`${group.paymentMethod}-${group.closingDate}`} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                <article key={`${group.paymentMethodId}-${group.closingDate}`} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
                     <div className="flex flex-col justify-between gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-center">
                         <div>
                             <h3 className="font-semibold text-white">{group.paymentMethod}</h3>
-                            <p className="mt-1 text-xs text-slate-400">Fechamento em {formatDate(group.closingDate)}</p>
+                            <p className="mt-1 text-xs text-slate-400">Período: {formatDate(group.periodStart)} a {formatDate(group.periodEnd)}</p>
+                            <p className="mt-1 text-xs text-slate-400">Fechamento: {formatDate(group.closingDate)} · Vencimento: {group.dueDate ? formatDate(group.dueDate) : 'não configurado'}</p>
                         </div>
                         <strong className="text-sm text-emerald-300">{formatMoney(group.totalCents)}</strong>
                     </div>

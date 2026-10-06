@@ -23,6 +23,21 @@ class PaymentMethodInvoiceSettingService
         return $this->invoiceCycleService->closingDate($referenceDate, $closingDay)->addDay()->startOfDay();
     }
 
+    public function forDate(PaymentMethod $paymentMethod, CarbonInterface $date): ?PaymentMethodInvoiceSetting
+    {
+        $settings = $paymentMethod->relationLoaded('invoiceSettings')
+            ? $paymentMethod->invoiceSettings
+            : $paymentMethod->invoiceSettings()->get();
+
+        $orderedSettings = $settings
+            ->sortByDesc('effective_from')
+            ->values();
+
+        return $orderedSettings
+            ->filter(fn (PaymentMethodInvoiceSetting $setting): bool => $setting->effective_from?->startOfDay()->lte($date))
+            ->first() ?? $orderedSettings->first();
+    }
+
     public function createInitialVersion(PaymentMethod $paymentMethod, int $closingDay, ?int $dueDay): PaymentMethodInvoiceSetting
     {
         $effectiveFrom = $paymentMethod->created_at?->toDateString() ?? now()->toDateString();
