@@ -30,7 +30,11 @@ class DashboardController extends Controller
         $budgetSummary = $budgetAnalysis['summary'];
         $pendingReviewQuery = SpreadsheetImportRow::query()->where('status', 'pending_review');
         $pendingReview = (clone $pendingReviewQuery)->count();
-        $personBalances = collect($balanceService->participantBalances($month->copy()->endOfMonth(), $month->copy()->startOfMonth()))
+        $personBalances = collect($balanceService->participantBalances(
+            $range['end'],
+            $range['start'],
+            $view === 'invoice' ? $selectedMonth : null,
+        ))
             ->filter(fn (array $balance): bool => $balance['hasMovement'])
             ->map(fn (array $balance): array => [
                 'id' => $balance['id'],
