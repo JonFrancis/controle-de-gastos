@@ -331,6 +331,30 @@ class PurchaseIndexTest extends TestCase
             );
     }
 
+    public function test_invoice_view_applies_a_mid_cycle_version_on_the_next_cycle(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão com vigência no meio do ciclo', 10, 15);
+        $card->invoiceSettings()->create([
+            'closing_day' => 20,
+            'due_day' => 25,
+            'effective_from' => '2026-10-15',
+        ]);
+        $this->createPurchase($self, $card, 'Compra do ciclo antigo', '2026-10-16', 1000);
+        $this->createPurchase($self, $card, 'Compra do ciclo novo', '2026-11-12', 2000);
+
+        $this->get('/purchases?month=2026-11&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('invoiceGroups', 2)
+                ->where('invoiceGroups.0.closingDate', '2026-11-10')
+                ->where('invoiceGroups.0.dueDate', '2026-11-15')
+                ->where('invoiceGroups.0.totalCents', 1000)
+                ->where('invoiceGroups.1.closingDate', '2026-11-20')
+                ->where('invoiceGroups.1.dueDate', '2026-11-25')
+                ->where('invoiceGroups.1.totalCents', 2000)
+            );
+    }
+
     public function test_invoice_view_uses_due_month_for_sofisa_and_excludes_non_credit_purchases(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();

@@ -86,13 +86,14 @@ class PaymentMethodController extends Controller
     {
         $oldValues = $paymentMethod->getAttributes();
         $data = $request->validated();
-        $latestSetting = $paymentMethod->latestInvoiceSetting;
+        $latestSetting = $invoiceSettings->currentForDate($paymentMethod);
+        $latestScheduledSetting = $invoiceSettings->latestScheduled($paymentMethod);
         $isCredit = $data['type'] === PaymentMethod::TYPE_CREDIT;
 
         if ($isCredit) {
             $effectiveFrom = CarbonImmutable::parse($data['effective_from']);
             $nextSafeEffectiveFrom = $invoiceSettings->nextSafeEffectiveFrom($paymentMethod);
-            $latestEffectiveFrom = $latestSetting?->effective_from?->toImmutable();
+            $latestEffectiveFrom = $latestScheduledSetting?->effective_from?->toImmutable();
 
             if ($effectiveFrom->lt($nextSafeEffectiveFrom)) {
                 return to_route('settings.catalogs')->withErrors(['effective_from' => 'A vigência deve começar após o próximo fechamento seguro.']);
@@ -153,6 +154,8 @@ class PaymentMethodController extends Controller
     {
         return [
             'type' => 'payment_method_invoice_setting',
+            'id' => $setting->id,
+            'payment_method_id' => $setting->payment_method_id,
             'closing_day' => $setting->closing_day,
             'due_day' => $setting->due_day,
             'effective_from' => $setting->effective_from?->toDateString(),

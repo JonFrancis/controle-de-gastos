@@ -6,6 +6,7 @@ use App\Models\PaymentMethod;
 use App\Models\PaymentMethodInvoiceSetting;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 
 class PaymentMethodInvoiceSettingService
 {
@@ -14,19 +15,32 @@ class PaymentMethodInvoiceSettingService
     public function nextSafeEffectiveFrom(PaymentMethod $paymentMethod, ?CarbonInterface $referenceDate = null): CarbonImmutable
     {
         $referenceDate = CarbonImmutable::instance($referenceDate ?? now())->startOfDay();
-        $closingDay = $paymentMethod->latestInvoiceSetting?->closing_day ?? $paymentMethod->closing_day;
+        $currentSetting = $this->forDate($paymentMethod, $referenceDate);
+        $closingDay = $currentSetting?->closing_day ?? $paymentMethod->closing_day;
 
         if ($closingDay === null) {
             return $referenceDate;
         }
 
-        return $this->invoiceCycleService->closingDate($referenceDate, $closingDay)->addDay()->startOfDay();
+        $nextCycleStart = $this->invoiceCycleService->closingDate($referenceDate, $closingDay)->addDay()->startOfDay();
+        $latestScheduledSetting = $this->latestScheduled($paymentMethod);
+
+        if ($latestScheduledSetting === null || $latestScheduledSetting->effective_from === null) {
+            return $nextCycleStart;
+        }
+
+        $scheduledNextCycleStart = $this->invoiceCycleService
+            ->closingDate($latestScheduledSetting->effective_from, $latestScheduledSetting->closing_day)
+            ->addDay()
+            ->startOfDay();
+
+        return $scheduledNextCycleStart->greaterThan($nextCycleStart) ? $scheduledNextCycleStart : $nextCycleStart;
     }
 
     public function normalizeEffectiveFrom(PaymentMethod $paymentMethod, CarbonInterface $effectiveFrom): CarbonImmutable
     {
         $date = CarbonImmutable::instance($effectiveFrom)->startOfDay();
-        $closingDay = $paymentMethod->latestInvoiceSetting?->closing_day ?? $paymentMethod->closing_day;
+        $closingDay = $this->forDate($paymentMethod, $date)?->closing_day ?? $paymentMethod->closing_day;
 
         if ($closingDay === null) {
             return $date;
@@ -38,17 +52,30 @@ class PaymentMethodInvoiceSettingService
         return $cycleStart->lessThan($date) ? $closingDate->addDay()->startOfDay() : $cycleStart;
     }
 
+    public function currentForDate(PaymentMethod $paymentMethod, ?CarbonInterface $date = null): ?PaymentMethodInvoiceSetting
+    {
+        return $this->forDate($paymentMethod, $date ?? now());
+    }
+
+    public function latestScheduled(PaymentMethod $paymentMethod): ?PaymentMethodInvoiceSetting
+    {
+        return $paymentMethod->invoiceSettings()
+            ->whereNull('retired_at')
+            ->orderByDesc('effective_from')
+            ->orderByDesc('id')
+            ->first();
+    }
+
     public function forDate(PaymentMethod $paymentMethod, CarbonInterface $date): ?PaymentMethodInvoiceSetting
     {
-        $settings = $paymentMethod->relationLoaded('invoiceSettings')
-            ? $paymentMethod->invoiceSettings
-            : $paymentMethod->invoiceSettings()->get();
+        $settings = $this->settingsFor($paymentMethod);
 
         $orderedSettings = $settings
             ->sortByDesc('effective_from')
             ->values();
+        $date = CarbonImmutable::instance($date)->startOfDay();
         $setting = $orderedSettings
-            ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $invoiceSetting->effective_from?->startOfDay()->lte($date))
+            ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $this->firstApplicableCycleStart($invoiceSetting, $orderedSettings)->lte($date))
             ->first() ?? $orderedSettings->first();
 
         if ($setting?->due_day !== null) {
@@ -56,7 +83,10 @@ class PaymentMethodInvoiceSettingService
         }
 
         // Migrated versions do not know the historical due day; the active version is the documented approximation.
-        return $orderedSettings->first(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $invoiceSetting->retired_at === null)
+        return $orderedSettings
+            ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $invoiceSetting->retired_at === null)
+            ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $this->firstApplicableCycleStart($invoiceSetting, $orderedSettings)->lte(now()))
+            ->first()
             ?? $setting;
     }
 
@@ -72,15 +102,12 @@ class PaymentMethodInvoiceSettingService
         $closingDate = $this->invoiceCycleService->closingDate($purchaseDate, $closingDay);
         $previousClosingDate = $this->invoiceCycleService->previousClosingDate($closingDate, $closingDay);
         $periodStart = $previousClosingDate->addDay()->startOfDay();
-
-        if ($setting?->effective_from !== null
-            && $purchaseDate->greaterThanOrEqualTo($setting->effective_from)
-            && $setting->effective_from->greaterThan($previousClosingDate)) {
-            $periodStart = $setting->effective_from->toImmutable()->startOfDay();
-        }
+        $firstApplicableCycleStart = $setting?->effective_from?->lte($purchaseDate)
+            ? $this->firstApplicableCycleStart($setting, $this->settingsFor($paymentMethod))
+            : $periodStart;
 
         return [
-            'periodStart' => $periodStart,
+            'periodStart' => $firstApplicableCycleStart->greaterThan($periodStart) ? $firstApplicableCycleStart : $periodStart,
             'periodEnd' => $closingDate,
             'closingDate' => $closingDate,
             'dueDate' => $setting?->due_day === null ? null : $this->invoiceCycleService->dueDate($closingDate, $setting->due_day),
@@ -103,5 +130,32 @@ class PaymentMethodInvoiceSettingService
             'due_day' => $dueDay,
             'effective_from' => $effectiveFrom,
         ]);
+    }
+
+    /** @param Collection<int, PaymentMethodInvoiceSetting> $settings */
+    private function firstApplicableCycleStart(PaymentMethodInvoiceSetting $setting, Collection $settings): CarbonImmutable
+    {
+        $effectiveFrom = CarbonImmutable::instance($setting->effective_from)->startOfDay();
+        $previousSetting = $settings
+            ->filter(fn (PaymentMethodInvoiceSetting $candidate): bool => $candidate->effective_from?->lt($setting->effective_from))
+            ->sortByDesc('effective_from')
+            ->first();
+
+        if ($previousSetting === null) {
+            return $effectiveFrom;
+        }
+
+        $closingDate = $this->invoiceCycleService->closingDate($effectiveFrom, $previousSetting->closing_day);
+        $cycleStart = $this->invoiceCycleService->previousClosingDate($closingDate, $previousSetting->closing_day)->addDay()->startOfDay();
+
+        return $cycleStart->lessThan($effectiveFrom) ? $closingDate->addDay()->startOfDay() : $cycleStart;
+    }
+
+    /** @return Collection<int, PaymentMethodInvoiceSetting> */
+    private function settingsFor(PaymentMethod $paymentMethod): Collection
+    {
+        return $paymentMethod->relationLoaded('invoiceSettings')
+            ? $paymentMethod->invoiceSettings
+            : $paymentMethod->invoiceSettings()->get();
     }
 }

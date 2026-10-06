@@ -25,7 +25,7 @@ class ParticipantController extends Controller
             'participants' => Participant::query()->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'active', 'is_default']),
             'categories' => Category::query()->orderBy('name')->get(['id', 'name', 'active']),
             'paymentMethods' => PaymentMethod::query()->with(['latestInvoiceSetting', 'invoiceSettings'])->orderBy('name')->get(['id', 'name', 'type', 'closing_day', 'active'])->map(function (PaymentMethod $paymentMethod) use ($invoiceSettings): array {
-                $latestSetting = $paymentMethod->latestInvoiceSetting;
+                $latestSetting = $invoiceSettings->currentForDate($paymentMethod);
                 $isCredit = $paymentMethod->type === PaymentMethod::TYPE_CREDIT;
 
                 return [

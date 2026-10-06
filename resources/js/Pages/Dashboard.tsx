@@ -6,6 +6,7 @@ type Props = {
     view: 'calendar' | 'invoice';
     pendingReview: number;
     pendingReviewUrl: string | null;
+    invoiceTotalCents: number;
     summary: {
         ownConsumptionCents: number;
         totalDisbursedCents: number;
@@ -42,7 +43,7 @@ const navigation = (selectedMonth: string) => [
     ['Configurações', '/settings/catalogs'],
 ];
 
-export default function Dashboard({ selectedMonth, view, pendingReview, pendingReviewUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
+export default function Dashboard({ selectedMonth, view, pendingReview, pendingReviewUrl, summary, charts, personChart, invoiceGroups, invoiceTotalCents, flash }: Props) {
     return (
         <>
             <Head title={view === 'invoice' ? 'Faturas' : 'Movimentação'} />
@@ -91,7 +92,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
 
                         {flash?.success && <p role="status" className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{flash.success}</p>}
 
-                        {view === 'invoice' ? <InvoiceOverview groups={invoiceGroups} selectedMonth={selectedMonth} totalCents={summary.totalDisbursedCents} /> : <>
+                        {view === 'invoice' ? <InvoiceOverview groups={invoiceGroups} selectedMonth={selectedMonth} totalCents={invoiceTotalCents} /> : <>
                             <section className="mt-8 grid gap-4 md:grid-cols-2">
                                 <SummaryCard label="Meus gastos totais do mês" value={formatMoney(summary.ownConsumptionCents)} note="Consumo próprio atribuído a Eu" accent="emerald" />
                                 <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} selectedMonth={selectedMonth} />
