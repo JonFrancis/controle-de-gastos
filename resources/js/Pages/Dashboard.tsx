@@ -72,6 +72,11 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
 
                 <main className="min-h-screen lg:pl-64">
                     <div className="mx-auto max-w-7xl px-5 py-6 sm:px-8 lg:px-12 lg:py-10">
+                        <nav aria-label="Navegação principal" className="mb-6 flex items-center gap-2 lg:hidden">
+                            <Link href={`/purchases?month=${selectedMonth}&view=invoice`} className={`rounded-xl px-3 py-2 text-sm ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}>Faturas</Link>
+                            <span className="h-5 w-px bg-white/10" aria-hidden="true" />
+                            <Link href={`/purchases?month=${selectedMonth}&view=calendar`} className={`rounded-xl px-3 py-2 text-sm ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}>Movimentações</Link>
+                        </nav>
                         <header className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
                             <div>
                                 <p className="text-sm font-medium text-emerald-300">{view === 'invoice' ? 'Faturas' : 'Movimentação'}</p>

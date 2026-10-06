@@ -243,6 +243,44 @@ class CatalogsTest extends TestCase
         $this->travelBack();
     }
 
+    public function test_changing_only_effective_date_creates_a_new_invoice_version_with_existing_configuration(): void
+    {
+        $this->travelTo('2026-10-06');
+
+        $this->post('/payment-methods', [
+            'name' => 'Cartão com nova vigência',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+        ])->assertRedirect('/settings/catalogs');
+
+        $paymentMethod = PaymentMethod::query()->where('name', 'Cartão com nova vigência')->firstOrFail();
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Cartão com nova vigência',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+            'effective_from' => '2026-11-11',
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseCount('payment_method_invoice_settings', 2);
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'payment_method_id' => $paymentMethod->id,
+            'closing_day' => 10,
+            'due_day' => 15,
+            'effective_from' => '2026-11-11 00:00:00',
+            'retired_at' => null,
+        ]);
+        $this->assertDatabaseHas('payment_methods', [
+            'id' => $paymentMethod->id,
+            'closing_day' => 10,
+        ]);
+
+        $this->travelBack();
+    }
+
     public function test_invoice_setting_lifecycle_is_audited_with_its_version_fields(): void
     {
         $this->travelTo('2026-10-06 12:00:00');
