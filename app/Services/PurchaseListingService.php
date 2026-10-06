@@ -34,13 +34,13 @@ class PurchaseListingService
             ->get();
         $installmentOccurrences = InstallmentOccurrence::query()
             ->whereNull('archived_at')
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'category:id,name', 'installment:id,installment_count'])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'installment:id,installment_count'])
             ->whereBetween('purchased_at', [$periodStart, $periodEnd])
             ->orderByDesc('purchased_at')
             ->get();
         $recurrenceOccurrences = RecurrenceOccurrence::query()
             ->whereNull('archived_at')
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'category:id,name', 'recurrence:id'])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'recurrence:id'])
             ->whereBetween('purchased_at', [$periodStart, $periodEnd])
             ->orderByDesc('purchased_at')
             ->get();
@@ -135,6 +135,11 @@ class PurchaseListingService
     private function invoiceItem(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item, ?int $selfId): array
     {
         $details = $this->invoiceDetails($item);
+        $data = $item instanceof Purchase ? $this->purchaseData($item, $selfId) : $this->occurrenceData($item);
+
+        if ($item instanceof Purchase) {
+            $data['addedAfterClosing'] = $item->created_at?->greaterThan($details['closingDate']->endOfDay()) ?? false;
+        }
 
         return [
             'paymentMethodId' => $item->payment_method_id,
@@ -143,7 +148,7 @@ class PurchaseListingService
             'periodEnd' => $details['periodEnd']->toDateString(),
             'closingDate' => $details['closingDate']->toDateString(),
             'dueDate' => $details['dueDate']?->toDateString(),
-            'data' => $item instanceof Purchase ? $this->purchaseData($item, $selfId) : $this->occurrenceData($item),
+            'data' => $data,
         ];
     }
 
@@ -154,9 +159,7 @@ class PurchaseListingService
             return null;
         }
 
-        $setting = $item instanceof Purchase
-            ? $this->invoiceSettings->forDate($item->paymentMethod, $item->purchased_at)
-            : null;
+        $setting = $this->invoiceSettings->forDate($item->paymentMethod, $item->purchased_at);
         $closingDay = $setting?->closing_day ?? $item->paymentMethod->closing_day;
         $closingDate = $this->invoiceCycleService->closingDate($item->purchased_at, $closingDay);
         $previousClosingDate = $this->invoiceCycleService->previousClosingDate($closingDate, $closingDay);
