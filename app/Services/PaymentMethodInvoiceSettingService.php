@@ -155,7 +155,6 @@ class PaymentMethodInvoiceSettingService
 
         $settings = $this->settingsFor($paymentMethod);
 
-        // Migrated versions may not know the historical due day; the active version is the documented approximation.
         return $settings
             ->sortByDesc('effective_from')
             ->filter(fn (PaymentMethodInvoiceSetting $invoiceSetting): bool => $invoiceSetting->retired_at === null)
