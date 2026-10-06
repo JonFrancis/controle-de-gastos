@@ -366,7 +366,7 @@ class CatalogsTest extends TestCase
             'due_day' => 15,
         ]);
         $paymentMethod = PaymentMethod::query()->where('name', 'Cartão com versão futura')->firstOrFail();
-        $paymentMethod->invoiceSettings()->create([
+        PaymentMethodInvoiceSetting::factory()->for($paymentMethod)->create([
             'closing_day' => 20,
             'due_day' => 25,
             'effective_from' => '2026-11-11',
@@ -393,7 +393,7 @@ class CatalogsTest extends TestCase
             'due_day' => 15,
         ]);
         $paymentMethod = PaymentMethod::query()->where('name', 'Cartão com metadados')->firstOrFail();
-        $futureSetting = $paymentMethod->invoiceSettings()->create([
+        $futureSetting = PaymentMethodInvoiceSetting::factory()->for($paymentMethod)->create([
             'closing_day' => 20,
             'due_day' => 25,
             'effective_from' => '2026-11-11',
@@ -455,7 +455,7 @@ class CatalogsTest extends TestCase
             'due_day' => 15,
         ]);
         $paymentMethod = PaymentMethod::query()->where('name', 'Cartão com histórico aproximado')->firstOrFail();
-        $paymentMethod->invoiceSettings()->create([
+        PaymentMethodInvoiceSetting::factory()->for($paymentMethod)->create([
             'closing_day' => 20,
             'due_day' => 25,
             'effective_from' => '2026-11-11',
@@ -480,7 +480,7 @@ class CatalogsTest extends TestCase
             'due_day' => 15,
         ]);
         $paymentMethod = PaymentMethod::query()->where('name', 'Cartão com agendamento encadeado')->firstOrFail();
-        $paymentMethod->invoiceSettings()->create([
+        PaymentMethodInvoiceSetting::factory()->for($paymentMethod)->create([
             'closing_day' => 20,
             'due_day' => 25,
             'effective_from' => '2026-11-11',
