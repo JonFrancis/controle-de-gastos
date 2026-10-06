@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\InstallmentOccurrence;
-use App\Models\PaymentMethod;
 use App\Models\Purchase;
 use App\Models\RecurrenceOccurrence;
 use Carbon\Carbon;
@@ -21,8 +20,11 @@ class PurchaseListingService
     public function forMonth(string $selectedMonth, string $view, ?int $selfId): array
     {
         $month = Carbon::createFromFormat('Y-m', $selectedMonth);
-        $periodStart = $view === 'invoice' ? $month->copy()->subMonthsNoOverflow(2)->startOfMonth() : $month->copy()->startOfMonth();
-        $periodEnd = $month->copy()->endOfMonth();
+        $range = $view === 'invoice'
+            ? $this->invoiceCycleService->sourceRangeForInvoiceMonth($month)
+            : ['start' => $month->copy()->startOfMonth(), 'end' => $month->copy()->endOfMonth()];
+        $periodStart = $range['start'];
+        $periodEnd = $range['end'];
 
         $this->recurrenceService->ensureOccurrencesForRange($periodStart, $periodEnd);
 
@@ -155,27 +157,8 @@ class PurchaseListingService
     /** @return array{periodStart: Carbon, periodEnd: Carbon, closingDate: Carbon, dueDate: Carbon|null}|null */
     private function invoiceDetails(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item): ?array
     {
-        if ($item->paymentMethod?->type !== PaymentMethod::TYPE_CREDIT || ! $item->paymentMethod->closing_day) {
-            return null;
-        }
-
-        $setting = $this->invoiceSettings->forDate($item->paymentMethod, $item->purchased_at);
-        $closingDay = $setting?->closing_day ?? $item->paymentMethod->closing_day;
-        $closingDate = $this->invoiceCycleService->closingDate($item->purchased_at, $closingDay);
-        $previousClosingDate = $this->invoiceCycleService->previousClosingDate($closingDate, $closingDay);
-        $periodStart = $previousClosingDate->addDay()->startOfDay();
-
-        if ($setting?->effective_from !== null
-            && $item->purchased_at->greaterThanOrEqualTo($setting->effective_from)
-            && $setting->effective_from->greaterThan($previousClosingDate)) {
-            $periodStart = $setting->effective_from->toImmutable()->startOfDay();
-        }
-
-        return [
-            'periodStart' => $periodStart,
-            'periodEnd' => $closingDate,
-            'closingDate' => $closingDate,
-            'dueDate' => $setting?->due_day === null ? null : $this->invoiceCycleService->dueDate($closingDate, $setting->due_day),
-        ];
+        return $item->paymentMethod === null
+            ? null
+            : $this->invoiceSettings->detailsFor($item->paymentMethod, $item->purchased_at);
     }
 }

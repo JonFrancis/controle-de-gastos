@@ -44,7 +44,9 @@ class PaymentMethod extends Model
 
     public function latestInvoiceSetting(): HasOne
     {
-        return $this->hasOne(PaymentMethodInvoiceSetting::class)->latestOfMany('effective_from');
+        return $this->hasOne(PaymentMethodInvoiceSetting::class)
+            ->whereNull('retired_at')
+            ->latestOfMany('effective_from');
     }
 
     protected function casts(): array

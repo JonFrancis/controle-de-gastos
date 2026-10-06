@@ -24,8 +24,11 @@ class MonthlyAnalysisService
     public function analyze(string $selectedMonth, string $view, ?int $movementCategoryId = null): array
     {
         $month = Carbon::createFromFormat('!Y-m', $selectedMonth);
-        $periodStart = $view === 'invoice' ? $month->copy()->subMonthNoOverflow()->startOfMonth() : $month->copy()->startOfMonth();
-        $periodEnd = $month->copy()->endOfMonth();
+        $range = $view === 'invoice'
+            ? $this->invoiceCycleService->sourceRangeForInvoiceMonth($month)
+            : ['start' => $month->copy()->startOfMonth(), 'end' => $month->copy()->endOfMonth()];
+        $periodStart = $range['start'];
+        $periodEnd = $range['end'];
         $items = $this->items($periodStart, $periodEnd)->filter(fn (array $item): bool => $view !== 'invoice' || $this->inInvoice($item, $selectedMonth))->values();
 
         return $this->buildAnalysis($items, $periodStart, $periodEnd, $movementCategoryId);
@@ -361,16 +364,7 @@ class MonthlyAnalysisService
     /** @param array<string, mixed> $item */
     private function inInvoice(array $item, string $selectedMonth): bool
     {
-        if ($item['paymentType'] !== PaymentMethod::TYPE_CREDIT || ! $item['closingDay']) {
-            return false;
-        }
-
-        $closingDate = $this->invoiceCycleService->closingDate(Carbon::parse($item['date']), $item['closingDay']);
-        $invoiceDate = $item['dueDay'] === null
-            ? $closingDate
-            : $this->invoiceCycleService->dueDate($closingDate, $item['dueDay']);
-
-        return $invoiceDate->format('Y-m') === $selectedMonth;
+        return $item['invoiceMonth'] === $selectedMonth;
     }
 
     /**
@@ -382,15 +376,11 @@ class MonthlyAnalysisService
     private function row(array $data, Collection $participantNames, Collection $paymentMethods): array
     {
         $paymentMethod = $paymentMethods->get($data['paymentMethodId']);
-        $setting = $paymentMethod?->type === PaymentMethod::TYPE_CREDIT
-            ? $this->invoiceSettings->forDate($paymentMethod, $data['date'])
-            : null;
-        $closingDay = $setting?->closing_day ?? $paymentMethod?->closing_day;
-        $closingDate = $paymentMethod?->type === PaymentMethod::TYPE_CREDIT && $closingDay !== null
-            ? $this->invoiceCycleService->closingDate($data['date'], $closingDay)
+        $invoiceDetails = $paymentMethod?->type === PaymentMethod::TYPE_CREDIT
+            ? $this->invoiceSettings->detailsFor($paymentMethod, $data['date'])
             : null;
 
-        return ['key' => $data['sourceType'].':'.$data['sourceId'], 'sourceKey' => $data['sourceKey'], 'origin' => $data['origin'], 'date' => $data['date']->toDateString(), 'description' => $data['description'], 'cardName' => $data['cardName'], 'amountCents' => $data['amountCents'], 'sourceAmountCents' => $data['sourceAmountCents'], 'payerId' => $data['payerId'], 'participantId' => $data['participantId'], 'participantName' => $participantNames->get($data['participantId']), 'categoryId' => $data['categoryId'], 'categoryName' => $data['categoryName'], 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $data['paymentMethodId'], 'paymentType' => $paymentMethod?->type, 'closingDay' => $closingDay, 'dueDay' => $setting?->due_day, 'addedAfterClosing' => $data['createdAt'] instanceof CarbonInterface && $closingDate?->endOfDay()->lt($data['createdAt'])];
+        return ['key' => $data['sourceType'].':'.$data['sourceId'], 'sourceKey' => $data['sourceKey'], 'origin' => $data['origin'], 'date' => $data['date']->toDateString(), 'description' => $data['description'], 'cardName' => $data['cardName'], 'amountCents' => $data['amountCents'], 'sourceAmountCents' => $data['sourceAmountCents'], 'payerId' => $data['payerId'], 'participantId' => $data['participantId'], 'participantName' => $participantNames->get($data['participantId']), 'categoryId' => $data['categoryId'], 'categoryName' => $data['categoryName'], 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $data['paymentMethodId'], 'paymentType' => $paymentMethod?->type, 'closingDay' => $invoiceDetails === null ? null : $invoiceDetails['closingDate']->day, 'dueDay' => $invoiceDetails === null ? null : $invoiceDetails['dueDate']?->day, 'invoiceMonth' => ($invoiceDetails['dueDate'] ?? $invoiceDetails['closingDate'] ?? null)?->format('Y-m'), 'addedAfterClosing' => $data['createdAt'] instanceof CarbonInterface && $invoiceDetails !== null && $invoiceDetails['closingDate']->endOfDay()->lt($data['createdAt'])];
     }
 
     private function selfId(): int

@@ -169,6 +169,43 @@ class CatalogsTest extends TestCase
         $this->travelBack();
     }
 
+    public function test_changing_credit_to_non_credit_retires_invoice_settings_without_deleting_history(): void
+    {
+        $this->travelTo('2026-10-06');
+        $this->post('/payment-methods', [
+            'name' => 'Cartão desativado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+        ]);
+        $paymentMethod = PaymentMethod::query()->where('name', 'Cartão desativado')->firstOrFail();
+        $setting = $paymentMethod->invoiceSettings()->firstOrFail();
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Pix convertido',
+            'type' => PaymentMethod::TYPE_PIX,
+            'closing_day' => 10,
+            'due_day' => 15,
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseHas('payment_methods', [
+            'id' => $paymentMethod->id,
+            'type' => PaymentMethod::TYPE_PIX,
+            'closing_day' => null,
+        ]);
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'id' => $setting->id,
+            'retired_at' => '2026-10-06 00:00:00',
+        ]);
+        $this->get('/settings/catalogs')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('paymentMethods.0.type', PaymentMethod::TYPE_PIX)
+                ->where('paymentMethods.0.invoice_settings', []));
+
+        $this->travelBack();
+    }
+
     public function test_credit_payment_method_requires_a_valid_closing_day(): void
     {
         $this->from('/settings/catalogs')->post('/payment-methods', [

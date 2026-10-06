@@ -178,6 +178,35 @@ class PurchaseIndexTest extends TestCase
             );
     }
 
+    public function test_invoice_view_includes_the_previous_previous_month_when_due_on_the_first(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão dia um', 1, 1);
+        $this->createPurchase($self, $card, 'Compra no limite da fatura', '2026-08-02', 1700);
+
+        $this->get('/purchases?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('invoiceGroups', 1)
+                ->where('invoiceGroups.0.dueDate', '2026-10-01')
+                ->where('invoiceGroups.0.totalCents', 1700)
+                ->where('invoiceGroups.0.purchases.0.purchasedAt', '2026-08-02'));
+    }
+
+    public function test_invoice_view_uses_the_current_configuration_as_approximation_for_legacy_settings_without_due_day(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = PaymentMethod::create(['name' => 'Cartão legado', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 1]);
+        $card->latestInvoiceSetting()->update(['effective_from' => '2026-01-01', 'due_day' => null]);
+        $card->invoiceSettings()->create(['closing_day' => 1, 'due_day' => 1, 'effective_from' => '2026-10-01']);
+        $this->createPurchase($self, $card, 'Compra histórica aproximada', '2026-08-02', 2300);
+
+        $this->get('/purchases?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('invoiceGroups', 1)
+                ->where('invoiceGroups.0.dueDate', '2026-10-01')
+                ->where('invoiceGroups.0.totalCents', 2300));
+    }
+
     public function test_invoice_view_classifies_each_installment_occurrence_by_its_own_due_month(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();

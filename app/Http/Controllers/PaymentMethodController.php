@@ -111,6 +111,10 @@ class PaymentMethodController extends Controller
                     'effective_from' => $data['effective_from'],
                 ]);
             }
+
+            if (! $isCredit) {
+                $paymentMethod->invoiceSettings()->whereNull('retired_at')->update(['retired_at' => now()]);
+            }
         });
 
         $audit->record(AuditLog::ACTION_UPDATE, $paymentMethod, oldValues: $oldValues, newValues: $paymentMethod->fresh()->getAttributes());
