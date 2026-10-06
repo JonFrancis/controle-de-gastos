@@ -34,7 +34,7 @@ class CatalogsTest extends TestCase
         $this->post('/participants', ['name' => 'Maria'])->assertRedirect('/settings/catalogs');
         $this->post('/categories', ['name' => 'Casa'])->assertRedirect('/settings/catalogs');
         $this->post('/payment-methods', [
-            'name' => 'Cartão principal', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 8,
+            'name' => 'Cartão principal', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 8, 'due_day' => 15,
         ])->assertRedirect('/settings/catalogs');
 
         $this->assertDatabaseHas('participants', ['name' => 'Maria', 'active' => true]);
@@ -55,6 +55,118 @@ class CatalogsTest extends TestCase
         $this->assertDatabaseHas('participants', ['id' => $participant->id, 'name' => 'Maria Silva', 'active' => false]);
         $this->assertDatabaseHas('categories', ['id' => $category->id, 'name' => 'Moradia', 'active' => false]);
         $this->assertDatabaseHas('payment_methods', ['id' => $method->id, 'name' => 'Pix pessoal', 'closing_day' => null, 'active' => false]);
+    }
+
+    public function test_credit_payment_method_creates_an_initial_version_with_due_day(): void
+    {
+        $this->travelTo('2026-10-06');
+
+        $this->post('/payment-methods', [
+            'name' => 'Nubank',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 5,
+            'due_day' => 10,
+        ])->assertRedirect('/settings/catalogs');
+
+        $paymentMethod = PaymentMethod::query()->where('name', 'Nubank')->firstOrFail();
+
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'payment_method_id' => $paymentMethod->id,
+            'closing_day' => 5,
+            'due_day' => 10,
+            'effective_from' => '2026-10-06 00:00:00',
+        ]);
+
+        $this->get('/settings/catalogs')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('paymentMethods.0.due_day', 10)
+                ->where('paymentMethods.0.effective_from', '2026-10-06'));
+
+        $this->travelBack();
+    }
+
+    public function test_credit_configuration_requires_due_day_and_ignores_invoice_fields_for_non_credit_methods(): void
+    {
+        $this->from('/settings/catalogs')->post('/payment-methods', [
+            'name' => 'Cartão sem vencimento',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 5,
+        ])->assertRedirect('/settings/catalogs')->assertSessionHasErrors('due_day');
+
+        $this->from('/settings/catalogs')->post('/payment-methods', [
+            'name' => 'Cartão com vencimento inválido',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 5,
+            'due_day' => 32,
+        ])->assertRedirect('/settings/catalogs')->assertSessionHasErrors('due_day');
+
+        $this->post('/payment-methods', [
+            'name' => 'Pix pessoal',
+            'type' => PaymentMethod::TYPE_PIX,
+            'closing_day' => 12,
+            'due_day' => 10,
+        ])->assertRedirect('/settings/catalogs');
+
+        $pix = PaymentMethod::query()->where('name', 'Pix pessoal')->firstOrFail();
+
+        $this->assertDatabaseHas('payment_methods', ['id' => $pix->id, 'closing_day' => null]);
+        $this->assertDatabaseMissing('payment_method_invoice_settings', ['payment_method_id' => $pix->id]);
+    }
+
+    public function test_editing_credit_configuration_requires_a_safe_effective_date_and_preserves_versions(): void
+    {
+        $this->travelTo('2026-10-06');
+
+        $this->post('/payment-methods', [
+            'name' => 'Sofisa',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 30,
+            'due_day' => 10,
+        ]);
+
+        $paymentMethod = PaymentMethod::query()->where('name', 'Sofisa')->firstOrFail();
+
+        $this->from('/settings/catalogs')->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Sofisa',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 28,
+            'due_day' => 12,
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs')->assertSessionHasErrors('effective_from');
+
+        $this->get('/settings/catalogs')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('paymentMethods.0.suggested_effective_from', '2026-10-31'));
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Sofisa',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 28,
+            'due_day' => 12,
+            'effective_from' => '2026-10-31',
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'payment_method_id' => $paymentMethod->id,
+            'closing_day' => 30,
+            'due_day' => 10,
+            'effective_from' => '2026-10-06 00:00:00',
+        ]);
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'payment_method_id' => $paymentMethod->id,
+            'closing_day' => 28,
+            'due_day' => 12,
+            'effective_from' => '2026-10-31 00:00:00',
+        ]);
+
+        $this->get('/settings/catalogs')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('paymentMethods.0.invoice_settings', 2)
+                ->where('paymentMethods.0.invoice_settings.0.closing_day', 28)
+                ->where('paymentMethods.0.invoice_settings.1.closing_day', 30));
+
+        $this->travelBack();
     }
 
     public function test_credit_payment_method_requires_a_valid_closing_day(): void
