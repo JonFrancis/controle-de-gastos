@@ -37,7 +37,7 @@ class PurchaseIndexTest extends TestCase
             'payment_method_id' => $paymentMethod->id,
         ]);
 
-        $this->get('/purchases?month=2026-10')
+        $this->get('/purchases?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Purchases/Index')
                 ->where('selectedMonth', '2026-10')
@@ -45,6 +45,23 @@ class PurchaseIndexTest extends TestCase
                 ->has('purchases', 1)
                 ->where('purchases.0.description', 'Compra de outubro')
                 ->where('monthTotalCents', 12500)
+            );
+    }
+
+    public function test_purchases_page_defaults_to_faturas_by_due_month(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = PaymentMethod::create(['name' => 'Nubank', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
+        $card->latestInvoiceSetting()->update(['due_day' => 10, 'effective_from' => '2026-01-01']);
+        $this->createPurchase($self, $card, 'Compra de setembro na fatura de outubro', '2026-09-06', 1000);
+
+        $this->get('/purchases?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('view', 'invoice')
+                ->where('monthLabel', 'Faturas com vencimento em Outubro de 2026')
+                ->has('invoiceGroups', 1)
+                ->where('invoiceGroups.0.paymentMethod', 'Nubank')
+                ->where('invoiceGroups.0.dueDate', '2026-10-10')
             );
     }
 
@@ -62,7 +79,7 @@ class PurchaseIndexTest extends TestCase
             'payment_method_id' => $paymentMethod->id,
         ]);
 
-        $this->get('/purchases?month=2026-10')
+        $this->get('/purchases?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('purchases.0.type', 'purchase')
                 ->where('purchases.0.origin', Purchase::ORIGIN_INSTALLMENT)
@@ -96,7 +113,7 @@ class PurchaseIndexTest extends TestCase
             'payment_method_id' => $paymentMethod->id,
         ]);
 
-        $this->get('/purchases?month=2026-10')
+        $this->get('/purchases?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Purchases/Index')
                 ->has('purchases', 0)
@@ -400,7 +417,7 @@ class PurchaseIndexTest extends TestCase
         $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
         $purchase = $this->createPurchase($self, $paymentMethod, 'Compra editável', '2026-10-12', 10000);
 
-        $this->get('/purchases?month=2026-10')
+        $this->get('/purchases?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page->where('purchases.0.editUrl', route('purchases.edit', $purchase, false)));
     }
 

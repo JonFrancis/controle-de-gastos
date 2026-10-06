@@ -18,6 +18,38 @@ class MonthlyAnalysisTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_analysis_defaults_to_due_month_faturas_and_excludes_non_credit_movements(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $card = PaymentMethod::create(['name' => 'Nubank', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
+        $card->latestInvoiceSetting()->update(['due_day' => 10, 'effective_from' => '2026-01-01']);
+        Purchase::create([
+            'purchased_at' => '2026-09-06',
+            'description' => 'Compra na fatura de outubro',
+            'amount_cents' => 1000,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $card->id,
+        ]);
+        Purchase::create([
+            'purchased_at' => '2026-10-12',
+            'description' => 'Movimentação de outubro',
+            'amount_cents' => 2000,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+
+        $this->get('/analysis?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('view', 'invoice')
+                ->where('summary.totalDisbursedCents', 1000)
+                ->where('purchaseReview.0.description', 'Compra na fatura de outubro')
+                ->has('purchaseReview', 1)
+            );
+    }
+
     public function test_calendar_analysis_reconciles_people_totals_categories_origins_and_card_name(): void
     {
         [$self, $maria, $pix, $casa] = $this->catalogs();
@@ -62,7 +94,7 @@ class MonthlyAnalysisTest extends TestCase
         [$self] = $this->catalogs();
         $this->purchaseWithoutAllocation('2026-10-12', 1000, $self, null, 'Sem forma');
 
-        $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('pendingReview', 1)->where('summary.ownConsumptionCents', 0)->where('summary.totalDisbursedCents', 0)->where('participants', []));
+        $this->get('/analysis?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page->where('pendingReview', 1)->where('summary.ownConsumptionCents', 0)->where('summary.totalDisbursedCents', 0)->where('participants', []));
     }
 
     public function test_abatement_is_applied_only_to_a_debt_in_the_analyzed_period(): void
@@ -76,7 +108,7 @@ class MonthlyAnalysisTest extends TestCase
         ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $oldAllocation->id, 'purchase_allocation_id' => $oldAllocation->id, 'amount_cents' => 4000, 'source' => 'manual']);
         ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $currentAllocation->id, 'purchase_allocation_id' => $currentAllocation->id, 'amount_cents' => 4000, 'source' => 'manual']);
 
-        $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('participants.0.grossCents', 7000)->where('participants.0.abatementsCents', 4000)->where('participants.0.finalCents', 3000));
+        $this->get('/analysis?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page->where('participants.0.grossCents', 7000)->where('participants.0.abatementsCents', 4000)->where('participants.0.finalCents', 3000));
     }
 
     public function test_quitado_participant_is_flagged_without_a_charge_message(): void
@@ -87,7 +119,7 @@ class MonthlyAnalysisTest extends TestCase
         $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-20', 'amount_cents' => 4000]);
         ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $allocation->id, 'purchase_allocation_id' => $allocation->id, 'amount_cents' => 4000, 'source' => 'manual']);
 
-        $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/analysis?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.status', 'settled')
             ->where('participants.0.finalCents', 0)
             ->where('participants.0.message', "Olá, Maria!\n\nSua conta está quitada neste período. Nenhuma cobrança a enviar.")
@@ -101,7 +133,7 @@ class MonthlyAnalysisTest extends TestCase
 
         $this->patch('/settings/salary?month=2026-10&view=calendar', ['amount' => '500,00'])->assertRedirect('/analysis?month=2026-10&view=calendar');
 
-        $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('summary.salaryCents', 50000)->where('summary.salaryRemainingCents', 47000));
+        $this->get('/analysis?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page->where('summary.salaryCents', 50000)->where('summary.salaryRemainingCents', 47000));
     }
 
     public function test_calendar_analysis_materializes_recurring_occurrences_for_the_selected_month(): void
@@ -118,7 +150,7 @@ class MonthlyAnalysisTest extends TestCase
             'active' => true,
         ]);
 
-        $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/analysis?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page
             ->where('origins.recurrence.amountCents', 2500)
             ->where('origins.recurrence.count', 1)
             ->where('purchaseReview.0.description', 'Assinatura mensal'));

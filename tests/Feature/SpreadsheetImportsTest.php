@@ -258,7 +258,7 @@ class SpreadsheetImportsTest extends TestCase
                 ->has('logs', 1)
                 ->where('logs.0.metadata.source', 'historico.csv')
                 ->where('logs.0.metadata.records', 1));
-        $this->get('/analysis?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('origins.recurrence.count', 1));
+        $this->get('/analysis?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page->where('origins.recurrence.count', 1));
         $this->get('/?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('pendingReview', 1));
     }
 

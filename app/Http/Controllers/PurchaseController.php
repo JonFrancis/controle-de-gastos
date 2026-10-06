@@ -23,7 +23,7 @@ class PurchaseController extends Controller
     public function index(Request $request, PurchaseListingService $purchaseListingService): Response
     {
         $selectedMonth = $this->validMonth($request->query('month'));
-        $view = $request->query('view') === 'invoice' ? 'invoice' : 'calendar';
+        $view = $request->query('view') === 'calendar' ? 'calendar' : 'invoice';
         $selfId = Participant::query()->where('is_default', true)->value('id');
         $purchaseListing = $purchaseListingService->forMonth($selectedMonth, $view, $selfId);
         $month = $purchaseListing['month'];
@@ -34,7 +34,7 @@ class PurchaseController extends Controller
         return Inertia::render('Purchases/Index', [
             'monthLabel' => $view === 'invoice'
                 ? 'Faturas com vencimento em '.ucfirst($month->locale('pt_BR')->translatedFormat('F \d\e Y'))
-                : ucfirst($month->locale('pt_BR')->translatedFormat('F \d\e Y')),
+                : 'Movimentação de '.ucfirst($month->locale('pt_BR')->translatedFormat('F \d\e Y')),
             'selectedMonth' => $selectedMonth,
             'view' => $view,
             'monthTotalCents' => (int) ($view === 'invoice' ? $invoiceGroups->sum('totalCents') : $purchases->sum('amount_cents') + $occurrences->sum('amount_cents')),
