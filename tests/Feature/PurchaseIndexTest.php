@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuditLog;
 use App\Models\Installment;
+use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
@@ -329,6 +330,77 @@ class PurchaseIndexTest extends TestCase
                 ->where('invoiceGroups.1.totalCents', 2000)
                 ->where('invoiceGroups.1.purchases.0.description', 'Ocorrência da regra nova')
             );
+    }
+
+    public function test_invoice_settings_stop_applying_after_credit_method_is_reactivated(): void
+    {
+        $this->travelTo('2026-10-01 12:00:00');
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = PaymentMethod::create(['name' => 'Cartão aposentado', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 10]);
+        $card->latestInvoiceSetting()->update(['due_day' => 15]);
+        $beforeRetirement = $this->createPurchase($self, $card, 'Compra histórica', '2026-10-05', 1000);
+        $afterRetirement = $this->createPurchase($self, $card, 'Compra posterior', '2026-10-08', 2000);
+        $installment = Installment::create([
+            'start_date' => '2026-10-05',
+            'description' => 'Parcelamento aposentado',
+            'total_cents' => 7000,
+            'installment_count' => 2,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $card->id,
+        ]);
+        $beforeRetirementOccurrence = InstallmentOccurrence::create([
+            'installment_id' => $installment->id,
+            'installment_number' => 1,
+            'purchased_at' => '2026-10-05',
+            'description' => 'Ocorrência histórica',
+            'amount_cents' => 3000,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $card->id,
+        ]);
+        $afterRetirementOccurrence = InstallmentOccurrence::create([
+            'installment_id' => $installment->id,
+            'installment_number' => 2,
+            'purchased_at' => '2026-10-08',
+            'description' => 'Ocorrência posterior',
+            'amount_cents' => 4000,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $card->id,
+        ]);
+
+        $this->travelTo('2026-10-06 12:00:00');
+        $this->patch("/payment-methods/{$card->id}", [
+            'name' => 'Pix temporário',
+            'type' => PaymentMethod::TYPE_PIX,
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->travelTo('2026-10-07 12:00:00');
+        $this->patch("/payment-methods/{$card->id}", [
+            'name' => 'Cartão reativado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 20,
+            'due_day' => 25,
+            'effective_from' => '2026-10-31',
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->get('/purchases?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('invoiceGroups', 2)
+                ->where('invoiceGroups.0.closingDate', '2026-10-10')
+                ->where('invoiceGroups.0.totalCents', 4000)
+                ->where('invoiceGroups.0.purchases.0.id', $beforeRetirement->id)
+                ->where('invoiceGroups.0.purchases.1.id', $beforeRetirementOccurrence->id)
+                ->where('invoiceGroups.1.closingDate', '2026-10-20')
+                ->where('invoiceGroups.1.totalCents', 6000)
+                ->where('invoiceGroups.1.purchases.0.id', $afterRetirement->id)
+                ->where('invoiceGroups.1.purchases.1.id', $afterRetirementOccurrence->id)
+            );
+
+        $this->travelBack();
     }
 
     public function test_invoice_view_applies_a_mid_cycle_version_on_the_next_cycle(): void

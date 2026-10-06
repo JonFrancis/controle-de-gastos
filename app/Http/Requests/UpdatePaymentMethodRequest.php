@@ -36,9 +36,53 @@ class UpdatePaymentMethodRequest extends FormRequest
 
     public function withValidator(Validator $validator): void
     {
-        $validator->sometimes('closing_day', ['required'], fn () => $this->input('type') === PaymentMethod::TYPE_CREDIT);
-        $validator->sometimes('due_day', ['required'], fn () => $this->input('type') === PaymentMethod::TYPE_CREDIT);
-        $validator->sometimes('effective_from', ['required'], fn () => $this->input('type') === PaymentMethod::TYPE_CREDIT);
+        $validator->after(function (Validator $validator): void {
+            $paymentMethod = $this->route('payment_method');
+
+            if (! $paymentMethod instanceof PaymentMethod || $validator->errors()->has('type')) {
+                return;
+            }
+
+            $isCredit = $this->input('type') === PaymentMethod::TYPE_CREDIT;
+            $wasCredit = $paymentMethod->type === PaymentMethod::TYPE_CREDIT;
+
+            if (! $isCredit || ! $wasCredit) {
+                if ($isCredit) {
+                    $this->requireInvoiceConfiguration($validator);
+                }
+
+                return;
+            }
+
+            $currentSetting = $paymentMethod->invoiceSettings()
+                ->whereNull('retired_at')
+                ->whereDate('effective_from', '<=', today())
+                ->orderByDesc('effective_from')
+                ->first();
+            $invoiceConfigurationChanged = $currentSetting === null
+                || (array_key_exists('closing_day', $this->all()) && ($this->input('closing_day') === null ? null : (int) $this->input('closing_day')) !== $currentSetting->closing_day)
+                || (array_key_exists('due_day', $this->all()) && ($this->input('due_day') === null ? null : (int) $this->input('due_day')) !== $currentSetting->due_day)
+                || (array_key_exists('effective_from', $this->all()) && $currentSetting->effective_from?->toDateString() !== $this->input('effective_from'));
+
+            if ($invoiceConfigurationChanged) {
+                $this->requireInvoiceConfiguration($validator);
+            }
+        });
+    }
+
+    private function requireInvoiceConfiguration(Validator $validator): void
+    {
+        if ($this->input('closing_day') === null) {
+            $validator->errors()->add('closing_day', 'Informe o dia de fechamento do cartão de crédito.');
+        }
+
+        if ($this->input('due_day') === null) {
+            $validator->errors()->add('due_day', 'Informe o dia de vencimento do cartão de crédito.');
+        }
+
+        if ($this->input('effective_from') === null) {
+            $validator->errors()->add('effective_from', 'Informe a data de vigência da nova configuração.');
+        }
     }
 
     public function messages(): array
