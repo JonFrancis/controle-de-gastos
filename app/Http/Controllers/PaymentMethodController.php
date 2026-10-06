@@ -86,7 +86,6 @@ class PaymentMethodController extends Controller
     {
         $oldValues = $paymentMethod->getAttributes();
         $data = $request->validated();
-        $latestSetting = $invoiceSettings->currentForDate($paymentMethod);
         $latestScheduledSetting = $invoiceSettings->latestScheduled($paymentMethod);
         $isCredit = $data['type'] === PaymentMethod::TYPE_CREDIT;
 
@@ -106,7 +105,7 @@ class PaymentMethodController extends Controller
             $data['effective_from'] = $invoiceSettings->normalizeEffectiveFrom($paymentMethod, $effectiveFrom)->toDateString();
         }
 
-        $changes = DB::transaction(function () use ($data, $isCredit, $latestSetting, $paymentMethod): array {
+        $changes = DB::transaction(function () use ($data, $isCredit, $latestScheduledSetting, $paymentMethod): array {
             $paymentMethod->update([
                 'name' => $data['name'],
                 'type' => $data['type'],
@@ -115,7 +114,7 @@ class PaymentMethodController extends Controller
             ]);
 
             $createdSetting = null;
-            if ($isCredit && ($latestSetting === null || $latestSetting->closing_day !== (int) $data['closing_day'] || $latestSetting->due_day !== (int) $data['due_day'])) {
+            if ($isCredit && ($latestScheduledSetting === null || $latestScheduledSetting->closing_day !== (int) $data['closing_day'] || $latestScheduledSetting->due_day !== (int) $data['due_day'])) {
                 $createdSetting = $paymentMethod->invoiceSettings()->create([
                     'closing_day' => $data['closing_day'],
                     'due_day' => $data['due_day'],
