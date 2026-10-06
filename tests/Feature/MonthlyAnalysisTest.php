@@ -258,6 +258,7 @@ class MonthlyAnalysisTest extends TestCase
         $secondCard = PaymentMethod::create(['name' => 'Sofisa análise', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 30]);
         $secondCard->latestInvoiceSetting()->update(['due_day' => 10, 'effective_from' => '2026-01-01']);
         $purchase = $this->createPurchase($self, $firstCard, 'Compra adicionada depois', '2026-10-03', 1800);
+        $purchase->update(['card_name' => 'LOJA NA FATURA']);
         $purchase->forceFill(['created_at' => '2026-10-06 12:00:00'])->saveQuietly();
         $this->createPurchase($self, $secondCard, 'Compra Sofisa análise', '2026-09-15', 2200);
 
@@ -270,6 +271,9 @@ class MonthlyAnalysisTest extends TestCase
                 ->where('invoiceGroups.0.closingDate', '2026-10-05')
                 ->where('invoiceGroups.0.dueDate', '2026-10-10')
                 ->where('invoiceGroups.0.totalCents', 1800)
+                ->where('invoiceGroups.0.purchases.0.date', '2026-10-03')
+                ->where('invoiceGroups.0.purchases.0.paymentMethodName', 'Nubank análise')
+                ->where('invoiceGroups.0.purchases.0.cardName', 'LOJA NA FATURA')
                 ->where('invoiceGroups.0.purchases.0.addedAfterClosing', true)
                 ->where('invoiceGroups.1.paymentMethod', 'Sofisa análise')
                 ->where('invoiceGroups.1.periodStart', '2026-08-31')

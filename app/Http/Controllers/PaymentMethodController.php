@@ -86,6 +86,8 @@ class PaymentMethodController extends Controller
     {
         $oldValues = $paymentMethod->getAttributes();
         $data = $request->validated();
+        $data['type'] ??= $paymentMethod->type;
+        $data['active'] ??= $paymentMethod->active;
         $isCredit = $data['type'] === PaymentMethod::TYPE_CREDIT;
         $wasCredit = $paymentMethod->type === PaymentMethod::TYPE_CREDIT;
         $hasInvoiceConfigurationInput = $this->hasInvoiceConfigurationInput($data);
@@ -98,18 +100,19 @@ class PaymentMethodController extends Controller
 
         if ($invoiceConfigurationChanged && $isCredit) {
             $effectiveFrom = CarbonImmutable::parse($data['effective_from']);
+            $normalizedEffectiveFrom = $invoiceSettings->normalizeEffectiveFrom($paymentMethod, $effectiveFrom);
             $nextSafeEffectiveFrom = $invoiceSettings->nextSafeEffectiveFrom($paymentMethod);
             $latestEffectiveFrom = $latestScheduledSetting?->effective_from?->toImmutable();
 
-            if ($effectiveFrom->lt($nextSafeEffectiveFrom)) {
+            if ($normalizedEffectiveFrom->lt($nextSafeEffectiveFrom)) {
                 return to_route('settings.catalogs')->withErrors(['effective_from' => 'A vigência deve começar após o próximo fechamento seguro.']);
             }
 
-            if ($latestEffectiveFrom !== null && $effectiveFrom->lessThanOrEqualTo($latestEffectiveFrom)) {
+            if ($latestEffectiveFrom !== null && $normalizedEffectiveFrom->lessThanOrEqualTo($latestEffectiveFrom)) {
                 return to_route('settings.catalogs')->withErrors(['effective_from' => 'A vigência deve ser posterior à última configuração.']);
             }
 
-            $data['effective_from'] = $invoiceSettings->normalizeEffectiveFrom($paymentMethod, $effectiveFrom)->toDateString();
+            $data['effective_from'] = $normalizedEffectiveFrom->toDateString();
         }
 
         $changes = DB::transaction(function () use ($data, $creditTypeChanged, $invoiceConfigurationChanged, $isCredit, $latestScheduledSetting, $paymentMethod): array {
@@ -171,6 +174,7 @@ class PaymentMethodController extends Controller
         $dueDayChanged = array_key_exists('due_day', $data)
             && ($data['due_day'] === null ? null : (int) $data['due_day']) !== $currentSetting?->due_day;
         $effectiveFromChanged = array_key_exists('effective_from', $data)
+            && filled($data['effective_from'])
             && $currentSetting?->effective_from?->toDateString() !== $data['effective_from'];
 
         return $currentSetting === null || $closingDayChanged || $dueDayChanged || $effectiveFromChanged;
@@ -181,7 +185,7 @@ class PaymentMethodController extends Controller
     {
         return array_key_exists('closing_day', $data)
             || array_key_exists('due_day', $data)
-            || array_key_exists('effective_from', $data);
+            || filled($data['effective_from'] ?? null);
     }
 
     /** @return array{type: string, closing_day: int|null, due_day: int|null, effective_from: string|null, retired_at: string|null} */
