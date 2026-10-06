@@ -54,6 +54,10 @@ class UpdatePaymentMethodRequest extends FormRequest
                 return;
             }
 
+            if (! $this->hasInvoiceConfigurationInput()) {
+                return;
+            }
+
             $currentSetting = $paymentMethod->invoiceSettings()
                 ->whereNull('retired_at')
                 ->whereDate('effective_from', '<=', today())
@@ -68,6 +72,13 @@ class UpdatePaymentMethodRequest extends FormRequest
                 $this->requireInvoiceConfiguration($validator);
             }
         });
+    }
+
+    private function hasInvoiceConfigurationInput(): bool
+    {
+        return array_key_exists('closing_day', $this->all())
+            || array_key_exists('due_day', $this->all())
+            || array_key_exists('effective_from', $this->all());
     }
 
     private function requireInvoiceConfiguration(Validator $validator): void

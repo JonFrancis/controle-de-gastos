@@ -61,6 +61,76 @@ class CatalogsTest extends TestCase
         $this->assertDatabaseHas('payment_methods', ['id' => $method->id, 'name' => 'Pix pessoal', 'closing_day' => null, 'active' => false]);
     }
 
+    public function test_metadata_only_update_on_a_new_credit_payment_method_does_not_change_invoice_version(): void
+    {
+        $this->travelTo('2026-10-06');
+
+        $this->post('/payment-methods', [
+            'name' => 'Cartão novo',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+            'due_day' => 15,
+        ])->assertRedirect('/settings/catalogs');
+
+        $paymentMethod = PaymentMethod::query()->where('name', 'Cartão novo')->firstOrFail();
+        $setting = $paymentMethod->invoiceSettings()->firstOrFail();
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Cartão novo renomeado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'active' => false,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseCount('payment_method_invoice_settings', 1);
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'id' => $setting->id,
+            'closing_day' => 10,
+            'due_day' => 15,
+            'effective_from' => '2026-10-06 00:00:00',
+            'retired_at' => null,
+        ]);
+        $this->assertDatabaseHas('payment_methods', [
+            'id' => $paymentMethod->id,
+            'name' => 'Cartão novo renomeado',
+            'active' => false,
+        ]);
+
+        $this->travelBack();
+    }
+
+    public function test_metadata_only_update_on_a_legacy_credit_payment_method_allows_a_null_due_day(): void
+    {
+        $this->travelTo('2026-10-06');
+
+        $paymentMethod = PaymentMethod::create([
+            'name' => 'Cartão legado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'closing_day' => 10,
+        ]);
+        $setting = $paymentMethod->invoiceSettings()->firstOrFail();
+
+        $this->patch("/payment-methods/{$paymentMethod->id}", [
+            'name' => 'Cartão legado renomeado',
+            'type' => PaymentMethod::TYPE_CREDIT,
+            'active' => false,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseCount('payment_method_invoice_settings', 1);
+        $this->assertDatabaseHas('payment_method_invoice_settings', [
+            'id' => $setting->id,
+            'closing_day' => 10,
+            'due_day' => null,
+            'retired_at' => null,
+        ]);
+        $this->assertDatabaseHas('payment_methods', [
+            'id' => $paymentMethod->id,
+            'name' => 'Cartão legado renomeado',
+            'active' => false,
+        ]);
+
+        $this->travelBack();
+    }
+
     public function test_credit_payment_method_creates_an_initial_version_with_due_day(): void
     {
         $this->travelTo('2026-10-06');
