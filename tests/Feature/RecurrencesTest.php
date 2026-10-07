@@ -78,6 +78,21 @@ class RecurrencesTest extends TestCase
         $this->assertDatabaseHas('recurrence_occurrences', ['recurrence_id' => $recurrence->id, 'amount_cents' => 10000, 'is_adjusted' => false]);
     }
 
+    public function test_recurrence_occurrence_edit_screen_exposes_the_occurrence_and_rule(): void
+    {
+        $recurrence = $this->createRecurrence(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', '100,00', null);
+        $occurrence = $recurrence->occurrences()->firstOrFail();
+
+        $this->get("/recurrence-occurrences/{$occurrence->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Recurrences/OccurrenceForm')
+                ->where('occurrence.id', $occurrence->id)
+                ->where('occurrence.amount_cents', 10000)
+                ->where('occurrence.recurrence.description', 'Serviço mensal')
+                ->where('occurrence.purchased_at', fn (string $value): bool => str_starts_with($value, '2026-10-12'))
+            );
+    }
+
     public function test_deactivating_a_recurrence_preserves_past_occurrences_and_hides_future_ones(): void
     {
         $this->travelTo('2026-10-15 12:00:00');
