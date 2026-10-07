@@ -13,8 +13,10 @@ use Native\Desktop\Facades\Window;
 
 class NativeAppServiceProvider implements ProvidesPhpIni
 {
-    public function boot(DesktopMigrationNoticeService $notice): void
+    public function boot(): void
     {
+        $notice = app(DesktopMigrationNoticeService::class);
+
         try {
             $migration = app(DesktopDataMigrationService::class)->migrate();
             $notice->clear();
