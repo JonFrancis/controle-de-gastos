@@ -17,7 +17,7 @@ class PurchaseListingService
     ) {}
 
     /** @return array{month: Carbon, purchases: Collection<int, Purchase>, occurrences: Collection<int, InstallmentOccurrence|RecurrenceOccurrence>, invoiceGroups: Collection<int, array<string, mixed>>} */
-    public function forMonth(string $selectedMonth, string $view, ?int $selfId): array
+    public function forMonth(string $selectedMonth, string $view, ?int $selfId, ?int $paymentMethodId = null, ?string $closingDate = null): array
     {
         $month = Carbon::createFromFormat('Y-m', $selectedMonth);
         $range = $view === 'invoice'
@@ -56,6 +56,15 @@ class PurchaseListingService
         $invoiceItems = $view === 'invoice'
             ? $purchases->map(fn (Purchase $purchase): array => $this->invoiceItem($purchase, $selfId))->concat($occurrences->map(fn (InstallmentOccurrence|RecurrenceOccurrence $occurrence): array => $this->invoiceItem($occurrence, $selfId)))
             : collect();
+
+        if ($paymentMethodId !== null) {
+            $invoiceItems = $invoiceItems->filter(fn (array $item): bool => (int) $item['paymentMethodId'] === $paymentMethodId);
+        }
+
+        if ($closingDate !== null) {
+            $invoiceItems = $invoiceItems->filter(fn (array $item): bool => $item['closingDate'] === $closingDate);
+        }
+
         $invoiceGroups = $invoiceItems
             ->groupBy(fn (array $item): string => $item['paymentMethodId'].'-'.$item['closingDate'])
             ->map(function (Collection $group): array {

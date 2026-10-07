@@ -42,10 +42,20 @@ class DashboardController extends Controller
         $invoiceGroups = $view === 'invoice'
             ? $purchaseListingService->forMonth($selectedMonth, 'invoice', Participant::query()->where('is_default', true)->value('id'))['invoiceGroups']
             : collect();
+        $invoiceGroups = $invoiceGroups->map(fn (array $group): array => [
+            ...$group,
+            'detailsUrl' => route('purchases.index', [
+                'month' => $selectedMonth,
+                'view' => 'invoice',
+                'payment_method_id' => $group['paymentMethodId'],
+                'closing_date' => $group['closingDate'],
+            ], false),
+        ])->values();
 
         return Inertia::render('Dashboard', [
             'selectedMonth' => $selectedMonth,
             'view' => $view,
+            'invoiceListUrl' => route('purchases.index', ['month' => $selectedMonth, 'view' => 'invoice'], false),
             'summary' => $budgetSummary,
             'personChart' => [
                 'expenses' => $budgetAnalysis['participantExpenses'],
