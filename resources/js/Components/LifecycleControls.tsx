@@ -20,7 +20,19 @@ export default function LifecycleControls({ initialLifecycle }: { initialLifecyc
         });
     }, []);
 
-    if (!lifecycle?.local || !lifecycle.running || !lifecycle.owned || closed) {
+    if (closed) {
+        return (
+            <div
+                role="status"
+                aria-live="polite"
+                className="fixed right-4 top-4 z-50 max-w-sm rounded-xl border border-emerald-300/30 bg-slate-950/95 px-4 py-3 text-sm font-semibold text-emerald-200 shadow-lg backdrop-blur"
+            >
+                A aplicação foi encerrada com segurança. Você pode fechar esta aba.
+            </div>
+        );
+    }
+
+    if (!lifecycle?.local || !lifecycle.running || !lifecycle.owned) {
         return null;
     }
 
