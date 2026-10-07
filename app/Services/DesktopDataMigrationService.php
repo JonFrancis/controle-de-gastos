@@ -109,7 +109,7 @@ class DesktopDataMigrationService
 
     private function backupSource(string $source): string
     {
-        $directory = config('desktop.migration_backup_path') ?: dirname($source).DIRECTORY_SEPARATOR.'desktop-migration-backups';
+        $directory = config('desktop.migration_backup_path') ?: dirname($this->targetPath()).DIRECTORY_SEPARATOR.'desktop-migration-backups';
         File::ensureDirectoryExists($directory);
         $backup = rtrim($directory, '\\/').DIRECTORY_SEPARATOR.'database-before-migration-'.now()->format('Ymd_His_u').'.sqlite';
         if (! File::copy($source, $backup)) {

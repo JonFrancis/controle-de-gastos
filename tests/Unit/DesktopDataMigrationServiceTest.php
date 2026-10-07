@@ -102,6 +102,25 @@ class DesktopDataMigrationServiceTest extends TestCase
         $this->assertSame(1, (int) (new PDO('sqlite:'.$backup))->query('SELECT COUNT(*) FROM purchases')->fetchColumn());
     }
 
+    public function test_default_migration_backup_uses_the_writable_target_directory(): void
+    {
+        $sourceDirectory = $this->directory.'\\source';
+        $targetDirectory = $this->directory.'\\target';
+        File::ensureDirectoryExists($sourceDirectory);
+        File::ensureDirectoryExists($targetDirectory);
+        config([
+            'desktop.source_database_path' => $sourceDirectory.'\\source.sqlite',
+            'desktop.target_database_path' => $targetDirectory.'\\target.sqlite',
+            'desktop.migration_backup_path' => null,
+        ]);
+        $this->createDatabase(['migrations', 'app_settings', 'purchases']);
+
+        $result = app(DesktopDataMigrationService::class)->migrate();
+
+        $this->assertStringStartsWith($targetDirectory.'\\desktop-migration-backups', $result['original_backup']);
+        $this->assertFileExists($result['original_backup']);
+    }
+
     /** @param list<string> $tables */
     private function createDatabase(array $tables): void
     {
