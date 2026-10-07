@@ -34,7 +34,7 @@ class DesktopDataMigrationService
 
         $this->validateSource($source);
         if (File::isFile($target)) {
-            if (! $this->isEmptyNativeDatabase($target)) {
+            if (! $this->isReplaceableNativeDatabase($target)) {
                 throw new DesktopDataMigrationException('O banco local do aplicativo já existe. A importação foi bloqueada para evitar duplicação.');
             }
 
@@ -119,22 +119,55 @@ class DesktopDataMigrationService
         return $backup;
     }
 
+    private function isReplaceableNativeDatabase(string $path): bool
+    {
+        return $this->isEmptyNativeDatabase($path) || $this->isFreshNativePhpDatabase($path);
+    }
+
     private function isEmptyNativeDatabase(string $path): bool
     {
         try {
             $pdo = new PDO('sqlite:'.$path);
-            $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table'")?->fetchAll(PDO::FETCH_COLUMN) ?: [];
-            $domainTables = array_diff($tables, ['migrations', 'app_settings']);
 
-            foreach ($domainTables as $table) {
-                if ((int) $pdo->query('SELECT COUNT(*) FROM "'.$table.'"')->fetchColumn() > 0) {
-                    return false;
-                }
-            }
-
-            return true;
+            return $this->hasNoRowsExcept($pdo, ['migrations', 'app_settings']);
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    private function isFreshNativePhpDatabase(string $path): bool
+    {
+        try {
+            $pdo = new PDO('sqlite:'.$path);
+            if (! $this->hasNoRowsExcept($pdo, ['migrations', 'app_settings', 'participants'])) {
+                return false;
+            }
+
+            $participants = $pdo->query('SELECT active, is_default FROM participants')->fetchAll(PDO::FETCH_ASSOC);
+
+            return count($participants) === 1
+                && (int) $participants[0]['active'] === 1
+                && (int) $participants[0]['is_default'] === 1;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /** @param list<string> $ignoredTables */
+    private function hasNoRowsExcept(PDO $pdo, array $ignoredTables): bool
+    {
+        $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table'")?->fetchAll(PDO::FETCH_COLUMN) ?: [];
+
+        foreach ($tables as $table) {
+            if (in_array($table, $ignoredTables, true)) {
+                continue;
+            }
+
+            if ((int) $pdo->query('SELECT COUNT(*) FROM "'.$table.'"')->fetchColumn() > 0) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

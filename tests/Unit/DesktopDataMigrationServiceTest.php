@@ -88,6 +88,51 @@ class DesktopDataMigrationServiceTest extends TestCase
         app(DesktopDataMigrationService::class)->migrate();
     }
 
+    public function test_fresh_nativephp_database_is_replaced_by_the_existing_database(): void
+    {
+        $this->createDatabase(['migrations', 'app_settings', 'purchases']);
+        $source = new PDO('sqlite:'.config('desktop.source_database_path'));
+        $source->exec('INSERT INTO purchases (id) VALUES (11)');
+
+        $target = new PDO('sqlite:'.config('desktop.target_database_path'));
+        $target->exec('CREATE TABLE migrations (id INTEGER PRIMARY KEY)');
+        $target->exec('CREATE TABLE app_settings (id INTEGER PRIMARY KEY)');
+        $target->exec('CREATE TABLE participants (id INTEGER PRIMARY KEY, name TEXT, active INTEGER, is_default INTEGER)');
+        $target->exec("INSERT INTO participants (id, name, active, is_default) VALUES (1, 'Eu', 1, 1)");
+        unset($target);
+
+        $result = app(DesktopDataMigrationService::class)->migrate();
+
+        $this->assertSame('imported', $result['status']);
+        $this->assertSame(1, (int) (new PDO('sqlite:'.config('desktop.target_database_path')))->query('SELECT COUNT(*) FROM purchases')->fetchColumn());
+        $this->assertFileExists($result['original_backup']);
+    }
+
+    public function test_used_nativephp_database_is_not_replaced(): void
+    {
+        $this->createDatabase(['migrations', 'app_settings', 'purchases']);
+        $source = new PDO('sqlite:'.config('desktop.source_database_path'));
+        $source->exec('INSERT INTO purchases (id) VALUES (11)');
+
+        $target = new PDO('sqlite:'.config('desktop.target_database_path'));
+        $target->exec('CREATE TABLE migrations (id INTEGER PRIMARY KEY)');
+        $target->exec('CREATE TABLE app_settings (id INTEGER PRIMARY KEY)');
+        $target->exec('CREATE TABLE participants (id INTEGER PRIMARY KEY, name TEXT, active INTEGER, is_default INTEGER)');
+        $target->exec('CREATE TABLE purchases (id INTEGER PRIMARY KEY)');
+        $target->exec("INSERT INTO participants (id, name, active, is_default) VALUES (1, 'Eu', 1, 1)");
+        $target->exec('INSERT INTO purchases (id) VALUES (22)');
+        unset($target);
+
+        try {
+            app(DesktopDataMigrationService::class)->migrate();
+            $this->fail('A migração deveria bloquear um banco NativePHP já utilizado.');
+        } catch (DesktopDataMigrationException $exception) {
+            $this->assertStringContainsString('já existe', $exception->getMessage());
+        }
+
+        $this->assertSame(1, (int) (new PDO('sqlite:'.config('desktop.target_database_path')))->query('SELECT COUNT(*) FROM purchases')->fetchColumn());
+    }
+
     public function test_update_backup_preserves_the_current_database(): void
     {
         $target = new PDO('sqlite:'.config('desktop.target_database_path'));
