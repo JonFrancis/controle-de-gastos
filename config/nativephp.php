@@ -13,8 +13,20 @@ return [
     'cleanup_exclude_files' => ['build', 'temp', 'content', 'node_modules', '*/tests'],
     'updater' => [
         'enabled' => false,
-        'default' => 'github',
-        'providers' => [],
+        'default' => env('NATIVEPHP_UPDATER_PROVIDER', 'github'),
+        'providers' => [
+            'github' => [
+                'driver' => 'github',
+                'repo' => env('GITHUB_REPO', 'controle-de-gastos'),
+                'owner' => env('GITHUB_OWNER', 'JonFrancis'),
+                'token' => env('GITHUB_TOKEN'),
+                'vPrefixedTagName' => env('GITHUB_V_PREFIXED_TAG_NAME', true),
+                'private' => env('GITHUB_PRIVATE', false),
+                'autoupdate_token' => env('GITHUB_AUTOUPDATE_TOKEN'),
+                'channel' => env('GITHUB_CHANNEL', 'latest'),
+                'releaseType' => env('GITHUB_RELEASE_TYPE', 'draft'),
+            ],
+        ],
     ],
     'queue_workers' => [],
     'prebuild' => ['npm run build'],
