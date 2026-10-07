@@ -6,6 +6,7 @@ type Props = {
     view: 'calendar' | 'invoice';
     pendingReview: number;
     pendingReviewUrl: string | null;
+    invoiceListUrl: string;
     summary: {
         ownConsumptionCents: number;
         totalDisbursedCents: number;
@@ -26,7 +27,7 @@ type ChartRow = { name: string; amountCents: number };
 type MovementRow = { week: number; label: string; amountCents: number };
 type PersonChartItem = { id: number; name: string; amountCents: number; netCents?: number; creditCents?: number; status?: 'chargeable' | 'settled' };
 type PersonChartData = { expenses: PersonChartItem[]; balances: PersonChartItem[] };
-type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStart: string; periodEnd: string; closingDate: string; dueDate: string | null; totalCents: number; purchases: { id: number }[] };
+type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStart: string; periodEnd: string; closingDate: string; dueDate: string | null; totalCents: number; purchases: { id: number }[]; detailsUrl: string };
 
 const navigation = (selectedMonth: string) => [
     ['Faturas', `/purchases?month=${selectedMonth}&view=invoice`],
@@ -42,7 +43,7 @@ const navigation = (selectedMonth: string) => [
     ['Configurações', '/settings/catalogs'],
 ];
 
-export default function Dashboard({ selectedMonth, view, pendingReview, pendingReviewUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
+export default function Dashboard({ selectedMonth, view, pendingReview, pendingReviewUrl, invoiceListUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
     return (
         <>
             <Head title={view === 'invoice' ? 'Faturas' : 'Visão geral'} />
@@ -91,7 +92,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
 
                         {flash?.success && <p role="status" className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{flash.success}</p>}
 
-                        {view === 'invoice' ? <InvoiceOverview groups={invoiceGroups} selectedMonth={selectedMonth} totalCents={summary.totalDisbursedCents} /> : <>
+                        {view === 'invoice' ? <InvoiceOverview groups={invoiceGroups} selectedMonth={selectedMonth} totalCents={summary.totalDisbursedCents} invoiceListUrl={invoiceListUrl} /> : <>
                             <section className="mt-8 grid gap-4 md:grid-cols-2">
                                 <SummaryCard label="Meus gastos totais do mês" value={formatMoney(summary.ownConsumptionCents)} note="Consumo próprio atribuído a Eu" accent="emerald" />
                                 <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} selectedMonth={selectedMonth} />
@@ -114,15 +115,15 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
     );
 }
 
-function InvoiceOverview({ groups, selectedMonth, totalCents }: { groups: InvoiceGroup[]; selectedMonth: string; totalCents: number }) {
+function InvoiceOverview({ groups, selectedMonth, totalCents, invoiceListUrl }: { groups: InvoiceGroup[]; selectedMonth: string; totalCents: number; invoiceListUrl: string }) {
     return <section className="mt-8 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
             <div><p className="text-sm font-medium text-emerald-300">Faturas com vencimento em {formatMonth(selectedMonth)}</p><h2 className="mt-1 text-xl font-semibold text-white">Total a pagar: {formatMoney(totalCents)}</h2><p className="mt-1 text-sm text-slate-400">{groups.length} fatura(s) de cartão, separadas por cartão e ciclo.</p></div>
-            <Link href={`/analysis?month=${selectedMonth}&view=invoice`} className="text-sm font-semibold text-emerald-300">Abrir análise das faturas →</Link>
+            <Link href={invoiceListUrl} className="text-sm font-semibold text-emerald-300">Ver detalhes →</Link>
         </div>
         <div className="mt-6 grid gap-4 md:grid-cols-2">
             {groups.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-center text-sm text-slate-500 md:col-span-2">Nenhuma fatura de cartão com vencimento neste mês.</p>}
-            {groups.map((group) => <article key={`${group.paymentMethodId}-${group.closingDate}`} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-white">{group.paymentMethod}</h3><p className="mt-1 text-xs text-slate-400">Período: {formatDate(group.periodStart)} a {formatDate(group.periodEnd)}</p><p className="mt-1 text-xs text-slate-400">Fecha em {formatDate(group.closingDate)} · vence em {group.dueDate ? formatDate(group.dueDate) : 'não configurado'}</p></div><strong className="text-sm text-emerald-300">{formatMoney(group.totalCents)}</strong></div><p className="mt-4 text-xs text-slate-500">{group.purchases.length} lançamento(s) · <Link href={`/purchases?month=${selectedMonth}&view=invoice`} className="text-emerald-300">ver detalhes</Link></p></article>)}
+            {groups.map((group) => <article key={`${group.paymentMethodId}-${group.closingDate}`} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"><div className="flex items-start justify-between gap-3"><div><Link href={group.detailsUrl} className="font-semibold text-white hover:text-emerald-300">{group.paymentMethod}</Link><p className="mt-1 text-xs text-slate-400">Período: {formatDate(group.periodStart)} a {formatDate(group.periodEnd)}</p><p className="mt-1 text-xs text-slate-400">Fecha em {formatDate(group.closingDate)} · vence em {group.dueDate ? formatDate(group.dueDate) : 'não configurado'}</p></div><strong className="text-sm text-emerald-300">{formatMoney(group.totalCents)}</strong></div><p className="mt-4 text-xs text-slate-500">{group.purchases.length} lançamento(s)</p></article>)}
         </div>
     </section>;
 }
