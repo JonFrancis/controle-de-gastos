@@ -18,7 +18,7 @@ class DashboardController extends Controller
     public function __invoke(Request $request, MonthlyAnalysisService $monthlyAnalysisService, BalanceService $balanceService, RecurrenceService $recurrenceService, PurchaseListingService $purchaseListingService): Response
     {
         $selectedMonth = $this->validMonth($request->query('month'));
-        $view = $request->query('view') === 'calendar' ? 'calendar' : 'invoice';
+        $view = $request->query('view') === 'invoice' ? 'invoice' : 'calendar';
         $month = Carbon::createFromFormat('Y-m', $selectedMonth);
         $recurrenceService->ensureOccurrencesForRange($month->copy()->startOfMonth(), $month->copy()->endOfMonth());
         $movementCategoryId = $request->integer('category') ?: null;
