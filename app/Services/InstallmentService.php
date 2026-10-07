@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Installment;
 use App\Models\Participant;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 
 class InstallmentService
@@ -50,6 +51,60 @@ class InstallmentService
 
             return $installment;
         });
+    }
+
+    public function reschedule(Installment $installment, array $data): Installment
+    {
+        $startDate = CarbonImmutable::parse($data['start_date']);
+        $endDate = CarbonImmutable::parse($data['end_date']);
+        $count = $this->installmentCountForRange($startDate, $endDate);
+        $totalCents = $this->moneyToCents($data['total']);
+        $baseCents = intdiv($totalCents, $count);
+        $remainder = $totalCents % $count;
+
+        return DB::transaction(function () use ($installment, $startDate, $count, $baseCents, $remainder, $totalCents): Installment {
+            $installment->update([
+                'start_date' => $startDate->toDateString(),
+                'total_cents' => $totalCents,
+                'installment_count' => $count,
+            ]);
+
+            $existing = $installment->occurrences()->get()->keyBy('installment_number');
+
+            foreach (range(1, $count) as $number) {
+                $attributes = [
+                    'installment_number' => $number,
+                    'purchased_at' => $startDate->addMonthsNoOverflow($number - 1)->toDateString(),
+                    'amount_cents' => $number === $count ? $baseCents + $remainder : $baseCents,
+                    'description' => $installment->description,
+                    'card_name' => $installment->card_name,
+                    'payer_id' => $installment->payer_id,
+                    'participant_id' => $installment->participant_id,
+                    'payment_method_id' => $installment->payment_method_id,
+                    'category_id' => $installment->category_id,
+                    'is_adjusted' => false,
+                    'archived_at' => null,
+                ];
+
+                if ($existing->has($number)) {
+                    $existing->get($number)->update($attributes);
+                } else {
+                    $installment->occurrences()->create($attributes);
+                }
+            }
+
+            $installment->occurrences()
+                ->where('installment_number', '>', $count)
+                ->whereNull('archived_at')
+                ->update(['archived_at' => now()]);
+
+            return $installment->fresh();
+        });
+    }
+
+    public function installmentCountForRange(CarbonInterface $startDate, CarbonInterface $endDate): int
+    {
+        return $startDate->startOfMonth()->diffInMonths($endDate->startOfMonth()) + 1;
     }
 
     private function moneyToCents(string|int|float $value): int

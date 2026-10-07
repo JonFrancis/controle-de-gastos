@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreInstallmentRequest;
+use App\Http\Requests\UpdateInstallmentScheduleRequest;
 use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Installment;
@@ -64,6 +65,28 @@ class InstallmentController extends Controller
         $balanceService->reconcileAll();
 
         return to_route('installments.index')->with('success', 'Parcelamento criado com sucesso.');
+    }
+
+    public function updateSchedule(UpdateInstallmentScheduleRequest $request, Installment $installment, InstallmentService $service, BalanceService $balanceService, AuditService $audit): RedirectResponse
+    {
+        $oldValues = $installment->getAttributes();
+        $oldOccurrences = $installment->occurrences()->orderBy('installment_number')->get()->map(fn ($occurrence): array => $occurrence->getAttributes())->all();
+        $updated = $service->reschedule($installment, $request->validated());
+        $balanceService->reconcileAll();
+        $newOccurrences = $updated->occurrences()->orderBy('installment_number')->get()->map(fn ($occurrence): array => $occurrence->getAttributes())->all();
+        $audit->record(AuditLog::ACTION_UPDATE, $updated, oldValues: $oldValues, newValues: $updated->getAttributes(), metadata: [
+            'type' => 'schedule_reschedule',
+            'old_installment_count' => (int) $oldValues['installment_count'],
+            'new_installment_count' => $updated->installment_count,
+            'old_total_cents' => (int) $oldValues['total_cents'],
+            'new_total_cents' => $updated->total_cents,
+            'created_occurrences' => max(0, $updated->installment_count - (int) $oldValues['installment_count']),
+            'archived_occurrences' => max(0, (int) $oldValues['installment_count'] - $updated->installment_count),
+            'old_occurrences' => $oldOccurrences,
+            'new_occurrences' => $newOccurrences,
+        ]);
+
+        return to_route('installments.index')->with('success', 'Cronograma do parcelamento atualizado com sucesso.');
     }
 
     public function archive(Installment $installment, AuditService $audit): RedirectResponse
