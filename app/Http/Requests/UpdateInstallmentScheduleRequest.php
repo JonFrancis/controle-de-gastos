@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class UpdateInstallmentScheduleRequest extends FormRequest
@@ -21,7 +22,13 @@ class UpdateInstallmentScheduleRequest extends FormRequest
         return [
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'description' => ['sometimes', 'required', 'string', 'max:160'],
+            'card_name' => ['sometimes', 'nullable', 'string', 'max:160'],
             'total' => ['required', 'numeric', 'min:0.01'],
+            'payer_id' => ['sometimes', 'nullable', Rule::exists('participants', 'id')->where('active', true)],
+            'participant_id' => ['sometimes', 'nullable', Rule::exists('participants', 'id')->where('active', true)],
+            'payment_method_id' => ['sometimes', 'required', Rule::exists('payment_methods', 'id')->where('active', true)],
+            'category_id' => ['sometimes', 'nullable', Rule::exists('categories', 'id')->where('active', true)],
             'confirmation' => ['required', 'accepted'],
         ];
     }

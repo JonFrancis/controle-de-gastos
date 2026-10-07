@@ -61,28 +61,45 @@ class InstallmentService
         $totalCents = $this->moneyToCents($data['total']);
         $baseCents = intdiv($totalCents, $count);
         $remainder = $totalCents % $count;
+        $description = $data['description'] ?? $installment->description;
+        $cardName = array_key_exists('card_name', $data) ? $data['card_name'] : $installment->card_name;
+        $payerId = array_key_exists('payer_id', $data) ? $data['payer_id'] : $installment->payer_id;
+        $participantId = array_key_exists('participant_id', $data) ? $data['participant_id'] : $installment->participant_id;
+        $paymentMethodId = $data['payment_method_id'] ?? $installment->payment_method_id;
+        $categoryId = array_key_exists('category_id', $data) ? $data['category_id'] : $installment->category_id;
+        $selfId = Participant::query()->where('is_default', true)->value('id');
+        $categoryId = $participantId === null || (int) $participantId === (int) $selfId ? $categoryId : null;
+        $financialScheduleChanged = $totalCents !== (int) $installment->total_cents || $count !== (int) $installment->installment_count;
 
-        return DB::transaction(function () use ($installment, $startDate, $count, $baseCents, $remainder, $totalCents): Installment {
+        return DB::transaction(function () use ($installment, $startDate, $count, $baseCents, $remainder, $totalCents, $description, $cardName, $payerId, $participantId, $paymentMethodId, $categoryId, $financialScheduleChanged): Installment {
             $installment->update([
                 'start_date' => $startDate->toDateString(),
+                'description' => $description,
+                'card_name' => $cardName,
                 'total_cents' => $totalCents,
                 'installment_count' => $count,
+                'payer_id' => $payerId,
+                'participant_id' => $participantId,
+                'payment_method_id' => $paymentMethodId,
+                'category_id' => $categoryId,
             ]);
 
             $existing = $installment->occurrences()->get()->keyBy('installment_number');
 
             foreach (range(1, $count) as $number) {
+                $existingOccurrence = $existing->get($number);
+                $preserveAmount = ! $financialScheduleChanged && $existingOccurrence !== null && $existingOccurrence->archived_at === null;
                 $attributes = [
                     'installment_number' => $number,
                     'purchased_at' => $startDate->addMonthsNoOverflow($number - 1)->toDateString(),
-                    'amount_cents' => $number === $count ? $baseCents + $remainder : $baseCents,
-                    'description' => $installment->description,
-                    'card_name' => $installment->card_name,
-                    'payer_id' => $installment->payer_id,
-                    'participant_id' => $installment->participant_id,
-                    'payment_method_id' => $installment->payment_method_id,
-                    'category_id' => $installment->category_id,
-                    'is_adjusted' => false,
+                    'amount_cents' => $preserveAmount ? $existingOccurrence->amount_cents : ($number === $count ? $baseCents + $remainder : $baseCents),
+                    'description' => $description,
+                    'card_name' => $cardName,
+                    'payer_id' => $payerId,
+                    'participant_id' => $participantId,
+                    'payment_method_id' => $paymentMethodId,
+                    'category_id' => $categoryId,
+                    'is_adjusted' => $preserveAmount ? $existingOccurrence->is_adjusted : false,
                     'archived_at' => null,
                 ];
 

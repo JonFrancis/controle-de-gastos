@@ -74,6 +74,33 @@ class InstallmentController extends Controller
         $updated = $service->reschedule($installment, $request->validated());
         $balanceService->reconcileAll();
         $newOccurrences = $updated->occurrences()->orderBy('installment_number')->get()->map(fn ($occurrence): array => $occurrence->getAttributes())->all();
+        $newValues = $updated->getAttributes();
+        $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'payer_id', 'participant_id', 'payment_method_id', 'category_id'];
+        $changedFields = collect($ruleFields)
+            ->filter(fn (string $field): bool => (string) ($oldValues[$field] ?? null) !== (string) ($newValues[$field] ?? null))
+            ->values()
+            ->all();
+        $oldOccurrenceMap = collect($oldOccurrences)->keyBy('id');
+        $invoiceImpacts = collect($newOccurrences)->map(function (array $occurrence) use ($oldOccurrenceMap): array {
+            $oldOccurrence = $oldOccurrenceMap->get($occurrence['id']);
+
+            return [
+                'occurrence_id' => $occurrence['id'],
+                'occurrence_number' => $occurrence['installment_number'],
+                'before' => $oldOccurrence === null ? null : [
+                    'purchased_at' => $oldOccurrence['purchased_at'],
+                    'amount_cents' => $oldOccurrence['amount_cents'],
+                    'payment_method_id' => $oldOccurrence['payment_method_id'],
+                    'archived_at' => $oldOccurrence['archived_at'],
+                ],
+                'after' => [
+                    'purchased_at' => $occurrence['purchased_at'],
+                    'amount_cents' => $occurrence['amount_cents'],
+                    'payment_method_id' => $occurrence['payment_method_id'],
+                    'archived_at' => $occurrence['archived_at'],
+                ],
+            ];
+        })->values()->all();
         $audit->record(AuditLog::ACTION_UPDATE, $updated, oldValues: $oldValues, newValues: $updated->getAttributes(), metadata: [
             'type' => 'schedule_reschedule',
             'old_installment_count' => (int) $oldValues['installment_count'],
@@ -84,6 +111,12 @@ class InstallmentController extends Controller
             'archived_occurrences' => max(0, (int) $oldValues['installment_count'] - $updated->installment_count),
             'old_occurrences' => $oldOccurrences,
             'new_occurrences' => $newOccurrences,
+            'old_rule' => array_intersect_key($oldValues, array_flip($ruleFields)),
+            'new_rule' => array_intersect_key($newValues, array_flip($ruleFields)),
+            'changed_fields' => $changedFields,
+            'affected_occurrence_ids' => collect($newOccurrences)->whereNull('archived_at')->pluck('id')->values()->all(),
+            'invoice_impacts' => $invoiceImpacts,
+            'balances_reconciled' => true,
         ]);
 
         return to_route('installments.index')->with('success', 'Cronograma do parcelamento atualizado com sucesso.');

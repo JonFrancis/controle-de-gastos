@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdateInstallmentOccurrenceRequest;
 use App\Models\AuditLog;
+use App\Models\Category;
 use App\Models\InstallmentOccurrence;
+use App\Models\Participant;
+use App\Models\PaymentMethod;
 use App\Services\AuditService;
 use App\Services\BalanceService;
 use Carbon\CarbonImmutable;
@@ -27,7 +30,21 @@ class InstallmentOccurrenceController extends Controller
                     'totalCents' => $installment->total_cents,
                     'installmentCount' => $installment->installment_count,
                     'description' => $installment->description,
+                    'cardName' => $installment->card_name,
+                    'payerId' => $installment->payer_id,
+                    'participantId' => $installment->participant_id,
+                    'paymentMethodId' => $installment->payment_method_id,
+                    'categoryId' => $installment->category_id,
+                    'occurrences' => $installment->occurrences()->orderBy('installment_number')->get()->map(fn ($occurrence): array => [
+                        'id' => $occurrence->id,
+                        'number' => $occurrence->installment_number,
+                        'purchasedAt' => $occurrence->purchased_at->toDateString(),
+                        'amountCents' => $occurrence->amount_cents,
+                        'isAdjusted' => $occurrence->is_adjusted,
+                        'archivedAt' => $occurrence->archived_at?->toIso8601String(),
+                    ])->values(),
                 ],
+                ...$this->catalogs(),
             ]);
         }
 
@@ -45,5 +62,14 @@ class InstallmentOccurrenceController extends Controller
         $audit->record(AuditLog::ACTION_UPDATE, $installmentOccurrence, oldValues: $oldValues, newValues: $installmentOccurrence->fresh()->getAttributes());
 
         return to_route('installments.index')->with('success', 'Parcela ajustada com sucesso.');
+    }
+
+    private function catalogs(): array
+    {
+        return [
+            'participants' => Participant::query()->where('active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']),
+            'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
+            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type', 'closing_day']),
+        ];
     }
 }
