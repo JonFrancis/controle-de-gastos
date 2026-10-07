@@ -9,8 +9,11 @@ return [
     'copyright' => env('NATIVEPHP_APP_COPYRIGHT', 'Controle de Gastos'),
     'description' => 'Controle de Gastos local',
     'provider' => NativeAppServiceProvider::class,
-    'cleanup_env_keys' => ['AWS_*', 'AZURE_*', 'GITHUB_*', '*_SECRET', 'NATIVEPHP_UPDATER_PATH'],
+    'cleanup_env_keys' => ['AWS_*', 'AZURE_*', 'GITHUB_*', '*_SECRET', 'DESKTOP_INCLUDE_SOURCE_DATABASE', 'NATIVEPHP_UPDATER_PATH'],
     'cleanup_exclude_files' => ['build', 'temp', 'content', 'node_modules', '*/tests'],
+    'cleanup_include_files' => array_values(array_filter([
+        env('DESKTOP_INCLUDE_SOURCE_DATABASE', false) ? 'database/database.sqlite' : null,
+    ])),
     'updater' => [
         'enabled' => false,
         'default' => env('NATIVEPHP_UPDATER_PROVIDER', 'github'),
