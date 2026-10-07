@@ -228,7 +228,7 @@ class MonthlyAnalysisTest extends TestCase
             );
     }
 
-    public function test_invoice_analysis_marks_a_purchase_added_after_closing(): void
+    public function test_invoice_analysis_keeps_cycle_classification_without_an_obsolete_badge(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $card = PaymentMethod::create(['name' => 'Cartão retroativo análise', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
@@ -241,12 +241,10 @@ class MonthlyAnalysisTest extends TestCase
             'participant_id' => $self->id,
             'payment_method_id' => $card->id,
         ]);
-        $purchase->forceFill(['created_at' => '2026-10-06 12:00:00'])->saveQuietly();
-
         $this->get('/analysis?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('purchaseReview.0.description', 'Compra retroativa na análise')
-                ->where('purchaseReview.0.addedAfterClosing', true)
+                ->missing('purchaseReview.0.addedAfterClosing')
             );
     }
 

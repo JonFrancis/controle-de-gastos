@@ -82,7 +82,7 @@ class InstallmentsTest extends TestCase
         $occurrences = $installment->occurrences()->orderBy('installment_number')->get();
 
         $this->get("/installment-occurrences/{$occurrences[0]->id}/edit")
-            ->assertStatus(200)
+            ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Installments/Edit')
                 ->where('installment.startDate', '2026-10-12')
@@ -104,6 +104,10 @@ class InstallmentsTest extends TestCase
                 ->has('participants')
                 ->has('categories')
                 ->has('paymentMethods')
+                ->has('schedulePreview.installmentValues', 3)
+                ->has('schedulePreview.invoiceImpacts', 3)
+                ->where('schedulePreview.oldInstallmentCount', 3)
+                ->where('schedulePreview.oldTotalCents', 10000)
                 ->where('installment.description', 'Compra parcelada')
                 ->where('installment.cardName', null)
                 ->where('installment.paymentMethodId', $installment->payment_method_id));

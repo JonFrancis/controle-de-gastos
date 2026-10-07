@@ -4,12 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdateInstallmentOccurrenceRequest;
 use App\Models\AuditLog;
-use App\Models\Category;
 use App\Models\InstallmentOccurrence;
-use App\Models\Participant;
-use App\Models\PaymentMethod;
 use App\Services\AuditService;
 use App\Services\BalanceService;
+use App\Services\InstallmentCatalogService;
+use App\Services\InstallmentService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -17,7 +16,7 @@ use Inertia\Response;
 
 class InstallmentOccurrenceController extends Controller
 {
-    public function edit(InstallmentOccurrence $installmentOccurrence): Response
+    public function edit(InstallmentOccurrence $installmentOccurrence, InstallmentCatalogService $catalogs, InstallmentService $service): Response
     {
         if ((int) $installmentOccurrence->installment_number === 1) {
             $installment = $installmentOccurrence->load('installment')->installment;
@@ -44,7 +43,8 @@ class InstallmentOccurrenceController extends Controller
                         'archivedAt' => $occurrence->archived_at?->toIso8601String(),
                     ])->values(),
                 ],
-                ...$this->catalogs(),
+                'schedulePreview' => $service->schedulePreview($installment),
+                ...$catalogs->all(),
             ]);
         }
 
@@ -62,14 +62,5 @@ class InstallmentOccurrenceController extends Controller
         $audit->record(AuditLog::ACTION_UPDATE, $installmentOccurrence, oldValues: $oldValues, newValues: $installmentOccurrence->fresh()->getAttributes());
 
         return to_route('installments.index')->with('success', 'Parcela ajustada com sucesso.');
-    }
-
-    private function catalogs(): array
-    {
-        return [
-            'participants' => Participant::query()->where('active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']),
-            'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
-            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type', 'closing_day']),
-        ];
     }
 }

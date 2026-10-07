@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Installment;
+use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -10,6 +11,8 @@ use Illuminate\Support\Facades\DB;
 
 class InstallmentService
 {
+    public function __construct(private readonly PaymentMethodInvoiceSettingService $invoiceSettings) {}
+
     public function create(array $data): Installment
     {
         $totalCents = $this->moneyToCents($data['total']);
@@ -119,6 +122,93 @@ class InstallmentService
         });
     }
 
+    /** @return array{installment: Installment, oldValues: array<string, mixed>, newValues: array<string, mixed>, metadata: array<string, mixed>} */
+    public function rescheduleWithImpact(Installment $installment, array $data): array
+    {
+        $oldValues = $installment->getAttributes();
+        $oldOccurrences = $this->occurrenceSnapshots($installment);
+        $updated = $this->reschedule($installment, $data);
+        $newOccurrences = $this->occurrenceSnapshots($updated);
+        $newValues = $updated->getAttributes();
+        $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'payer_id', 'participant_id', 'payment_method_id', 'category_id'];
+        $changedFields = collect($ruleFields)
+            ->filter(fn (string $field): bool => (string) ($oldValues[$field] ?? null) !== (string) ($newValues[$field] ?? null))
+            ->values()
+            ->all();
+        $oldOccurrenceMap = collect($oldOccurrences)->keyBy('id');
+        $invoiceImpacts = collect($newOccurrences)->map(function (array $occurrence) use ($oldOccurrenceMap): array {
+            $oldOccurrence = $oldOccurrenceMap->get($occurrence['id']);
+
+            return [
+                'occurrence_id' => $occurrence['id'],
+                'occurrence_number' => $occurrence['installment_number'],
+                'before' => $oldOccurrence === null ? null : [
+                    'purchased_at' => $oldOccurrence['purchased_at'],
+                    'amount_cents' => $oldOccurrence['amount_cents'],
+                    'payment_method_id' => $oldOccurrence['payment_method_id'],
+                    'archived_at' => $oldOccurrence['archived_at'],
+                ],
+                'after' => [
+                    'purchased_at' => $occurrence['purchased_at'],
+                    'amount_cents' => $occurrence['amount_cents'],
+                    'payment_method_id' => $occurrence['payment_method_id'],
+                    'archived_at' => $occurrence['archived_at'],
+                ],
+            ];
+        })->values()->all();
+
+        return [
+            'installment' => $updated,
+            'oldValues' => $oldValues,
+            'newValues' => $newValues,
+            'metadata' => [
+                'type' => 'schedule_reschedule',
+                'old_installment_count' => (int) $oldValues['installment_count'],
+                'new_installment_count' => $updated->installment_count,
+                'old_total_cents' => (int) $oldValues['total_cents'],
+                'new_total_cents' => $updated->total_cents,
+                'created_occurrences' => max(0, $updated->installment_count - (int) $oldValues['installment_count']),
+                'archived_occurrences' => max(0, (int) $oldValues['installment_count'] - $updated->installment_count),
+                'old_occurrences' => $oldOccurrences,
+                'new_occurrences' => $newOccurrences,
+                'old_rule' => array_intersect_key($oldValues, array_flip($ruleFields)),
+                'new_rule' => array_intersect_key($newValues, array_flip($ruleFields)),
+                'changed_fields' => $changedFields,
+                'affected_occurrence_ids' => collect($newOccurrences)->whereNull('archived_at')->pluck('id')->values()->all(),
+                'invoice_impacts' => $invoiceImpacts,
+            ],
+        ];
+    }
+
+    /** @return array{oldStartDate: string, oldEndDate: string, oldInstallmentCount: int, oldTotalCents: int, installmentValues: list<array{number: int, date: string, amountCents: int}>, invoiceImpacts: list<array{label: string, installmentNumbers: list<int>, totalCents: int}>} */
+    public function schedulePreview(Installment $installment): array
+    {
+        $occurrences = $installment->occurrences()
+            ->whereNull('archived_at')
+            ->with(['paymentMethod.invoiceSettings'])
+            ->orderBy('installment_number')
+            ->get();
+        $invoiceImpacts = $occurrences->groupBy(fn (InstallmentOccurrence $occurrence): string => $this->invoiceImpactLabel($occurrence))
+            ->map(fn ($rows, string $label): array => [
+                'label' => $label,
+                'installmentNumbers' => $rows->pluck('installment_number')->map(fn (int $number): int => $number)->values()->all(),
+                'totalCents' => (int) $rows->sum('amount_cents'),
+            ])->values()->all();
+
+        return [
+            'oldStartDate' => $installment->start_date->toDateString(),
+            'oldEndDate' => CarbonImmutable::instance($installment->start_date)->addMonthsNoOverflow($installment->installment_count - 1)->toDateString(),
+            'oldInstallmentCount' => $installment->installment_count,
+            'oldTotalCents' => $installment->total_cents,
+            'installmentValues' => $occurrences->map(fn (InstallmentOccurrence $occurrence): array => [
+                'number' => $occurrence->installment_number,
+                'date' => $occurrence->purchased_at->toDateString(),
+                'amountCents' => $occurrence->amount_cents,
+            ])->values()->all(),
+            'invoiceImpacts' => $invoiceImpacts,
+        ];
+    }
+
     public function installmentCountForRange(CarbonInterface $startDate, CarbonInterface $endDate): int
     {
         return $startDate->startOfMonth()->diffInMonths($endDate->startOfMonth()) + 1;
@@ -127,5 +217,28 @@ class InstallmentService
     private function moneyToCents(string|int|float $value): int
     {
         return (int) round(((float) str_replace(',', '.', (string) $value)) * 100);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function occurrenceSnapshots(Installment $installment): array
+    {
+        return $installment->occurrences()->orderBy('installment_number')->get()->map(fn (InstallmentOccurrence $occurrence): array => $occurrence->getAttributes())->all();
+    }
+
+    private function invoiceImpactLabel(InstallmentOccurrence $occurrence): string
+    {
+        if ($occurrence->paymentMethod === null) {
+            return 'Sem forma de pagamento';
+        }
+
+        $details = $this->invoiceSettings->detailsFor($occurrence->paymentMethod, $occurrence->purchased_at);
+
+        if ($details === null) {
+            return $occurrence->paymentMethod->name.' · movimentação de '.$occurrence->purchased_at->format('m/Y');
+        }
+
+        $cycle = ($details['dueDate'] ?? $details['closingDate'])->format('m/Y');
+
+        return $occurrence->paymentMethod->name.' · fatura '.$cycle;
     }
 }

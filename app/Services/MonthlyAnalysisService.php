@@ -86,7 +86,6 @@ class MonthlyAnalysisService
                 'paymentMethodName' => $item['paymentMethodName'],
                 'participantName' => $item['participantName'],
                 'pending' => $item['paymentMethodId'] === null,
-                'addedAfterClosing' => $item['addedAfterClosing'],
             ])->unique('key')->values()->all(),
             'pendingReview' => $items->filter(fn (array $item): bool => $item['paymentMethodId'] === null)->unique('sourceKey')->count(),
         ];
@@ -279,7 +278,6 @@ class MonthlyAnalysisService
                     'sourceId' => $purchase->id,
                     'sourceKey' => 'purchase:'.$purchase->id,
                     'date' => $purchase->purchased_at,
-                    'createdAt' => $purchase->created_at,
                     'description' => $purchase->description,
                     'cardName' => $purchase->card_name,
                     'amountCents' => $purchase->amount_cents,
@@ -300,7 +298,6 @@ class MonthlyAnalysisService
                     'sourceId' => $allocation->id,
                     'sourceKey' => 'purchase:'.$purchase->id,
                     'date' => $purchase->purchased_at,
-                    'createdAt' => $purchase->created_at,
                     'description' => $purchase->description,
                     'cardName' => $purchase->card_name,
                     'amountCents' => $allocation->amount_cents,
@@ -323,7 +320,6 @@ class MonthlyAnalysisService
                 'sourceId' => $occurrence->id,
                 'sourceKey' => 'installment_occurrence:'.$occurrence->id,
                 'date' => $occurrence->purchased_at,
-                'createdAt' => null,
                 'description' => $occurrence->description,
                 'cardName' => $occurrence->card_name,
                 'amountCents' => $occurrence->amount_cents,
@@ -345,7 +341,6 @@ class MonthlyAnalysisService
                 'sourceId' => $occurrence->id,
                 'sourceKey' => 'recurrence_occurrence:'.$occurrence->id,
                 'date' => $occurrence->purchased_at,
-                'createdAt' => null,
                 'description' => $occurrence->description,
                 'cardName' => $occurrence->card_name,
                 'amountCents' => $occurrence->amount_cents,
@@ -368,7 +363,7 @@ class MonthlyAnalysisService
     }
 
     /**
-     * @param  array{origin: string, sourceType: string, sourceId: int, sourceKey: string, date: CarbonInterface, createdAt: CarbonInterface|null, description: string, cardName: ?string, amountCents: int, sourceAmountCents: int, payerId: int, participantId: ?int, categoryId: ?int, categoryName: ?string, paymentMethodId: ?int}  $data
+     * @param  array{origin: string, sourceType: string, sourceId: int, sourceKey: string, date: CarbonInterface, description: string, cardName: ?string, amountCents: int, sourceAmountCents: int, payerId: int, participantId: ?int, categoryId: ?int, categoryName: ?string, paymentMethodId: ?int}  $data
      * @param  Collection<int|string, string>  $participantNames
      * @param  Collection<int|string, PaymentMethod>  $paymentMethods
      * @return array<string, mixed>
@@ -380,7 +375,7 @@ class MonthlyAnalysisService
             ? $this->invoiceSettings->detailsFor($paymentMethod, $data['date'])
             : null;
 
-        return ['key' => $data['sourceType'].':'.$data['sourceId'], 'sourceKey' => $data['sourceKey'], 'origin' => $data['origin'], 'date' => $data['date']->toDateString(), 'description' => $data['description'], 'cardName' => $data['cardName'], 'amountCents' => $data['amountCents'], 'sourceAmountCents' => $data['sourceAmountCents'], 'payerId' => $data['payerId'], 'participantId' => $data['participantId'], 'participantName' => $participantNames->get($data['participantId']), 'categoryId' => $data['categoryId'], 'categoryName' => $data['categoryName'], 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $data['paymentMethodId'], 'paymentType' => $paymentMethod?->type, 'closingDay' => $invoiceDetails === null ? null : $invoiceDetails['closingDate']->day, 'dueDay' => $invoiceDetails === null ? null : $invoiceDetails['dueDate']?->day, 'invoiceMonth' => ($invoiceDetails['dueDate'] ?? $invoiceDetails['closingDate'] ?? null)?->format('Y-m'), 'addedAfterClosing' => $data['createdAt'] instanceof CarbonInterface && $invoiceDetails !== null && $invoiceDetails['closingDate']->endOfDay()->lt($data['createdAt'])];
+        return ['key' => $data['sourceType'].':'.$data['sourceId'], 'sourceKey' => $data['sourceKey'], 'origin' => $data['origin'], 'date' => $data['date']->toDateString(), 'description' => $data['description'], 'cardName' => $data['cardName'], 'amountCents' => $data['amountCents'], 'sourceAmountCents' => $data['sourceAmountCents'], 'payerId' => $data['payerId'], 'participantId' => $data['participantId'], 'participantName' => $participantNames->get($data['participantId']), 'categoryId' => $data['categoryId'], 'categoryName' => $data['categoryName'], 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $data['paymentMethodId'], 'paymentType' => $paymentMethod?->type, 'closingDay' => $invoiceDetails === null ? null : $invoiceDetails['closingDate']->day, 'dueDay' => $invoiceDetails === null ? null : $invoiceDetails['dueDate']?->day, 'invoiceMonth' => ($invoiceDetails['dueDate'] ?? $invoiceDetails['closingDate'] ?? null)?->format('Y-m')];
     }
 
     private function selfId(): int
