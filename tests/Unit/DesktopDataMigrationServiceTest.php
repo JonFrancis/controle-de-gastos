@@ -97,7 +97,7 @@ class DesktopDataMigrationServiceTest extends TestCase
         $target = new PDO('sqlite:'.config('desktop.target_database_path'));
         $target->exec('CREATE TABLE migrations (id INTEGER PRIMARY KEY)');
         $target->exec('CREATE TABLE app_settings (id INTEGER PRIMARY KEY)');
-        $target->exec('CREATE TABLE participants (id INTEGER PRIMARY KEY, name TEXT, active INTEGER, is_default INTEGER)');
+        $target->exec('CREATE TABLE participants (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, active INTEGER, is_default INTEGER)');
         $target->exec("INSERT INTO participants (id, name, active, is_default) VALUES (1, 'Eu', 1, 1)");
         unset($target);
 
@@ -117,7 +117,7 @@ class DesktopDataMigrationServiceTest extends TestCase
         $target = new PDO('sqlite:'.config('desktop.target_database_path'));
         $target->exec('CREATE TABLE migrations (id INTEGER PRIMARY KEY)');
         $target->exec('CREATE TABLE app_settings (id INTEGER PRIMARY KEY)');
-        $target->exec('CREATE TABLE participants (id INTEGER PRIMARY KEY, name TEXT, active INTEGER, is_default INTEGER)');
+        $target->exec('CREATE TABLE participants (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, active INTEGER, is_default INTEGER)');
         $target->exec('CREATE TABLE purchases (id INTEGER PRIMARY KEY)');
         $target->exec("INSERT INTO participants (id, name, active, is_default) VALUES (1, 'Eu', 1, 1)");
         $target->exec('INSERT INTO purchases (id) VALUES (22)');
