@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Services\ApplicationLifecycleService;
+use App\Services\DesktopMigrationNoticeService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -47,6 +48,7 @@ class HandleInertiaRequests extends Middleware
                 'local' => in_array($request->ip(), ['127.0.0.1', '::1'], true)
                     && in_array($request->getHost(), ['127.0.0.1', 'localhost', '[::1]'], true),
             ],
+            'desktopMigrationNotice' => fn () => app(DesktopMigrationNoticeService::class)->current(),
         ];
     }
 }
