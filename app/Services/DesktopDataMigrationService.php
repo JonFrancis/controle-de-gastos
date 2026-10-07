@@ -156,7 +156,7 @@ class DesktopDataMigrationService
     /** @param list<string> $ignoredTables */
     private function hasNoRowsExcept(PDO $pdo, array $ignoredTables): bool
     {
-        $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table'")?->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")?->fetchAll(PDO::FETCH_COLUMN) ?: [];
 
         foreach ($tables as $table) {
             if (in_array($table, $ignoredTables, true)) {
