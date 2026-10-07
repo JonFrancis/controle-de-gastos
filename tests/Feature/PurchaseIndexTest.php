@@ -274,7 +274,7 @@ class PurchaseIndexTest extends TestCase
             );
     }
 
-    public function test_invoice_view_marks_a_purchase_added_after_closing(): void
+    public function test_invoice_view_omits_added_after_closing_without_changing_invoice_cycle_or_total(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $card = $this->createCreditCard('Cartão retroativo', 5, 10);
@@ -284,7 +284,10 @@ class PurchaseIndexTest extends TestCase
         $this->get('/purchases?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('invoiceGroups.0.purchases.0.description', 'Compra lançada depois')
-                ->where('invoiceGroups.0.purchases.0.addedAfterClosing', true)
+                ->where('invoiceGroups.0.closingDate', '2026-10-05')
+                ->where('invoiceGroups.0.dueDate', '2026-10-10')
+                ->where('invoiceGroups.0.totalCents', 1800)
+                ->missing('invoiceGroups.0.purchases.0.addedAfterClosing')
             );
     }
 

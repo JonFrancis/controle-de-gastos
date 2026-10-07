@@ -139,10 +139,6 @@ class PurchaseListingService
         $details = $this->invoiceDetails($item);
         $data = $item instanceof Purchase ? $this->purchaseData($item, $selfId) : $this->occurrenceData($item);
 
-        if ($item instanceof Purchase) {
-            $data['addedAfterClosing'] = $item->created_at?->greaterThan($details['closingDate']->endOfDay()) ?? false;
-        }
-
         return [
             'paymentMethodId' => $item->payment_method_id,
             'paymentMethod' => $item->paymentMethod->name,
