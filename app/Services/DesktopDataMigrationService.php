@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\DesktopDataMigrationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use PDO;
 
@@ -38,6 +39,7 @@ class DesktopDataMigrationService
                 throw new DesktopDataMigrationException('O banco local do aplicativo já existe. A importação foi bloqueada para evitar duplicação.');
             }
 
+            $this->disconnectNativeDatabase();
             $this->backupSource($target);
             File::delete($target);
         }
@@ -117,6 +119,13 @@ class DesktopDataMigrationService
         }
 
         return $backup;
+    }
+
+    private function disconnectNativeDatabase(): void
+    {
+        if (config('nativephp-internal.running')) {
+            DB::purge('nativephp');
+        }
     }
 
     private function isReplaceableNativeDatabase(string $path): bool
