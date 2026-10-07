@@ -30,7 +30,7 @@ class DashboardTest extends TestCase
                 ->where('pendingReview', 0)
                 ->where('pendingReviewUrl', null)
                 ->has('summary')
-                ->where('view', 'invoice')
+                ->where('view', 'calendar')
                 ->where('charts.paymentMethodTotals', [])
                 ->where('charts.movement', [])
                 ->where('charts.categories', [])
@@ -64,7 +64,7 @@ class DashboardTest extends TestCase
             'payment_method_id' => $pix->id,
         ]);
 
-        $this->get('/?month=2026-10')
+        $this->get('/?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('view', 'invoice')
                 ->where('summary.totalDisbursedCents', 1000)

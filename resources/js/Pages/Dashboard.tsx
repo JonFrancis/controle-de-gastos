@@ -31,7 +31,7 @@ type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStar
 const navigation = (selectedMonth: string) => [
     ['Faturas', `/purchases?month=${selectedMonth}&view=invoice`],
     ['Movimentações', `/purchases?month=${selectedMonth}&view=calendar`],
-    ['Visão geral', `/?month=${selectedMonth}&view=invoice`],
+    ['Visão geral', `/?month=${selectedMonth}&view=calendar`],
     ['Compras', `/purchases?month=${selectedMonth}&view=invoice`],
     ['Parcelamentos', '/installments'],
     ['Recorrentes', '/recurrences'],
@@ -45,7 +45,7 @@ const navigation = (selectedMonth: string) => [
 export default function Dashboard({ selectedMonth, view, pendingReview, pendingReviewUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
     return (
         <>
-            <Head title={view === 'invoice' ? 'Faturas' : 'Movimentação'} />
+            <Head title={view === 'invoice' ? 'Faturas' : 'Visão geral'} />
             <div className="min-h-screen bg-slate-950">
                 <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-white/10 bg-slate-900/80 px-5 py-6 lg:block">
                     <div className="flex items-center gap-3 px-2">
