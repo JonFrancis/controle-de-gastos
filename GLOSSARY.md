@@ -37,15 +37,23 @@ Instância de uma recorrência ou de um parcelamento que pertence a um período 
 _Evitar_: lançamento automático quando a origem precisa ser preservada.
 
 **Forma de pagamento**:
-Cartão, Pix, dinheiro ou outro meio usado para pagar uma compra. Uma forma do tipo crédito possui um ciclo de fatura definido por seu fechamento.
+Cartão, Pix, dinheiro ou outro meio usado para pagar uma compra. Uma forma do tipo crédito possui configurações versionadas para o ciclo de fatura, incluindo fechamento e vencimento.
 _Evitar_: conta bancária quando o registro representa um cartão.
+
+**Ciclo de fatura**:
+Período de compras de um cartão entre o dia seguinte ao fechamento anterior e o dia do fechamento atual.
+_Evitar_: mês calendário, mês de vencimento.
 
 **Fechamento da fatura**:
 Dia do mês em que o cartão encerra o período de uma fatura e passa novas compras para a fatura seguinte.
 _Evitar_: data de pagamento, vencimento.
 
+**Vencimento da fatura**:
+Data em que a fatura deve ser paga. É calculada como a primeira ocorrência posterior ao fechamento para o dia de vencimento configurado no cartão.
+_Evitar_: fechamento da fatura, data da compra.
+
 **Fatura**:
-Conjunto de compras de um cartão agrupadas pelo seu ciclo de fechamento.
+Conjunto de compras de um único cartão agrupadas por um ciclo de fatura e identificadas pela data de vencimento.
 _Evitar_: mês do gasto, mensalidade do cartão.
 
 ## Saldos e fechamento
@@ -53,6 +61,22 @@ _Evitar_: mês do gasto, mensalidade do cartão.
 **Consumo próprio**:
 Valor dos rateios atribuídos a “Eu”, independentemente de quem pagou.
 _Evitar_: meus gastos, gasto pessoal, gasto pago.
+
+**Gasto total do mês**:
+Total do consumo próprio registrado no mês selecionado, somando os valores atribuídos a “Eu”.
+_Evitar_: total desembolsado, total da fatura.
+
+**Restante do salário**:
+Valor do salário mensal configurado depois de descontado o gasto total do mês; pode ser positivo ou negativo.
+_Evitar_: saldo bancário, dinheiro disponível.
+
+**Gasto por pessoa**:
+Soma dos valores atribuídos a cada participante nas compras do período selecionado.
+_Evitar_: saldo por pessoa, valor a receber.
+
+**Movimentação mensal**:
+Consulta dos lançamentos pelo mês-calendário, usada especialmente para formas de pagamento que não possuem fatura, como Pix, Débito, Dinheiro e Outro.
+_Evitar_: histórico de compras, saldo mensal.
 
 **Valor pago para terceiros**:
 Valor desembolsado pelo usuário em compras cujo rateio inclui outras pessoas.

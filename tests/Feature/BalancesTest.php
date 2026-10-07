@@ -9,7 +9,11 @@ use App\Models\Purchase;
 use App\Models\PurchaseAllocation;
 use App\Models\Receipt;
 use App\Models\ReceiptApplication;
+use App\Services\BalanceService;
+use Carbon\Carbon;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -90,6 +94,80 @@ class BalancesTest extends TestCase
                 ->where('receipt.participant.name', 'Maria'));
     }
 
+    public function test_dashboard_carries_historical_credit_into_the_selected_month(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-09-30', 'amount_cents' => 3000]);
+        $this->purchase('2026-10-03', 5000, $self, [[$maria, 5000]]);
+
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('personChart.balances.0.name', 'Maria')
+                ->where('personChart.balances.0.amountCents', 2000)
+                ->where('personChart.balances.0.netCents', 5000)
+                ->where('personChart.balances.0.creditCents', 3000)
+            );
+    }
+
+    public function test_dashboard_keeps_historical_receipt_applications_when_loading_the_selected_month(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $purchase = $this->purchase('2026-10-03', 5000, $self, [[$maria, 5000]]);
+        $allocation = $purchase->allocations()->firstOrFail();
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-09-30', 'amount_cents' => 2000]);
+        ReceiptApplication::create([
+            'receipt_id' => $receipt->id,
+            'source_type' => 'purchase_allocation',
+            'source_id' => $allocation->id,
+            'purchase_allocation_id' => $allocation->id,
+            'amount_cents' => 2000,
+            'source' => 'manual',
+        ]);
+
+        $this->get('/?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('personChart.balances.0.amountCents', 3000)
+                ->where('personChart.balances.0.creditCents', 0)
+            );
+    }
+
+    public function test_pending_movements_without_payment_method_are_excluded_from_balances(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $purchase = Purchase::create([
+            'purchased_at' => '2026-10-03',
+            'description' => 'Lançamento pendente',
+            'amount_cents' => 5000,
+            'payer_id' => $self->id,
+            'payment_method_id' => null,
+        ]);
+        $purchase->allocations()->create(['participant_id' => $maria->id, 'amount_cents' => 5000]);
+
+        $this->get('/balances?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('participants.0.name', 'Maria')
+                ->where('participants.0.receivableCents', 0)
+                ->where('participants.0.hasMovement', false)
+            );
+    }
+
+    public function test_participant_balances_does_not_query_receipts_per_participant(): void
+    {
+        $this->catalogs();
+        Participant::create(['name' => 'Joana']);
+        $queries = [];
+        DB::listen(function (QueryExecuted $query) use (&$queries): void {
+            $sql = strtolower($query->sql);
+            if (str_contains($sql, 'from "receipts"') && str_contains($sql, 'where "participant_id" = ?')) {
+                $queries[] = $query->sql;
+            }
+        });
+
+        app(BalanceService::class)->participantBalances(Carbon::parse('2026-10-31'), Carbon::parse('2026-10-01'));
+
+        $this->assertSame([], $queries);
+    }
+
     public function test_receipt_applications_can_be_adjusted_manually_without_losing_credit(): void
     {
         [$self, $maria] = $this->catalogs();
@@ -119,14 +197,14 @@ class BalancesTest extends TestCase
     }
 
     /** @param list<array{0: Participant, 1: int}> $allocations */
-    private function purchase(string $date, int $amountCents, Participant $payer, array $allocations): Purchase
+    private function purchase(string $date, int $amountCents, Participant $payer, array $allocations, ?int $paymentMethodId = null): Purchase
     {
         $purchase = Purchase::create([
             'purchased_at' => $date,
             'description' => 'Compra '.$date,
             'amount_cents' => $amountCents,
             'payer_id' => $payer->id,
-            'payment_method_id' => PaymentMethod::query()->firstOrFail()->id,
+            'payment_method_id' => $paymentMethodId ?? PaymentMethod::query()->firstOrFail()->id,
         ]);
 
         foreach ($allocations as [$participant, $amount]) {

@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreReceiptRequest;
 use App\Http\Requests\UpdateReceiptApplicationsRequest;
+use App\Models\AuditLog;
 use App\Models\Participant;
 use App\Models\Receipt;
+use App\Services\AuditService;
 use App\Services\BalanceService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -40,21 +42,24 @@ class ReceiptController extends Controller
         ]);
     }
 
-    public function store(StoreReceiptRequest $request, BalanceService $service): RedirectResponse
+    public function store(StoreReceiptRequest $request, BalanceService $service, AuditService $audit): RedirectResponse
     {
         $data = $request->validated();
         $data['amount_cents'] = $this->moneyToCents($data['amount']);
         unset($data['amount']);
         $receipt = Receipt::create($data);
+        $audit->record(AuditLog::ACTION_CREATE, $receipt, newValues: $receipt->getAttributes());
         $service->reconcileParticipant($receipt->participant_id);
 
         return to_route('balances', array_filter(['month' => $request->query('month')]))->with('success', 'Recebimento registrado e aplicado aos saldos mais antigos.');
     }
 
-    public function updateApplications(UpdateReceiptApplicationsRequest $request, Receipt $receipt, BalanceService $service): RedirectResponse
+    public function updateApplications(UpdateReceiptApplicationsRequest $request, Receipt $receipt, BalanceService $service, AuditService $audit): RedirectResponse
     {
+        $oldApplications = $receipt->applications()->get()->toArray();
         $applications = collect($request->validated('applications', []))->map(fn (array $application): array => [...$application, 'source_id' => (int) $application['source_id'], 'amount_cents' => $this->moneyToCents($application['amount'])])->all();
         $service->replaceManualApplications($receipt, $applications);
+        $audit->record(AuditLog::ACTION_UPDATE, $receipt, oldValues: ['applications' => $oldApplications], newValues: ['applications' => $receipt->fresh()->applications()->get()->toArray()], metadata: ['type' => 'receipt_applications']);
 
         return to_route('balances')->with('success', 'Aplicações do recebimento ajustadas.');
     }

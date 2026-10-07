@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdateInstallmentOccurrenceRequest;
+use App\Models\AuditLog;
 use App\Models\InstallmentOccurrence;
+use App\Services\AuditService;
 use App\Services\BalanceService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -18,11 +20,13 @@ class InstallmentOccurrenceController extends Controller
         ]);
     }
 
-    public function update(UpdateInstallmentOccurrenceRequest $request, InstallmentOccurrence $installmentOccurrence, BalanceService $balanceService): RedirectResponse
+    public function update(UpdateInstallmentOccurrenceRequest $request, InstallmentOccurrence $installmentOccurrence, BalanceService $balanceService, AuditService $audit): RedirectResponse
     {
+        $oldValues = $installmentOccurrence->getAttributes();
         $amount = (int) round(((float) $request->validated('amount')) * 100);
         $installmentOccurrence->update(['amount_cents' => $amount, 'is_adjusted' => true]);
         $balanceService->reconcileAll();
+        $audit->record(AuditLog::ACTION_UPDATE, $installmentOccurrence, oldValues: $oldValues, newValues: $installmentOccurrence->fresh()->getAttributes());
 
         return to_route('installments.index')->with('success', 'Parcela ajustada com sucesso.');
     }

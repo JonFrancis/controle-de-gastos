@@ -6,10 +6,17 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['purchased_at', 'description', 'card_name', 'amount_cents', 'allocation_mode', 'payer_id', 'participant_id', 'payment_method_id', 'category_id', 'archived_at'])]
+#[Fillable(['purchased_at', 'description', 'card_name', 'amount_cents', 'origin', 'allocation_mode', 'payer_id', 'participant_id', 'payment_method_id', 'category_id', 'archived_at'])]
 class Purchase extends Model
 {
+    public const ORIGIN_MANUAL = 'manual';
+
+    public const ORIGIN_RECURRENCE = 'recurrence';
+
+    public const ORIGIN_INSTALLMENT = 'installment';
+
     protected function casts(): array
     {
         return ['purchased_at' => 'date', 'amount_cents' => 'integer', 'archived_at' => 'datetime'];
@@ -43,5 +50,10 @@ class Purchase extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(PurchaseAllocation::class);
+    }
+
+    public function spreadsheetImportRow(): HasOne
+    {
+        return $this->hasOne(SpreadsheetImportRow::class);
     }
 }

@@ -47,7 +47,7 @@ class RecurrencesTest extends TestCase
         ]);
         $this->assertSame(['2026-01-31', '2026-02-28', '2026-03-31'], $recurrence->occurrences()->orderBy('purchased_at')->pluck('purchased_at')->map(fn ($date) => $date->toDateString())->all());
 
-        $this->get('/?month=2026-02')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 10000)->has('occurrences', 1)->where('occurrences.0.origin', 'recurrence'));
+        $this->get('/purchases?month=2026-02&view=calendar')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 10000)->has('occurrences', 1)->where('occurrences.0.origin', 'recurrence'));
 
         $this->assertSame(3, $recurrence->fresh()->occurrences()->count());
     }
@@ -58,7 +58,7 @@ class RecurrencesTest extends TestCase
 
         $this->createRecurrence($card, '2026-11-09', '200,00', null);
 
-        $this->get('/?view=invoice&month=2026-11')->assertInertia(fn (Assert $page) => $page
+        $this->get('/purchases?view=invoice&month=2026-11')->assertInertia(fn (Assert $page) => $page
             ->where('monthTotalCents', 20000)
             ->has('invoiceGroups', 1)
             ->where('invoiceGroups.0.purchases.0.origin', 'recurrence')
@@ -86,13 +86,13 @@ class RecurrencesTest extends TestCase
         $this->patch("/recurrences/{$recurrence->id}/deactivate")->assertRedirect('/recurrences');
 
         $this->assertDatabaseHas('recurrences', ['id' => $recurrence->id, 'active' => false]);
-        $this->get('/?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1));
-        $this->get('/?month=2026-11')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 0)->has('occurrences', 0));
+        $this->get('/purchases?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1));
+        $this->get('/purchases?month=2026-11&view=calendar')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 0)->has('occurrences', 0));
 
         $this->patch("/recurrences/{$recurrence->id}/activate")->assertRedirect('/recurrences');
 
         $this->assertDatabaseHas('recurrences', ['id' => $recurrence->id, 'active' => true]);
-        $this->get('/?month=2026-11')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1));
+        $this->get('/purchases?month=2026-11&view=calendar')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1));
     }
 
     public function test_recurrence_can_be_ended_by_date_without_removing_its_history(): void
@@ -103,8 +103,8 @@ class RecurrencesTest extends TestCase
         $this->patch("/recurrences/{$recurrence->id}", ['end_date' => '2026-11-30', 'active' => true])->assertRedirect('/recurrences');
 
         $this->assertSame('2026-11-30', $recurrence->fresh()->end_date->toDateString());
-        $this->get('/?month=2026-10')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1));
-        $this->get('/?month=2026-12')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 0)->has('occurrences', 0));
+        $this->get('/purchases?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1));
+        $this->get('/purchases?month=2026-12&view=calendar')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 0)->has('occurrences', 0));
         $this->assertSame(2, $recurrence->fresh()->occurrences()->whereNull('archived_at')->count());
     }
 
@@ -116,8 +116,8 @@ class RecurrencesTest extends TestCase
         $this->patch("/recurrences/{$recurrence->id}", ['end_date' => '2026-11-30', 'active' => false]);
         $this->patch("/recurrences/{$recurrence->id}/activate")->assertRedirect('/recurrences');
 
-        $this->get('/?month=2026-11')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1));
-        $this->get('/?month=2026-12')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 0)->has('occurrences', 0));
+        $this->get('/purchases?month=2026-11&view=calendar')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 5000)->has('occurrences', 1));
+        $this->get('/purchases?month=2026-12&view=calendar')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 0)->has('occurrences', 0));
     }
 
     private function createRecurrence(PaymentMethod $paymentMethod, string $startDate, string $amount, ?string $endDate): Recurrence
