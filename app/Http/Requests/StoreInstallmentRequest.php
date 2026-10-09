@@ -28,6 +28,13 @@ class StoreInstallmentRequest extends FormRequest
             'card_name' => ['nullable', 'string', 'max:160'],
             'total' => ['required', 'numeric', 'min:0.01'],
             'installment_count' => ['required', 'integer', 'min:2', 'max:120'],
+            'allocation_mode' => ['sometimes', 'required', 'string', 'in:equal,amount,percentage'],
+            'allocations' => ['sometimes', 'required', 'array', 'min:1'],
+            'allocations.*' => ['required', 'array'],
+            'allocations.*.participant_id' => ['nullable', Rule::exists('participants', 'id')->where('active', true)],
+            'allocations.*.category_id' => ['nullable', Rule::exists('categories', 'id')->where('active', true)],
+            'allocations.*.amount' => ['nullable', 'numeric', 'min:0'],
+            'allocations.*.percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'payer_id' => ['nullable', Rule::exists('participants', 'id')->where('active', true)],
             'participant_id' => ['nullable', Rule::exists('participants', 'id')->where('active', true)],
             'payment_method_id' => ['required', Rule::exists('payment_methods', 'id')->where('active', true)],
@@ -37,7 +44,17 @@ class StoreInstallmentRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge(['total' => is_string($this->total) ? str_replace(',', '.', $this->total) : $this->total]);
+        $data = ['total' => is_string($this->total) ? str_replace(',', '.', $this->total) : $this->total];
+
+        if ($this->has('allocations')) {
+            $data['allocations'] = collect($this->input('allocations', []))->map(fn (array $allocation): array => [
+                ...$allocation,
+                'amount' => is_string($allocation['amount'] ?? null) ? str_replace(',', '.', $allocation['amount']) : ($allocation['amount'] ?? null),
+                'percentage' => is_string($allocation['percentage'] ?? null) ? str_replace(',', '.', $allocation['percentage']) : ($allocation['percentage'] ?? null),
+            ])->all();
+        }
+
+        $this->merge($data);
     }
 
     public function messages(): array

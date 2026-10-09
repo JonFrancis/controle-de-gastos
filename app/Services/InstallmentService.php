@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\DB;
 
 class InstallmentService
 {
-    public function __construct(private readonly PaymentMethodInvoiceSettingService $invoiceSettings) {}
+    public function __construct(
+        private readonly PaymentMethodInvoiceSettingService $invoiceSettings,
+        private readonly InstallmentAllocationService $allocations,
+    ) {}
 
     public function create(array $data): Installment
     {
@@ -51,6 +54,12 @@ class InstallmentService
                     'category_id' => $categoryId,
                 ];
             })->all());
+
+            $this->allocations->save($installment, $data['allocation_mode'] ?? 'equal', $data['allocations'] ?? [[
+                'participant_id' => $participantId,
+                'category_id' => $categoryId,
+                'amount' => $data['total'],
+            ]]);
 
             return $installment;
         });
