@@ -1,8 +1,9 @@
 import { Head, Link, useForm } from '@inertiajs/react';
+import { useEffect } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import InstallmentAllocationFields, { InstallmentAllocationRow } from '@/Components/InstallmentAllocationFields';
 import { allocationChangeLabels } from '@/Components/installmentAllocationChanges.mjs';
-import { allocationRowsForEdit, serializeAllocationRule } from './editAllocationContract.mjs';
+import { allocationRowsForEdit, recalculateAmountRows, serializeAllocationRule } from './editAllocationContract.mjs';
 
 type Option = { id: number; name: string; is_default?: boolean };
 type PaymentMethod = Option & { type: string; closing_day: number | null };
@@ -38,6 +39,12 @@ export default function InstallmentsEdit({ installment, schedulePreview, partici
     });
     const count = inclusiveMonthCount(form.data.start_date, form.data.end_date);
     const totalCents = parseMoney(form.data.total);
+    useEffect(() => {
+        if (form.data.allocation_mode !== 'amount') return;
+
+        const recalculatedRows = recalculateAmountRows(form.data.allocations, schedulePreview.oldTotalCents, totalCents);
+        if (recalculatedRows !== form.data.allocations) form.setData('allocations', recalculatedRows);
+    }, [form.data.allocation_mode, form.data.allocations, schedulePreview.oldTotalCents, totalCents]);
     const dateChanged = form.data.start_date !== schedulePreview.oldStartDate || form.data.end_date !== schedulePreview.oldEndDate;
     const quantityChanged = count !== schedulePreview.oldInstallmentCount;
     const totalChanged = totalCents !== schedulePreview.oldTotalCents;

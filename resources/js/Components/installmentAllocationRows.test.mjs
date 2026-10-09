@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { allocationChangeLabels } from './installmentAllocationChanges.mjs';
 import { removeAllocationRow, updateAllocationParticipant } from './installmentAllocationRows.mjs';
-import { allocationRowsForEdit, serializeAllocationRule } from '../Pages/Installments/editAllocationContract.mjs';
+import { allocationRowsForEdit, recalculateAmountRows, serializeAllocationRule } from '../Pages/Installments/editAllocationContract.mjs';
 
 test('removes the selected participant row while another row remains', () => {
     const rows = [{ participant_id: '1' }, { participant_id: '2' }, { participant_id: '3' }];
@@ -56,4 +56,25 @@ test('Edit contract preserves every Rateio mode and serializes participant data'
             percentage: mode === 'percentage' ? '60.00' : '',
         });
     }
+});
+
+test('Edit contract recalculates visible amount rows before serializing a changed total', () => {
+    const rows = [
+        { participant_id: '2', participant_id_is_null: false, category_id: '4', amount: '60.00', percentage: '' },
+        { participant_id: '3', participant_id_is_null: false, category_id: '', amount: '40.00', percentage: '' },
+    ];
+
+    const recalculatedRows = recalculateAmountRows(rows, 10000, 12000);
+
+    assert.deepEqual(recalculatedRows, [
+        { participant_id: '2', participant_id_is_null: false, category_id: '4', amount: '72.00', percentage: '' },
+        { participant_id: '3', participant_id_is_null: false, category_id: '', amount: '48.00', percentage: '' },
+    ]);
+    assert.deepEqual(serializeAllocationRule('amount', recalculatedRows), {
+        allocation_mode: 'amount',
+        allocations: recalculatedRows,
+    });
+
+    const invalidRows = rows.map((row, index) => ({ ...row, amount: index === 0 ? '61.00' : '40.00' }));
+    assert.deepEqual(recalculateAmountRows(invalidRows, 10000, 12000), invalidRows);
 });
