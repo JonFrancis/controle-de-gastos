@@ -76,17 +76,22 @@ class MonthlyAnalysisService
             'movementCategories' => $movementCategories,
             'selectedMovementCategoryId' => $selectedMovementCategoryId,
             'origins' => $this->origins($chargeableItems),
-            'purchaseReview' => $items->unique('sourceKey')->map(fn (array $item): array => [
-                'key' => $item['key'],
-                'date' => $item['date'],
-                'description' => $item['description'],
-                'cardName' => $item['cardName'],
-                'amountCents' => $item['sourceAmountCents'],
-                'origin' => $item['origin'],
-                'paymentMethodName' => $item['paymentMethodName'],
-                'participantName' => $item['participantName'],
-                'pending' => $item['paymentMethodId'] === null,
-            ])->unique('key')->values()->all(),
+            'purchaseReview' => $items->groupBy('sourceKey')->map(function (Collection $rows): array {
+                $item = $rows->first();
+                $participants = $rows->pluck('participantName')->filter()->unique()->join(', ');
+
+                return [
+                    'key' => $item['key'],
+                    'date' => $item['date'],
+                    'description' => $item['description'],
+                    'cardName' => $item['cardName'],
+                    'amountCents' => $item['sourceAmountCents'],
+                    'origin' => $item['origin'],
+                    'paymentMethodName' => $item['paymentMethodName'],
+                    'participantName' => $participants !== '' ? $participants : $item['participantName'],
+                    'pending' => $item['paymentMethodId'] === null,
+                ];
+            })->values()->all(),
             'pendingReview' => $items->filter(fn (array $item): bool => $item['paymentMethodId'] === null)->unique('sourceKey')->count(),
         ];
     }
@@ -310,26 +315,49 @@ class MonthlyAnalysisService
                 ], $participantNames, $paymentMethods));
             }
         }
-        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->with(['installment', 'paymentMethod', 'category'])
+        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->with(['installment', 'paymentMethod', 'category', 'allocations.participant', 'allocations.category'])
             ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
             ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
             ->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
-            $items->push($this->row([
-                'origin' => 'installment',
-                'sourceType' => 'installment_occurrence',
-                'sourceId' => $occurrence->id,
-                'sourceKey' => 'installment_occurrence:'.$occurrence->id,
-                'date' => $occurrence->purchased_at,
-                'description' => $occurrence->description,
-                'cardName' => $occurrence->card_name,
-                'amountCents' => $occurrence->amount_cents,
-                'sourceAmountCents' => $occurrence->amount_cents,
-                'payerId' => $occurrence->payer_id ?? $selfId,
-                'participantId' => $occurrence->participant_id ?? $selfId,
-                'categoryId' => $occurrence->category_id,
-                'categoryName' => $occurrence->category?->name,
-                'paymentMethodId' => $occurrence->payment_method_id,
-            ], $participantNames, $paymentMethods));
+            if ($occurrence->allocations->isEmpty()) {
+                $items->push($this->row([
+                    'origin' => 'installment',
+                    'sourceType' => 'installment_occurrence',
+                    'sourceId' => $occurrence->id,
+                    'sourceKey' => 'installment_occurrence:'.$occurrence->id,
+                    'date' => $occurrence->purchased_at,
+                    'description' => $occurrence->description,
+                    'cardName' => $occurrence->card_name,
+                    'amountCents' => $occurrence->amount_cents,
+                    'sourceAmountCents' => $occurrence->amount_cents,
+                    'payerId' => $occurrence->payer_id ?? $selfId,
+                    'participantId' => $occurrence->participant_id ?? $selfId,
+                    'categoryId' => $occurrence->category_id,
+                    'categoryName' => $occurrence->category?->name,
+                    'paymentMethodId' => $occurrence->payment_method_id,
+                ], $participantNames, $paymentMethods));
+
+                continue;
+            }
+
+            foreach ($occurrence->allocations as $allocation) {
+                $items->push($this->row([
+                    'origin' => 'installment',
+                    'sourceType' => 'installment_allocation',
+                    'sourceId' => $allocation->id,
+                    'sourceKey' => 'installment_occurrence:'.$occurrence->id,
+                    'date' => $occurrence->purchased_at,
+                    'description' => $occurrence->description,
+                    'cardName' => $occurrence->card_name,
+                    'amountCents' => $allocation->amount_cents,
+                    'sourceAmountCents' => $occurrence->amount_cents,
+                    'payerId' => $occurrence->payer_id ?? $selfId,
+                    'participantId' => $allocation->participant_id ?? $selfId,
+                    'categoryId' => $allocation->category_id,
+                    'categoryName' => $allocation->category?->name,
+                    'paymentMethodId' => $occurrence->payment_method_id,
+                ], $participantNames, $paymentMethods));
+            }
         }
         foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->with(['recurrence', 'paymentMethod', 'category'])
             ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))

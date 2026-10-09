@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Category;
+use App\Models\Installment;
+use App\Models\InstallmentAllocation;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
@@ -78,6 +80,45 @@ class MonthlyAnalysisTest extends TestCase
                 ->where('fullMessage', "Cobranças do período:\n\nMaria:\n- Mercado do mês (12/10/2026): R$ 70,00\nTotal bruto: R$ 70,00\nAbatimentos: R$ 0,00\nValor líquido: R$ 70,00")
                 ->where('purchaseReview.0.description', 'Mercado do mês')
                 ->where('purchaseReview.0.cardName', 'SUPERMERCADO REAL'));
+    }
+
+    public function test_calendar_analysis_uses_installment_rateios_without_duplicating_the_occurrence_total(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $category = Category::create(['name' => 'Casa']);
+        $card = PaymentMethod::create(['name' => 'Cartão rateado', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 10]);
+        $card->latestInvoiceSetting()->update(['due_day' => 15, 'effective_from' => '2026-01-01']);
+        $installment = Installment::create(['start_date' => '2026-10-12', 'description' => 'Compra rateada', 'total_cents' => 20000, 'installment_count' => 2, 'payer_id' => $self->id, 'payment_method_id' => $card->id]);
+        $occurrence = $installment->occurrences()->create(['installment_number' => 1, 'purchased_at' => '2026-10-12', 'description' => 'Compra rateada', 'amount_cents' => 10000, 'payer_id' => $self->id, 'payment_method_id' => $card->id]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $self->id, 'category_id' => $category->id, 'amount_cents' => 4000]);
+        $mariaAllocation = InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $maria->id, 'amount_cents' => 6000]);
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-20', 'amount_cents' => 2000]);
+        ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'installment_allocation', 'source_id' => $mariaAllocation->id, 'amount_cents' => 2000, 'source' => 'manual']);
+
+        $this->get('/analysis?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.ownConsumptionCents', 4000)
+                ->where('summary.paidForOthersCents', 6000)
+                ->where('summary.totalDisbursedCents', 10000)
+                ->where('categories.0.name', 'Casa')
+                ->where('categories.0.amountCents', 4000)
+                ->where('paymentMethods.0.name', 'Cartão rateado')
+                ->where('paymentMethods.0.amountCents', 4000)
+                ->where('origins.installment.amountCents', 10000)
+                ->where('origins.installment.count', 1)
+                ->where('participants.0.name', 'Maria')
+                ->where('participants.0.grossCents', 6000)
+                ->where('participants.0.abatementsCents', 2000)
+                ->where('participants.0.finalCents', 4000)
+                ->where('purchaseReview.0.amountCents', 10000)
+                ->where('purchaseReview.0.participantName', 'Eu, Maria'));
+
+        $this->get('/analysis?month=2026-11&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.totalDisbursedCents', 10000)
+                ->where('origins.installment.amountCents', 10000)
+                ->where('purchaseReview.0.participantName', 'Eu, Maria'));
     }
 
     public function test_invoice_analysis_uses_the_card_closing_cycle(): void

@@ -6,6 +6,7 @@ use App\Http\Requests\StoreInstallmentRequest;
 use App\Http\Requests\UpdateInstallmentScheduleRequest;
 use App\Models\AuditLog;
 use App\Models\Installment;
+use App\Models\Participant;
 use App\Services\AuditService;
 use App\Services\BalanceService;
 use App\Services\InstallmentCatalogService;
@@ -23,32 +24,40 @@ class InstallmentController extends Controller
 
     public function index(): Response
     {
+        $selfId = (int) Participant::query()->where('is_default', true)->value('id');
         $installments = Installment::query()
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'category:id,name', 'occurrences' => fn ($query) => $query->orderBy('installment_number')])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'category:id,name', 'occurrences' => fn ($query) => $query->orderBy('installment_number'), 'occurrences.allocations.participant:id,name', 'occurrences.allocations.category:id,name'])
             ->orderByDesc('start_date')
             ->orderByDesc('id')
             ->get()
-            ->map(fn (Installment $installment): array => [
-                'id' => $installment->id,
-                'startDate' => $installment->start_date->toDateString(),
-                'description' => $installment->description,
-                'cardName' => $installment->card_name,
-                'totalCents' => $installment->total_cents,
-                'installmentCount' => $installment->installment_count,
-                'payer' => $installment->payer?->name,
-                'participant' => $installment->participant?->name,
-                'paymentMethod' => $installment->paymentMethod?->name,
-                'category' => $installment->category?->name,
-                'archivedAt' => $installment->archived_at?->toIso8601String(),
-                'occurrences' => $installment->occurrences->map(fn ($occurrence): array => [
-                    'id' => $occurrence->id,
-                    'number' => $occurrence->installment_number,
-                    'purchasedAt' => $occurrence->purchased_at->toDateString(),
-                    'amountCents' => $occurrence->amount_cents,
-                    'isAdjusted' => $occurrence->is_adjusted,
-                    'archivedAt' => $occurrence->archived_at?->toIso8601String(),
-                ])->values(),
-            ]);
+            ->map(function (Installment $installment) use ($selfId): array {
+                $allocations = $installment->occurrences->flatMap->allocations;
+                $selfAllocation = $allocations->first(fn ($allocation): bool => $allocation->participant_id === null || (int) $allocation->participant_id === $selfId);
+
+                return [
+                    'id' => $installment->id,
+                    'startDate' => $installment->start_date->toDateString(),
+                    'description' => $installment->description,
+                    'cardName' => $installment->card_name,
+                    'totalCents' => $installment->total_cents,
+                    'installmentCount' => $installment->installment_count,
+                    'payer' => $installment->payer?->name,
+                    'participant' => $allocations->isNotEmpty()
+                        ? $allocations->map(fn ($allocation): string => $allocation->participant?->name ?? 'Eu')->unique()->join(', ')
+                        : $installment->participant?->name,
+                    'paymentMethod' => $installment->paymentMethod?->name,
+                    'category' => $selfAllocation?->category?->name ?? $installment->category?->name,
+                    'archivedAt' => $installment->archived_at?->toIso8601String(),
+                    'occurrences' => $installment->occurrences->map(fn ($occurrence): array => [
+                        'id' => $occurrence->id,
+                        'number' => $occurrence->installment_number,
+                        'purchasedAt' => $occurrence->purchased_at->toDateString(),
+                        'amountCents' => $occurrence->amount_cents,
+                        'isAdjusted' => $occurrence->is_adjusted,
+                        'archivedAt' => $occurrence->archived_at?->toIso8601String(),
+                    ])->values(),
+                ];
+            });
 
         return Inertia::render('Installments/Index', [
             'installments' => $installments,

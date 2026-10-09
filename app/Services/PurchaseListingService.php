@@ -36,7 +36,7 @@ class PurchaseListingService
             ->get();
         $installmentOccurrences = InstallmentOccurrence::query()
             ->whereNull('archived_at')
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'installment:id,installment_count'])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'installment:id,installment_count', 'allocations.participant:id,name', 'allocations.category:id,name'])
             ->whereBetween('purchased_at', [$periodStart, $periodEnd])
             ->orderByDesc('purchased_at')
             ->get();
@@ -108,9 +108,11 @@ class PurchaseListingService
     }
 
     /** @return array<string, mixed> */
-    public function occurrenceData(InstallmentOccurrence|RecurrenceOccurrence $occurrence): array
+    public function occurrenceData(InstallmentOccurrence|RecurrenceOccurrence $occurrence, ?int $selfId = null): array
     {
         $isInstallment = $occurrence instanceof InstallmentOccurrence;
+        $allocations = $isInstallment ? $occurrence->allocations : collect();
+        $selfAllocation = $allocations->first(fn ($allocation): bool => $allocation->participant_id === null || (int) $allocation->participant_id === $selfId);
 
         return [
             'id' => $occurrence->id,
@@ -127,9 +129,11 @@ class PurchaseListingService
             'cardName' => $occurrence->card_name,
             'amountCents' => $occurrence->amount_cents,
             'payer' => $occurrence->payer?->name,
-            'participant' => $occurrence->participant?->name,
+            'participant' => $allocations->isNotEmpty()
+                ? $allocations->map(fn ($allocation): string => $allocation->participant?->name ?? 'Eu')->unique()->join(', ')
+                : $occurrence->participant?->name,
             'paymentMethod' => $occurrence->paymentMethod?->name,
-            'category' => $occurrence->category?->name,
+            'category' => $selfAllocation?->category?->name ?? $occurrence->category?->name,
             'isAdjusted' => $occurrence->is_adjusted,
         ];
     }
@@ -146,7 +150,7 @@ class PurchaseListingService
     private function invoiceItem(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item, ?int $selfId): array
     {
         $details = $this->invoiceDetails($item);
-        $data = $item instanceof Purchase ? $this->purchaseData($item, $selfId) : $this->occurrenceData($item);
+        $data = $item instanceof Purchase ? $this->purchaseData($item, $selfId) : $this->occurrenceData($item, $selfId);
 
         return [
             'paymentMethodId' => $item->payment_method_id,

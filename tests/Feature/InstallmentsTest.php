@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Installment;
+use App\Models\InstallmentAllocation;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
@@ -52,6 +53,23 @@ class InstallmentsTest extends TestCase
         ]);
         $this->assertSame([3333, 3333, 3334], InstallmentOccurrence::query()->where('installment_id', $installment->id)->orderBy('installment_number')->pluck('amount_cents')->all());
         $this->assertSame(['2026-10-12', '2026-11-12', '2026-12-12'], InstallmentOccurrence::query()->where('installment_id', $installment->id)->orderBy('installment_number')->pluck('purchased_at')->map(fn ($date) => $date->toDateString())->all());
+    }
+
+    public function test_installments_listing_exposes_rateio_participants_and_own_category(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $category = Category::create(['name' => 'Casa']);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $installment = Installment::create(['start_date' => '2026-10-12', 'description' => 'Compra rateada', 'total_cents' => 10000, 'installment_count' => 2, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id]);
+        $occurrence = $installment->occurrences()->create(['installment_number' => 1, 'purchased_at' => '2026-10-12', 'description' => 'Compra rateada', 'amount_cents' => 5000, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $self->id, 'category_id' => $category->id, 'amount_cents' => 2500]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $maria->id, 'amount_cents' => 2500]);
+
+        $this->get('/installments')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('installments.0.participant', 'Eu, Maria')
+                ->where('installments.0.category', 'Casa'));
     }
 
     public function test_installment_occurrence_is_visible_in_calendar_and_invoice_cycle(): void
