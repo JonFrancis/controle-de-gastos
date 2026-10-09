@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Installment;
 use App\Models\InstallmentOccurrence;
+use App\Models\Participant;
 use App\Models\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -65,12 +67,303 @@ class InstallmentsTest extends TestCase
     {
         $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 3);
         $occurrences = $installment->occurrences()->orderBy('installment_number')->get();
+        $this->assertSame([1, 2, 3], $occurrences->pluck('installment_number')->all());
 
         $this->patch("/installment-occurrences/{$occurrences[1]->id}", ['amount' => '40,00'])->assertRedirect('/installments');
 
         $this->assertDatabaseHas('installment_occurrences', ['id' => $occurrences[1]->id, 'amount_cents' => 4000, 'is_adjusted' => true]);
         $this->assertDatabaseHas('installment_occurrences', ['id' => $occurrences[0]->id, 'amount_cents' => 3333]);
         $this->assertDatabaseHas('installment_occurrences', ['id' => $occurrences[2]->id, 'amount_cents' => 3334]);
+    }
+
+    public function test_only_the_first_occurrence_opens_the_complete_schedule_editor(): void
+    {
+        $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 3);
+        $occurrences = $installment->occurrences()->orderBy('installment_number')->get();
+
+        $this->get("/installment-occurrences/{$occurrences[0]->id}/edit")
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Installments/Edit')
+                ->where('installment.startDate', '2026-10-12')
+                ->where('installment.endDate', '2026-12-12')
+                ->where('installment.totalCents', 10000));
+
+        $this->get("/installment-occurrences/{$occurrences[1]->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page->component('Installments/OccurrenceForm'));
+    }
+
+    public function test_first_occurrence_editor_exposes_all_installment_rule_fields(): void
+    {
+        $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 3);
+        $occurrence = $installment->occurrences()->where('installment_number', 1)->firstOrFail();
+
+        $this->get("/installment-occurrences/{$occurrence->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Installments/Edit')
+                ->has('participants')
+                ->has('categories')
+                ->has('paymentMethods')
+                ->has('schedulePreview.installmentValues', 3)
+                ->has('schedulePreview.invoiceImpacts', 3)
+                ->where('schedulePreview.oldInstallmentCount', 3)
+                ->where('schedulePreview.oldTotalCents', 10000)
+                ->where('installment.description', 'Compra parcelada')
+                ->where('installment.cardName', null)
+                ->where('installment.paymentMethodId', $installment->payment_method_id));
+    }
+
+    public function test_complete_rule_edit_propagates_fields_to_active_history_and_preserves_adjusted_amounts(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $payer = Participant::create(['name' => 'Pagador original', 'active' => true, 'is_default' => false]);
+        $newPayer = Participant::create(['name' => 'Novo pagador', 'active' => true, 'is_default' => false]);
+        $category = Category::create(['name' => 'Categoria original']);
+        $newCategory = Category::create(['name' => 'Categoria nova']);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix original', 'type' => PaymentMethod::TYPE_PIX]);
+        $newPaymentMethod = PaymentMethod::create(['name' => 'Pix novo', 'type' => PaymentMethod::TYPE_PIX]);
+
+        $this->post('/installments', [
+            'start_date' => '2026-09-12',
+            'description' => 'Descrição original',
+            'card_name' => 'CARTÃO ORIGINAL',
+            'total' => '100,00',
+            'installment_count' => 3,
+            'payer_id' => $payer->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'category_id' => $category->id,
+        ])->assertRedirect('/installments');
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $occurrences = $installment->occurrences()->orderBy('installment_number')->get();
+        $this->patch("/installment-occurrences/{$occurrences[1]->id}", ['amount' => '45,00'])->assertRedirect('/installments');
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-09-12',
+            'end_date' => '2026-11-12',
+            'description' => 'Descrição corrigida',
+            'card_name' => 'CARTÃO CORRIGIDO',
+            'total' => '100,00',
+            'payer_id' => $newPayer->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $newPaymentMethod->id,
+            'category_id' => $newCategory->id,
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $installment->refresh();
+        $this->assertSame('Descrição corrigida', $installment->description);
+        $this->assertSame('CARTÃO CORRIGIDO', $installment->card_name);
+        $this->assertSame($newPayer->id, $installment->payer_id);
+        $this->assertSame($newPaymentMethod->id, $installment->payment_method_id);
+        $this->assertSame($newCategory->id, $installment->category_id);
+
+        $updatedOccurrences = $installment->occurrences()->orderBy('installment_number')->get();
+        $this->assertSame(['Descrição corrigida', 'Descrição corrigida', 'Descrição corrigida'], $updatedOccurrences->pluck('description')->all());
+        $this->assertSame(['CARTÃO CORRIGIDO', 'CARTÃO CORRIGIDO', 'CARTÃO CORRIGIDO'], $updatedOccurrences->pluck('card_name')->all());
+        $this->assertSame([$newPayer->id, $newPayer->id, $newPayer->id], $updatedOccurrences->pluck('payer_id')->all());
+        $this->assertSame([$newPaymentMethod->id, $newPaymentMethod->id, $newPaymentMethod->id], $updatedOccurrences->pluck('payment_method_id')->all());
+        $this->assertSame([$newCategory->id, $newCategory->id, $newCategory->id], $updatedOccurrences->pluck('category_id')->all());
+        $this->assertSame([3333, 4500, 3334], $updatedOccurrences->pluck('amount_cents')->all());
+        $this->assertTrue($updatedOccurrences[1]->is_adjusted);
+    }
+
+    public function test_total_or_quantity_change_recalculates_every_active_occurrence_and_clears_adjustments(): void
+    {
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $installment = $this->createInstallment($paymentMethod, '2026-10-12', 3);
+        $occurrences = $installment->occurrences()->orderBy('installment_number')->get();
+        $this->patch("/installment-occurrences/{$occurrences[1]->id}", ['amount' => '45,00'])->assertRedirect('/installments');
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-12-12',
+            'total' => '120,00',
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $updatedOccurrences = $installment->fresh()->occurrences()->orderBy('installment_number')->get();
+        $this->assertSame([4000, 4000, 4000], $updatedOccurrences->pluck('amount_cents')->all());
+        $this->assertSame([false, false, false], $updatedOccurrences->pluck('is_adjusted')->all());
+    }
+
+    public function test_date_only_rule_edit_preserves_adjusted_amounts(): void
+    {
+        $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 3);
+        $occurrences = $installment->occurrences()->orderBy('installment_number')->get();
+        $this->patch("/installment-occurrences/{$occurrences[1]->id}", ['amount' => '45,00'])->assertRedirect('/installments');
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-11-12',
+            'end_date' => '2027-01-12',
+            'total' => '100,00',
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $updatedOccurrences = $installment->fresh()->occurrences()->orderBy('installment_number')->get();
+        $this->assertSame(['2026-11-12', '2026-12-12', '2027-01-12'], $updatedOccurrences->pluck('purchased_at')->map(fn ($date) => $date->toDateString())->all());
+        $this->assertSame([3333, 4500, 3334], $updatedOccurrences->pluck('amount_cents')->all());
+        $this->assertSame([false, true, false], $updatedOccurrences->pluck('is_adjusted')->all());
+    }
+
+    public function test_rule_edit_reconciles_receipt_balances_when_participant_changes(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria', 'active' => true, 'is_default' => false]);
+        $carlos = Participant::create(['name' => 'Carlos', 'active' => true, 'is_default' => false]);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-12',
+            'description' => 'Compra parcelada',
+            'total' => '100,00',
+            'installment_count' => 2,
+            'payer_id' => $self->id,
+            'participant_id' => $maria->id,
+            'payment_method_id' => $paymentMethod->id,
+        ])->assertRedirect('/installments');
+        $installment = Installment::query()->latest('id')->firstOrFail();
+
+        $this->post('/receipts', ['participant_id' => $maria->id, 'received_at' => '2026-10-03', 'amount' => '40,00'])
+            ->assertRedirect('/balances');
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-11-12',
+            'total' => '100,00',
+            'payer_id' => $self->id,
+            'participant_id' => $carlos->id,
+            'payment_method_id' => $paymentMethod->id,
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.name', 'Carlos')
+            ->where('participants.0.receivableCents', 5000)
+            ->where('participants.1.name', 'Maria')
+            ->where('participants.1.receivableCents', 0)
+            ->where('participants.1.creditCents', 4000));
+    }
+
+    public function test_complete_rule_edit_audits_rule_occurrence_and_invoice_impact(): void
+    {
+        $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 3);
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-11-12',
+            'end_date' => '2027-01-12',
+            'description' => 'Descrição auditada',
+            'total' => '100,00',
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $audit = AuditLog::query()->where('auditable_type', $installment->getMorphClass())->where('auditable_id', $installment->id)->latest('id')->firstOrFail();
+        $this->assertSame(['start_date', 'description'], $audit->metadata['changed_fields']);
+        $this->assertCount(3, $audit->metadata['old_occurrences']);
+        $this->assertCount(3, $audit->metadata['new_occurrences']);
+        $this->assertCount(3, $audit->metadata['invoice_impacts']);
+        $this->assertTrue($audit->metadata['balances_reconciled']);
+        $this->assertSame('Compra parcelada', $audit->metadata['old_rule']['description']);
+        $this->assertSame('Descrição auditada', $audit->metadata['new_rule']['description']);
+    }
+
+    public function test_confirmed_schedule_edit_expands_the_schedule_and_rebalances_every_occurrence(): void
+    {
+        $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 2);
+        $occurrenceIds = $installment->occurrences()->orderBy('installment_number')->pluck('id')->all();
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-11-12',
+            'end_date' => '2027-02-12',
+            'total' => '100,00',
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $installment->refresh();
+        $this->assertSame('2026-11-12', $installment->start_date->toDateString());
+        $this->assertSame(4, $installment->installment_count);
+        $this->assertSame(10000, $installment->total_cents);
+        $this->assertSame($occurrenceIds, $installment->occurrences()->orderBy('installment_number')->limit(2)->pluck('id')->all());
+        $this->assertSame(['2026-11-12', '2026-12-12', '2027-01-12', '2027-02-12'], $installment->occurrences()->orderBy('installment_number')->pluck('purchased_at')->map(fn ($date) => $date->toDateString())->all());
+        $this->assertSame([2500, 2500, 2500, 2500], $installment->occurrences()->orderBy('installment_number')->pluck('amount_cents')->all());
+        $this->assertSame(4, $installment->occurrences()->whereNull('archived_at')->count());
+    }
+
+    public function test_confirmed_schedule_edit_shortens_by_archiving_excess_without_deleting_history(): void
+    {
+        $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 4);
+        $occurrenceIds = $installment->occurrences()->orderBy('installment_number')->pluck('id')->all();
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-11-12',
+            'total' => '100,00',
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $installment->refresh();
+        $this->assertSame(2, $installment->installment_count);
+        $this->assertSame($occurrenceIds, $installment->occurrences()->orderBy('installment_number')->pluck('id')->all());
+        $this->assertSame(2, $installment->occurrences()->whereNull('archived_at')->count());
+        $this->assertSame(2, $installment->occurrences()->whereNotNull('archived_at')->count());
+        $this->assertSame([5000, 5000], $installment->occurrences()->whereNull('archived_at')->orderBy('installment_number')->pluck('amount_cents')->all());
+    }
+
+    public function test_schedule_edit_preserves_total_when_only_the_installment_count_changes(): void
+    {
+        $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 3);
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2027-01-12',
+            'total' => '100,00',
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $this->assertSame(10000, $installment->fresh()->total_cents);
+        $this->assertSame([2500, 2500, 2500, 2500], $installment->fresh()->occurrences()->whereNull('archived_at')->orderBy('installment_number')->pluck('amount_cents')->all());
+    }
+
+    public function test_schedule_edit_treats_a_changed_total_as_authoritative(): void
+    {
+        $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 3);
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-12-12',
+            'total' => '120,00',
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $this->assertSame(12000, $installment->fresh()->total_cents);
+        $this->assertSame([4000, 4000, 4000], $installment->fresh()->occurrences()->whereNull('archived_at')->orderBy('installment_number')->pluck('amount_cents')->all());
+    }
+
+    public function test_schedule_edit_requires_explicit_confirmation_and_audits_the_impact(): void
+    {
+        $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 3);
+
+        $this->from('/installments')->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2027-01-12',
+            'total' => '100,00',
+        ])->assertSessionHasErrors('confirmation');
+
+        $this->assertSame(3, $installment->fresh()->installment_count);
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2027-01-12',
+            'total' => '100,00',
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $audit = AuditLog::query()->where('auditable_type', $installment->getMorphClass())->where('auditable_id', $installment->id)->latest('id')->firstOrFail();
+        $this->assertSame(AuditLog::ACTION_UPDATE, $audit->action);
+        $this->assertSame('schedule_reschedule', $audit->metadata['type']);
+        $this->assertCount(3, $audit->metadata['old_occurrences']);
+        $this->assertCount(4, $audit->metadata['new_occurrences']);
     }
 
     public function test_archiving_installment_keeps_past_occurrences_and_hides_future_ones(): void

@@ -3,13 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreInstallmentRequest;
+use App\Http\Requests\UpdateInstallmentScheduleRequest;
 use App\Models\AuditLog;
-use App\Models\Category;
 use App\Models\Installment;
-use App\Models\Participant;
-use App\Models\PaymentMethod;
 use App\Services\AuditService;
 use App\Services\BalanceService;
+use App\Services\InstallmentCatalogService;
 use App\Services\InstallmentService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -17,9 +16,9 @@ use Inertia\Response;
 
 class InstallmentController extends Controller
 {
-    public function create(): Response
+    public function create(InstallmentCatalogService $catalogs): Response
     {
-        return Inertia::render('Installments/Create', $this->catalogs());
+        return Inertia::render('Installments/Create', $catalogs->all());
     }
 
     public function index(): Response
@@ -66,6 +65,15 @@ class InstallmentController extends Controller
         return to_route('installments.index')->with('success', 'Parcelamento criado com sucesso.');
     }
 
+    public function updateSchedule(UpdateInstallmentScheduleRequest $request, Installment $installment, InstallmentService $service, BalanceService $balanceService, AuditService $audit): RedirectResponse
+    {
+        $result = $service->rescheduleWithImpact($installment, $request->validated());
+        $balanceService->reconcileAll();
+        $audit->record(AuditLog::ACTION_UPDATE, $result['installment'], oldValues: $result['oldValues'], newValues: $result['newValues'], metadata: [...$result['metadata'], 'balances_reconciled' => true]);
+
+        return to_route('installments.index')->with('success', 'Cronograma do parcelamento atualizado com sucesso.');
+    }
+
     public function archive(Installment $installment, AuditService $audit): RedirectResponse
     {
         $oldValues = $installment->getAttributes();
@@ -74,14 +82,5 @@ class InstallmentController extends Controller
         $audit->record(AuditLog::ACTION_ARCHIVE, $installment, oldValues: $oldValues, newValues: $installment->fresh()->getAttributes());
 
         return to_route('installments.index')->with('success', 'Parcelamento encerrado.');
-    }
-
-    private function catalogs(): array
-    {
-        return [
-            'participants' => Participant::query()->where('active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']),
-            'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
-            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type', 'closing_day']),
-        ];
     }
 }

@@ -68,6 +68,7 @@ Route::put('/purchases/{purchase}/allocations', [PurchaseAllocationController::c
 Route::get('/installments', [InstallmentController::class, 'index'])->name('installments.index');
 Route::get('/installments/create', [InstallmentController::class, 'create'])->name('installments.create');
 Route::post('/installments', [InstallmentController::class, 'store'])->name('installments.store');
+Route::patch('/installments/{installment}/schedule', [InstallmentController::class, 'updateSchedule'])->name('installments.schedule.update');
 Route::patch('/installments/{installment}/archive', [InstallmentController::class, 'archive'])->name('installments.archive');
 Route::get('/installment-occurrences/{installmentOccurrence}/edit', [InstallmentOccurrenceController::class, 'edit'])->name('installment-occurrences.edit');
 Route::patch('/installment-occurrences/{installmentOccurrence}', [InstallmentOccurrenceController::class, 'update'])->name('installment-occurrences.update');

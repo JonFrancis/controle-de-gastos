@@ -25,7 +25,15 @@ class PurchaseController extends Controller
         $selectedMonth = $this->validMonth($request->query('month'));
         $view = $request->query('view') === 'calendar' ? 'calendar' : 'invoice';
         $selfId = Participant::query()->where('is_default', true)->value('id');
-        $purchaseListing = $purchaseListingService->forMonth($selectedMonth, $view, $selfId);
+        $closingDate = $request->query('closing_date');
+        $closingDate = is_string($closingDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $closingDate) === 1 ? $closingDate : null;
+        $purchaseListing = $purchaseListingService->forMonth(
+            $selectedMonth,
+            $view,
+            $selfId,
+            $request->integer('payment_method_id') ?: null,
+            $closingDate,
+        );
         $month = $purchaseListing['month'];
         $purchases = $purchaseListing['purchases'];
         $occurrences = $purchaseListing['occurrences'];

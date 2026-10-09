@@ -75,6 +75,32 @@ class DashboardTest extends TestCase
             );
     }
 
+    public function test_dashboard_exposes_unfiltered_invoice_list_and_card_cycle_navigation_urls(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = PaymentMethod::create(['name' => 'Cartão navegação', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
+        $card->latestInvoiceSetting()->update(['due_day' => 20, 'effective_from' => '2026-01-01']);
+        Purchase::create([
+            'purchased_at' => '2026-09-06',
+            'description' => 'Compra navegável',
+            'amount_cents' => 1500,
+            'payer_id' => $self->id,
+            'participant_id' => $self->id,
+            'payment_method_id' => $card->id,
+        ]);
+
+        $this->get(route('dashboard', ['month' => '2026-10', 'view' => 'invoice']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('invoiceListUrl', route('purchases.index', ['month' => '2026-10', 'view' => 'invoice'], false))
+                ->where('invoiceGroups.0.detailsUrl', route('purchases.index', [
+                    'month' => '2026-10',
+                    'view' => 'invoice',
+                    'payment_method_id' => $card->id,
+                    'closing_date' => '2026-10-05',
+                ], false))
+            );
+    }
+
     public function test_dashboard_exposes_a_direct_review_link_only_when_import_rows_are_pending(): void
     {
         $import = SpreadsheetImport::factory()->create();

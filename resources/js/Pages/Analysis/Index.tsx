@@ -7,7 +7,7 @@ type MessageItem = { date: string; description: string; cardName: string | null;
 type Participant = { id: number; name: string; grossCents: number; abatementsCents: number; finalCents: number; status: 'chargeable' | 'settled'; items: MessageItem[]; message: string };
 type Breakdown = { name: string; amountCents: number };
 type Origin = { amountCents: number; count: number };
-type ReviewItem = { key: string; date: string; description: string; cardName: string | null; amountCents: number; origin: string; paymentMethodName: string | null; participantName: string | null; pending: boolean; addedAfterClosing: boolean };
+type ReviewItem = { key: string; date: string; description: string; cardName: string | null; amountCents: number; origin: string; paymentMethodName: string | null; participantName: string | null; pending: boolean };
 type Props = { selectedMonth: string; view: 'calendar' | 'invoice'; summary: Summary; salaryCents: number | null; flash?: { success?: string; openai?: { response?: string } }; participants: Participant[]; fullMessage: string; categories: Breakdown[]; paymentMethods: Breakdown[]; origins: Record<string, Origin>; purchaseReview: ReviewItem[]; pendingReview: number };
 
 const originLabels: Record<string, string> = { manual: 'Manual', installment: 'Parcelamento', recurrence: 'Recorrência' };
