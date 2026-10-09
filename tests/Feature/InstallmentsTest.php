@@ -256,6 +256,57 @@ class InstallmentsTest extends TestCase
         $this->assertSame(4000, $updatedOccurrences->flatMap(fn (InstallmentOccurrence $occurrence): array => $occurrence->allocations->where('participant_id', $joana->id)->pluck('amount_cents')->all())->sum());
     }
 
+    public function test_resubmitting_rateio_after_an_occurrence_adjustment_uses_the_persisted_rule(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria', 'active' => true]);
+        $joana = Participant::create(['name' => 'Joana', 'active' => true]);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-12',
+            'description' => 'Compra rateada',
+            'total' => '100,00',
+            'installment_count' => 3,
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [
+                ['participant_id' => $maria->id, 'amount' => '60,00'],
+                ['participant_id' => $joana->id, 'amount' => '40,00'],
+            ],
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $occurrences = $installment->occurrences()->orderBy('installment_number')->get();
+
+        $this->patch("/installment-occurrences/{$occurrences[1]->id}", ['amount' => '45,00'])->assertRedirect('/installments');
+
+        $this->get("/installment-occurrences/{$occurrences[0]->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('installment.allocations.0.amountCents', 6000)
+                ->where('installment.allocations.1.amountCents', 4000));
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-12-12',
+            'total' => '100,00',
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [
+                ['participant_id' => $maria->id, 'amount' => '60,00'],
+                ['participant_id' => $joana->id, 'amount' => '40,00'],
+            ],
+            'confirmation' => '1',
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $updatedOccurrences = $installment->fresh()->occurrences()->whereNull('archived_at')->with('allocations')->orderBy('installment_number')->get();
+
+        $this->assertSame([[2000, 1333], [2700, 1800], [2000, 1334]], $updatedOccurrences->map(fn (InstallmentOccurrence $occurrence): array => $occurrence->allocations->sortBy('participant_id')->pluck('amount_cents')->all())->all());
+        $this->assertSame([3333, 4500, 3334], $updatedOccurrences->map(fn (InstallmentOccurrence $occurrence): int => (int) $occurrence->allocations->sum('amount_cents'))->all());
+    }
+
     public function test_participant_change_with_receipt_application_creates_a_new_allocation_without_reusing_the_old_source(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
@@ -329,6 +380,29 @@ class InstallmentsTest extends TestCase
             'allocations' => ['malformed row'],
             'confirmation' => '1',
         ])->assertSessionHasErrors('allocations.0');
+    }
+
+    public function test_rateio_row_requires_the_participant_id_key_even_when_the_value_is_null(): void
+    {
+        $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 2);
+
+        $this->from('/installments')->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-11-12',
+            'total' => '100,00',
+            'allocation_mode' => 'amount',
+            'allocations' => [['amount' => '100,00']],
+            'confirmation' => '1',
+        ])->assertSessionHasErrors('allocations.0.participant_id');
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-11-12',
+            'total' => '100,00',
+            'allocation_mode' => 'amount',
+            'allocations' => [['participant_id' => null, 'amount' => '100,00']],
+            'confirmation' => '1',
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
     }
 
     public function test_complete_rateio_edit_propagates_new_rule_and_preserves_adjusted_occurrence_and_receipt_history(): void

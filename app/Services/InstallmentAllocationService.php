@@ -21,7 +21,7 @@ class InstallmentAllocationService
         $rows = $this->ruleRows($installment->total_cents, $mode, $allocations);
 
         DB::transaction(function () use ($installment, $mode, $rows): void {
-            $installment->update(['allocation_mode' => $mode]);
+            $installment->update(['allocation_mode' => $mode, 'allocation_rule' => $rows]);
             $this->materialize($installment, $rows);
         });
     }
@@ -42,10 +42,13 @@ class InstallmentAllocationService
         }
 
         $mode = $installment->allocation_mode ?? 'equal';
+        $persistedRule = $installment->allocation_rule;
 
         return [
             'mode' => $mode,
-            'allocations' => $this->rowsForExistingRule($occurrences, $occurrence, $mode),
+            'allocations' => is_array($persistedRule) && $persistedRule !== []
+                ? $this->editorRows($persistedRule)
+                : $this->rowsForExistingRule($occurrences, $occurrence, $mode),
         ];
     }
 
@@ -55,7 +58,7 @@ class InstallmentAllocationService
         $rows = $this->ruleRows($installment->total_cents, $mode, $allocations);
 
         DB::transaction(function () use ($installment, $mode, $rows): void {
-            $installment->update(['allocation_mode' => $mode]);
+            $installment->update(['allocation_mode' => $mode, 'allocation_rule' => $rows]);
             $occurrences = $installment->occurrences()
                 ->whereNull('archived_at')
                 ->with('allocations')
@@ -309,8 +312,13 @@ class InstallmentAllocationService
             })->all();
         }
 
+        $sourceOccurrences = $occurrences->filter(fn (InstallmentOccurrence $candidate): bool => ! $candidate->is_adjusted);
+        if ($sourceOccurrences->isEmpty()) {
+            $sourceOccurrences = collect([$template]);
+        }
+
         $totals = [];
-        foreach ($occurrences as $occurrence) {
+        foreach ($sourceOccurrences as $occurrence) {
             foreach ($occurrence->allocations as $allocation) {
                 if ($allocation->amount_cents === 0) {
                     continue;
@@ -327,7 +335,26 @@ class InstallmentAllocationService
             }
         }
 
-        return array_values($totals);
+        if ($totals === []) {
+            return [];
+        }
+
+        $amounts = $this->apportion((int) $template->installment->total_cents, array_column(array_values($totals), 'amountCents'));
+
+        return collect(array_values($totals))->values()->map(function (array $row, int $index) use ($amounts): array {
+            return [...$row, 'amountCents' => $amounts[$index]];
+        })->all();
+    }
+
+    /** @param list<array{participant_id: int|null, category_id: int|null, amount_cents: int, percentage_basis_points: int|null}> $rows @return list<array{participantId: int|null, categoryId: int|null, amountCents: int, percentageBasisPoints: int|null}> */
+    private function editorRows(array $rows): array
+    {
+        return collect($rows)->map(fn (array $row): array => [
+            'participantId' => $row['participant_id'] ?? null,
+            'categoryId' => $row['category_id'] ?? null,
+            'amountCents' => (int) ($row['amount_cents'] ?? 0),
+            'percentageBasisPoints' => isset($row['percentage_basis_points']) ? (int) $row['percentage_basis_points'] : null,
+        ])->values()->all();
     }
 
     private function participantKey(?int $participantId): string

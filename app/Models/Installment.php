@@ -7,12 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'allocation_mode', 'payer_id', 'participant_id', 'payment_method_id', 'category_id', 'archived_at'])]
+#[Fillable(['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'allocation_mode', 'allocation_rule', 'payer_id', 'participant_id', 'payment_method_id', 'category_id', 'archived_at'])]
 class Installment extends Model
 {
     protected function casts(): array
     {
-        return ['start_date' => 'date', 'total_cents' => 'integer', 'installment_count' => 'integer', 'archived_at' => 'datetime'];
+        return ['start_date' => 'date', 'total_cents' => 'integer', 'installment_count' => 'integer', 'allocation_rule' => 'array', 'archived_at' => 'datetime'];
     }
 
     public function scopeActive($query)

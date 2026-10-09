@@ -1,6 +1,7 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import InstallmentAllocationFields, { InstallmentAllocationRow } from '@/Components/InstallmentAllocationFields';
+import { allocationChangeLabels } from '@/Components/installmentAllocationChanges.mjs';
 
 type Option = { id: number; name: string; is_default?: boolean };
 type PaymentMethod = Option & { type: string; closing_day: number | null };
@@ -18,6 +19,12 @@ const selectClass = 'w-full rounded-xl border border-white/10 bg-slate-800 px-3 
 
 export default function InstallmentsEdit({ installment, schedulePreview, participants, categories, paymentMethods }: Props) {
     const selfId = participants.find((participant) => participant.is_default)?.id.toString() ?? '';
+    const initialAllocationRows = installment.allocations.map((allocation) => ({
+        participant_id: allocation.participantId?.toString() ?? selfId,
+        category_id: allocation.categoryId?.toString() ?? '',
+        amount: (allocation.amountCents / 100).toFixed(2),
+        percentage: allocation.percentageBasisPoints === null ? '' : (allocation.percentageBasisPoints / 100).toFixed(2),
+    }));
     const form = useForm<FormData>({
         start_date: installment.startDate,
         end_date: installment.endDate,
@@ -29,12 +36,7 @@ export default function InstallmentsEdit({ installment, schedulePreview, partici
         payment_method_id: installment.paymentMethodId?.toString() ?? '',
         category_id: installment.categoryId?.toString() ?? '',
         allocation_mode: installment.allocationMode,
-        allocations: installment.allocations.map((allocation) => ({
-            participant_id: allocation.participantId?.toString() ?? selfId,
-            category_id: allocation.categoryId?.toString() ?? '',
-            amount: (allocation.amountCents / 100).toFixed(2),
-            percentage: allocation.percentageBasisPoints === null ? '' : (allocation.percentageBasisPoints / 100).toFixed(2),
-        })),
+        allocations: initialAllocationRows,
         confirmation: false,
     });
     const count = inclusiveMonthCount(form.data.start_date, form.data.end_date);
@@ -52,7 +54,7 @@ export default function InstallmentsEdit({ installment, schedulePreview, partici
         form.data.payment_method_id !== (installment.paymentMethodId?.toString() ?? '') ? 'forma de pagamento' : null,
         form.data.category_id !== (installment.categoryId?.toString() ?? '') ? 'categoria' : null,
         totalChanged ? 'valor total' : null,
-        form.data.allocation_mode !== installment.allocationMode ? 'Rateio' : null,
+        ...allocationChangeLabels(form.data.allocation_mode, form.data.allocations, installment.allocationMode, initialAllocationRows),
     ].filter((field): field is string => field !== null);
     const newValues = buildNewValues(schedulePreview, form.data.start_date, count, totalCents, totalChanged || quantityChanged);
     const newImpacts = buildInvoiceImpacts(newValues, form.data.payment_method_id, paymentMethods);

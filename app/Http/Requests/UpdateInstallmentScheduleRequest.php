@@ -32,7 +32,7 @@ class UpdateInstallmentScheduleRequest extends FormRequest
             'allocation_mode' => ['sometimes', 'required', 'string', 'in:equal,amount,percentage'],
             'allocations' => ['sometimes', 'required', 'array', 'min:1'],
             'allocations.*' => ['required', 'array'],
-            'allocations.*.participant_id' => ['nullable', Rule::exists('participants', 'id')->where('active', true)],
+            'allocations.*.participant_id' => ['present', 'nullable', Rule::exists('participants', 'id')->where('active', true)],
             'allocations.*.category_id' => ['nullable', Rule::exists('categories', 'id')->where('active', true)],
             'allocations.*.amount' => ['nullable', 'numeric', 'min:0'],
             'allocations.*.percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
