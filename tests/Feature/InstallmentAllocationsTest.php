@@ -41,7 +41,7 @@ class InstallmentAllocationsTest extends TestCase
             ],
         ]);
 
-        $response->assertRedirect('/installments');
+        $response->assertRedirect('/installments')->assertSessionHasNoErrors();
 
         $installment = Installment::query()->latest('id')->firstOrFail();
         $this->assertSame('equal', $installment->allocation_mode);
@@ -51,6 +51,7 @@ class InstallmentAllocationsTest extends TestCase
             [1666, 1667],
             [1667, 1667],
         ], $installment->occurrences()->with('allocations')->orderBy('installment_number')->get()->map(fn (InstallmentOccurrence $occurrence): array => $occurrence->allocations->sortBy('participant_id')->pluck('amount_cents')->all())->all());
+        $this->assertSame(6, InstallmentAllocation::query()->whereHas('occurrence', fn (Builder $query): Builder => $query->where('installment_id', $installment->id))->count());
         $this->assertDatabaseHas('installment_allocations', ['participant_id' => $self->id, 'category_id' => $category->id]);
         $this->assertDatabaseHas('installment_allocations', ['participant_id' => $maria->id, 'category_id' => null]);
     }
@@ -77,6 +78,29 @@ class InstallmentAllocationsTest extends TestCase
         $this->assertSame(6000, InstallmentAllocation::query()->whereHas('occurrence', fn (Builder $query): Builder => $query->where('installment_id', $installment->id))->where('participant_id', $self->id)->sum('amount_cents'));
         $this->assertSame(4000, InstallmentAllocation::query()->whereHas('occurrence', fn (Builder $query): Builder => $query->where('installment_id', $installment->id))->where('participant_id', $maria->id)->sum('amount_cents'));
         $this->assertSame([3333, 3333, 3334], $installment->occurrences()->with('allocations')->orderBy('installment_number')->get()->map(fn (InstallmentOccurrence $occurrence): int => (int) $occurrence->allocations->sum('amount_cents'))->all());
+    }
+
+    public function test_amount_mode_parses_decimal_strings_without_float_rounding_loss(): void
+    {
+        [$self, $maria, $paymentMethod] = $this->catalogs();
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-12',
+            'description' => 'Valores com precisão decimal',
+            'total' => '2,02',
+            'installment_count' => 2,
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [
+                ['participant_id' => $self->id, 'amount' => '1,005'],
+                ['participant_id' => $maria->id, 'amount' => '1,005'],
+            ],
+        ])->assertRedirect('/installments');
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $this->assertSame(101, (int) InstallmentAllocation::query()->whereHas('occurrence', fn (Builder $query): Builder => $query->where('installment_id', $installment->id))->where('participant_id', $self->id)->sum('amount_cents'));
+        $this->assertSame(101, (int) InstallmentAllocation::query()->whereHas('occurrence', fn (Builder $query): Builder => $query->where('installment_id', $installment->id))->where('participant_id', $maria->id)->sum('amount_cents'));
     }
 
     public function test_percentage_mode_rejects_invalid_sums(): void

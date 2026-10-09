@@ -3,10 +3,7 @@
 namespace App\Services;
 
 use App\Models\Installment;
-use App\Models\InstallmentAllocation;
-use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
-use App\Models\ReceiptApplication;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -14,7 +11,7 @@ class InstallmentAllocationService
 {
     public const MODES = ['equal', 'amount', 'percentage'];
 
-    /** @param list<array{participant_id: int|string|null, category_id?: int|string|null, amount?: int|float|string|null, percentage?: int|float|string|null}> $allocations */
+    /** @param list<array{participant_id: int|string|null, category_id?: int|string|null, amount?: int|string|null, percentage?: int|string|null}> $allocations */
     public function save(Installment $installment, string $mode, array $allocations): void
     {
         $rows = $this->ruleRows($installment->total_cents, $mode, $allocations);
@@ -25,7 +22,7 @@ class InstallmentAllocationService
         });
     }
 
-    /** @param list<array{participant_id: int|string|null, category_id?: int|string|null, amount?: int|float|string|null, percentage?: int|float|string|null}> $allocations @return list<array{participant_id: int|null, category_id: int|null, amount_cents: int, percentage_basis_points: int|null}> */
+    /** @param list<array{participant_id: int|string|null, category_id?: int|string|null, amount?: int|string|null, percentage?: int|string|null}> $allocations @return list<array{participant_id: int|null, category_id: int|null, amount_cents: int, percentage_basis_points: int|null}> */
     private function ruleRows(int $totalCents, string $mode, array $allocations): array
     {
         if (! in_array($mode, self::MODES, true) || count($allocations) === 0) {
@@ -93,78 +90,13 @@ class InstallmentAllocationService
                 $remaining = array_map(fn (int $remainingAmount, int $allocated): int => $remainingAmount - $allocated, $remaining, $amounts);
             }
 
-            $this->replaceOccurrenceAllocations($occurrence, collect($rows)->values()->map(fn (array $row, int $rowIndex): array => [
+            $occurrence->allocations()->createMany(collect($rows)->values()->map(fn (array $row, int $rowIndex): array => [
                 'participant_id' => $row['participant_id'],
                 'category_id' => $row['category_id'],
                 'amount_cents' => $amounts[$rowIndex],
                 'percentage_basis_points' => $row['percentage_basis_points'],
             ])->all());
         }
-    }
-
-    /** @param list<array{participant_id: int|null, category_id: int|null, amount_cents: int, percentage_basis_points: int|null}> $rows */
-    private function replaceOccurrenceAllocations(InstallmentOccurrence $occurrence, array $rows): void
-    {
-        $existing = $occurrence->allocations()->orderBy('id')->get();
-        $existingByParticipant = $existing->keyBy(fn (InstallmentAllocation $allocation): string => $this->participantKey($allocation->participant_id));
-        $retained = collect();
-
-        foreach ($rows as $row) {
-            $key = $this->participantKey($row['participant_id']);
-            $allocation = $existingByParticipant->get($key);
-
-            if ($allocation === null) {
-                $allocation = $occurrence->allocations()->create($row);
-            } else {
-                $allocation->update($row);
-            }
-
-            $retained->push($allocation->fresh());
-        }
-
-        $fallback = $retained->first();
-
-        foreach ($existing as $allocation) {
-            if ($retained->contains('id', $allocation->id)) {
-                continue;
-            }
-
-            if ($fallback !== null && $this->remapReceiptApplications($allocation, $fallback)) {
-                $allocation->delete();
-            }
-        }
-    }
-
-    private function remapReceiptApplications(InstallmentAllocation $from, InstallmentAllocation $to): bool
-    {
-        $canDelete = true;
-
-        ReceiptApplication::query()
-            ->where('source_type', 'installment_allocation')
-            ->where('source_id', $from->id)
-            ->get()
-            ->each(function (ReceiptApplication $application) use ($to, &$canDelete): void {
-                $duplicate = ReceiptApplication::query()
-                    ->where('receipt_id', $application->receipt_id)
-                    ->where('source_type', 'installment_allocation')
-                    ->where('source_id', $to->id)
-                    ->first();
-
-                if ($duplicate === null) {
-                    $application->update(['source_id' => $to->id]);
-
-                    return;
-                }
-
-                $canDelete = false;
-            });
-
-        return $canDelete;
-    }
-
-    private function participantKey(?int $participantId): string
-    {
-        return $participantId === null ? 'self' : (string) $participantId;
     }
 
     /** @param list<int> $weights @return list<int> */
@@ -189,13 +121,30 @@ class InstallmentAllocationService
         return array_values($amounts);
     }
 
-    private function moneyToCents(string|int|float|null $value): int
+    private function moneyToCents(string|int|null $value): int
     {
-        return (int) round(((float) str_replace(',', '.', (string) $value)) * 100);
+        return $this->decimalToMinorUnits($value);
     }
 
-    private function percentageToBasisPoints(string|int|float|null $value): int
+    private function percentageToBasisPoints(string|int|null $value): int
     {
-        return (int) round(((float) str_replace(',', '.', (string) $value)) * 100);
+        return $this->decimalToMinorUnits($value);
+    }
+
+    private function decimalToMinorUnits(string|int|null $value): int
+    {
+        $normalized = str_replace(',', '.', trim((string) $value));
+        $negative = str_starts_with($normalized, '-');
+        $normalized = ltrim($normalized, '+-');
+        [$whole, $fraction] = array_pad(explode('.', $normalized, 2), 2, '');
+        $whole = $whole === '' ? '0' : $whole;
+        $fraction = str_pad($fraction, 3, '0');
+        $minorUnits = ((int) $whole * 100) + (int) substr($fraction, 0, 2);
+
+        if ((int) $fraction[2] >= 5) {
+            $minorUnits++;
+        }
+
+        return $negative ? -$minorUnits : $minorUnits;
     }
 }
