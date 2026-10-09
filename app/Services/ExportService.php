@@ -207,7 +207,7 @@ class ExportService
 
     private function installments(array $selection): Collection
     {
-        return Installment::query()->with(['paymentMethod:id,name', 'category:id,name', 'payer:id,name', 'participant:id,name', 'occurrences' => fn ($query) => $this->constrainOccurrences($query, $selection)])
+        return Installment::query()->with(['paymentMethod:id,name', 'category:id,name', 'payer:id,name', 'participant:id,name', 'occurrences' => fn ($query) => $this->constrainOccurrences($query, $selection), 'occurrences.allocations'])
             ->when($selection['end'], fn ($query, CarbonImmutable $end) => $query->whereDate('start_date', '<=', $end))
             ->orderBy('start_date')->orderBy('id')->get();
     }
@@ -276,8 +276,19 @@ class ExportService
                 $transactions->push(['amount_cents' => $allocation->amount_cents, 'payer_id' => $purchase->payer_id ?? $selfId, 'participant_id' => $allocation->participant_id ?? $selfId]);
             }
         }
-        foreach ($recurrenceOccurrences->concat($installmentOccurrences) as $occurrence) {
+        foreach ($recurrenceOccurrences as $occurrence) {
             $transactions->push(['amount_cents' => $occurrence->amount_cents, 'payer_id' => $occurrence->payer_id ?? $selfId, 'participant_id' => $occurrence->participant_id ?? $selfId]);
+        }
+        foreach ($installmentOccurrences as $occurrence) {
+            if ($occurrence->allocations->isEmpty()) {
+                $transactions->push(['amount_cents' => $occurrence->amount_cents, 'payer_id' => $occurrence->payer_id ?? $selfId, 'participant_id' => $occurrence->participant_id ?? $selfId]);
+
+                continue;
+            }
+
+            foreach ($occurrence->allocations as $allocation) {
+                $transactions->push(['amount_cents' => $allocation->amount_cents, 'payer_id' => $occurrence->payer_id ?? $selfId, 'participant_id' => $allocation->participant_id ?? $selfId]);
+            }
         }
 
         return $transactions;

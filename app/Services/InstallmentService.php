@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\DB;
 
 class InstallmentService
 {
-    public function __construct(private readonly PaymentMethodInvoiceSettingService $invoiceSettings) {}
+    public function __construct(
+        private readonly PaymentMethodInvoiceSettingService $invoiceSettings,
+        private readonly InstallmentAllocationService $allocations,
+    ) {}
 
     public function create(array $data): Installment
     {
@@ -52,6 +55,12 @@ class InstallmentService
                 ];
             })->all());
 
+            $this->allocations->save($installment, $data['allocation_mode'] ?? 'equal', $data['allocations'] ?? [[
+                'participant_id' => $participantId,
+                'category_id' => $categoryId,
+                'amount' => $data['total'],
+            ]]);
+
             return $installment;
         });
     }
@@ -73,14 +82,21 @@ class InstallmentService
         $selfId = Participant::query()->where('is_default', true)->value('id');
         $categoryId = $participantId === null || (int) $participantId === (int) $selfId ? $categoryId : null;
         $financialScheduleChanged = $totalCents !== (int) $installment->total_cents || $count !== (int) $installment->installment_count;
+        $allocationMode = $data['allocation_mode'] ?? $installment->allocation_mode ?? 'equal';
+        $allocationRows = array_key_exists('allocations', $data)
+            ? $data['allocations']
+            : (array_key_exists('participant_id', $data) || array_key_exists('category_id', $data)
+                ? [['participant_id' => $participantId, 'category_id' => $categoryId, 'amount' => $totalCents / 100]]
+                : ($financialScheduleChanged ? $this->allocations->rowsForExistingRule($installment, $totalCents) : null));
 
-        return DB::transaction(function () use ($installment, $startDate, $count, $baseCents, $remainder, $totalCents, $description, $cardName, $payerId, $participantId, $paymentMethodId, $categoryId, $financialScheduleChanged): Installment {
+        return DB::transaction(function () use ($installment, $startDate, $count, $baseCents, $remainder, $totalCents, $description, $cardName, $payerId, $participantId, $paymentMethodId, $categoryId, $financialScheduleChanged, $allocationMode, $allocationRows): Installment {
             $installment->update([
                 'start_date' => $startDate->toDateString(),
                 'description' => $description,
                 'card_name' => $cardName,
                 'total_cents' => $totalCents,
                 'installment_count' => $count,
+                'allocation_mode' => $allocationMode,
                 'payer_id' => $payerId,
                 'participant_id' => $participantId,
                 'payment_method_id' => $paymentMethodId,
@@ -118,6 +134,10 @@ class InstallmentService
                 ->whereNull('archived_at')
                 ->update(['archived_at' => now()]);
 
+            if ($allocationRows !== null) {
+                $this->allocations->save($installment->fresh(), $allocationMode, $allocationRows);
+            }
+
             return $installment->fresh();
         });
     }
@@ -130,7 +150,7 @@ class InstallmentService
         $updated = $this->reschedule($installment, $data);
         $newOccurrences = $this->occurrenceSnapshots($updated);
         $newValues = $updated->getAttributes();
-        $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'payer_id', 'participant_id', 'payment_method_id', 'category_id'];
+        $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'allocation_mode', 'payer_id', 'participant_id', 'payment_method_id', 'category_id'];
         $changedFields = collect($ruleFields)
             ->filter(fn (string $field): bool => (string) ($oldValues[$field] ?? null) !== (string) ($newValues[$field] ?? null))
             ->values()
