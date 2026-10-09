@@ -96,7 +96,7 @@ class InstallmentService
                 'category_id' => $categoryId,
             ]);
 
-            $existing = $installment->occurrences()->get()->keyBy('installment_number');
+            $existing = $installment->occurrences()->with('allocations')->get()->keyBy('installment_number');
 
             foreach (range(1, $count) as $number) {
                 $existingOccurrence = $existing->get($number);
@@ -116,7 +116,16 @@ class InstallmentService
                 ];
 
                 if ($existing->has($number)) {
-                    $existing->get($number)->update($attributes);
+                    $existingOccurrence = $existing->get($number);
+                    $existingOccurrence->update($attributes);
+
+                    if ($existingOccurrence->allocations->count() === 1) {
+                        $existingOccurrence->allocations->first()->update([
+                            'participant_id' => $participantId,
+                            'category_id' => $categoryId,
+                            'amount_cents' => $attributes['amount_cents'],
+                        ]);
+                    }
                 } else {
                     $installment->occurrences()->create($attributes);
                 }
