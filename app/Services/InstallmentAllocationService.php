@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Installment;
+use App\Models\InstallmentAllocation;
+use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -19,6 +21,39 @@ class InstallmentAllocationService
         DB::transaction(function () use ($installment, $mode, $rows): void {
             $installment->update(['allocation_mode' => $mode]);
             $this->materialize($installment, $rows);
+        });
+    }
+
+    public function synchronizeMaterialization(Installment $installment): void
+    {
+        DB::transaction(function () use ($installment): void {
+            $occurrences = $installment->occurrences()
+                ->whereNull('archived_at')
+                ->with('allocations')
+                ->orderBy('installment_number')
+                ->get();
+            $templateOccurrence = $occurrences->first(fn (InstallmentOccurrence $occurrence): bool => $occurrence->allocations->isNotEmpty());
+
+            if ($templateOccurrence === null) {
+                return;
+            }
+
+            $template = $templateOccurrence->allocations->map(fn (InstallmentAllocation $allocation): array => [
+                'participant_id' => $allocation->participant_id,
+                'category_id' => $allocation->category_id,
+                'amount_cents' => $allocation->amount_cents,
+                'percentage_basis_points' => $allocation->percentage_basis_points,
+            ])->values()->all();
+
+            foreach ($occurrences as $occurrence) {
+                if ($occurrence->allocations->isEmpty()) {
+                    $this->materializeOccurrence($occurrence, $template, $occurrence->amount_cents);
+
+                    continue;
+                }
+
+                $this->synchronizeOccurrence($occurrence);
+            }
         });
     }
 
@@ -99,13 +134,60 @@ class InstallmentAllocationService
         }
     }
 
+    /** @param list<array{participant_id: int|null, category_id: int|null, amount_cents: int, percentage_basis_points: int|null}> $rows */
+    private function materializeOccurrence(InstallmentOccurrence $occurrence, array $rows, int $amountCents): void
+    {
+        $amounts = $this->apportion($amountCents, collect($rows)->pluck('amount_cents')->all());
+
+        $occurrence->allocations()->createMany(collect($rows)->values()->map(fn (array $row, int $rowIndex): array => [
+            'participant_id' => $row['participant_id'],
+            'category_id' => $row['category_id'],
+            'amount_cents' => $amounts[$rowIndex],
+            'percentage_basis_points' => $row['percentage_basis_points'],
+        ])->all());
+    }
+
+    private function synchronizeOccurrence(InstallmentOccurrence $occurrence): void
+    {
+        $allocations = $occurrence->allocations->values();
+
+        if ($allocations->count() === 1) {
+            $allocation = $allocations->first();
+            $attributes = ['amount_cents' => $occurrence->amount_cents];
+
+            if ($occurrence->participant_id !== null) {
+                $attributes['participant_id'] = $occurrence->participant_id;
+                $attributes['category_id'] = $occurrence->category_id;
+            }
+
+            $allocation->update($attributes);
+
+            return;
+        }
+
+        $amountCents = (int) $allocations->sum('amount_cents');
+        if ($amountCents === $occurrence->amount_cents) {
+            return;
+        }
+
+        $amounts = $this->apportion($occurrence->amount_cents, $allocations->pluck('amount_cents')->all());
+        foreach ($allocations as $index => $allocation) {
+            $allocation->update(['amount_cents' => $amounts[$index]]);
+        }
+    }
+
     /** @param list<int> $weights @return list<int> */
     private function apportion(int $amountCents, array $weights): array
     {
         $totalWeight = array_sum($weights);
 
-        if ($amountCents === 0 || $totalWeight === 0) {
+        if ($amountCents === 0) {
             return array_fill(0, count($weights), 0);
+        }
+
+        if ($totalWeight === 0) {
+            $weights = array_fill(0, count($weights), 1);
+            $totalWeight = count($weights);
         }
 
         $amounts = array_map(fn (int $weight): int => intdiv($amountCents * $weight, $totalWeight), $weights);

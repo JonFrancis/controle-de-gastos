@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Installment;
 use App\Models\InstallmentAllocation;
 use App\Models\InstallmentOccurrence;
@@ -239,5 +240,138 @@ class InstallmentReceiptBalancesTest extends TestCase
             'amount_cents' => 5000,
             'source' => 'automatic',
         ]);
+    }
+
+    public function test_rescheduling_multi_rateio_preserves_allocation_ids_and_rebuilds_balances_for_new_occurrences(): void
+    {
+        [$self, $maria, $joana, $paymentMethod] = $this->rateioCatalogs();
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-01',
+            'description' => 'Parcelamento redimensionado',
+            'total' => '100,00',
+            'installment_count' => 2,
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [
+                ['participant_id' => $maria->id, 'amount' => '60,00'],
+                ['participant_id' => $joana->id, 'amount' => '40,00'],
+            ],
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $oldOccurrences = $installment->occurrences()->with('allocations')->orderBy('installment_number')->get();
+        $oldAllocationIds = $oldOccurrences->flatMap(fn ($occurrence) => $occurrence->allocations->pluck('id'))->values()->all();
+        $firstMariaAllocation = $oldOccurrences[0]->allocations->firstWhere('participant_id', $maria->id);
+        $secondMariaAllocation = $oldOccurrences[1]->allocations->firstWhere('participant_id', $maria->id);
+
+        $this->post('/receipts', [
+            'participant_id' => $maria->id,
+            'received_at' => '2026-10-10',
+            'amount' => '30,00',
+        ])->assertRedirect('/balances');
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-01',
+            'end_date' => '2026-12-01',
+            'total' => '120,00',
+            'payment_method_id' => $paymentMethod->id,
+            'confirmation' => '1',
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $updatedOccurrences = $installment->fresh()->occurrences()->whereNull('archived_at')->with('allocations')->orderBy('installment_number')->get();
+        $this->assertSame([4000, 4000, 4000], $updatedOccurrences->pluck('amount_cents')->all());
+        $this->assertSame(6, $updatedOccurrences->sum(fn ($occurrence): int => $occurrence->allocations->count()));
+        $this->assertSame([4000, 4000, 4000], $updatedOccurrences->map(fn ($occurrence): int => (int) $occurrence->allocations->sum('amount_cents'))->all());
+        $this->assertSame($oldAllocationIds, $updatedOccurrences->take(2)->flatMap(fn ($occurrence) => $occurrence->allocations->pluck('id'))->values()->all());
+        $this->assertSame([2400, 1600], $updatedOccurrences[0]->allocations->sortBy('participant_id')->pluck('amount_cents')->all());
+        $this->assertSame([2400, 1600], $updatedOccurrences[2]->allocations->sortBy('participant_id')->pluck('amount_cents')->all());
+
+        $this->assertSame([
+            [$firstMariaAllocation->id, 2400],
+            [$secondMariaAllocation->id, 600],
+        ], ReceiptApplication::query()->where('receipt_id', Receipt::query()->firstOrFail()->id)->whereNull('superseded_at')->orderBy('id')->get()->map(fn (ReceiptApplication $application): array => [$application->source_id, $application->amount_cents])->all());
+        $this->get('/balances?month=2026-11')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.name', 'Joana')
+            ->where('participants.0.receivableCents', 3200)
+            ->where('participants.1.name', 'Maria')
+            ->where('participants.1.receivableCents', 1800));
+    }
+
+    public function test_rescheduling_rateios_records_old_and_new_allocation_snapshots(): void
+    {
+        [$self, $maria, $joana, $paymentMethod] = $this->rateioCatalogs();
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-01',
+            'description' => 'Parcelamento auditado',
+            'total' => '100,00',
+            'installment_count' => 2,
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [
+                ['participant_id' => $maria->id, 'amount' => '60,00'],
+                ['participant_id' => $joana->id, 'amount' => '40,00'],
+            ],
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+        $installment = Installment::query()->latest('id')->firstOrFail();
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-01',
+            'end_date' => '2026-12-01',
+            'total' => '120,00',
+            'payment_method_id' => $paymentMethod->id,
+            'confirmation' => '1',
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $audit = AuditLog::query()->where('auditable_type', $installment->getMorphClass())->where('auditable_id', $installment->id)->latest('id')->firstOrFail();
+        $this->assertCount(4, $audit->metadata['old_allocations']);
+        $this->assertCount(6, $audit->metadata['new_allocations']);
+        $this->assertSame($audit->metadata['old_allocations'][0]['id'], $audit->metadata['new_allocations'][0]['id']);
+        $this->assertSame(2400, $audit->metadata['new_allocations'][0]['amount_cents']);
+        $this->assertSame(2400, $audit->metadata['new_allocations'][4]['amount_cents']);
+    }
+
+    public function test_receipt_listing_counts_only_active_applications_after_reassignment(): void
+    {
+        [$self, $maria, , $paymentMethod] = $this->rateioCatalogs();
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-01',
+            'description' => 'Parcelamento com recebimento ajustado',
+            'total' => '100,00',
+            'installment_count' => 2,
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [['participant_id' => $maria->id, 'amount' => '100,00']],
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $secondAllocation = $installment->occurrences()->with('allocations')->orderBy('installment_number')->get()[1]->allocations->firstOrFail();
+        $this->post('/receipts', ['participant_id' => $maria->id, 'received_at' => '2026-10-10', 'amount' => '100,00'])->assertRedirect('/balances');
+        $receipt = Receipt::query()->firstOrFail();
+
+        $this->put("/receipts/{$receipt->id}/applications", [
+            'applications' => [['source_type' => 'installment_allocation', 'source_id' => $secondAllocation->id, 'amount' => '50,00']],
+        ])->assertRedirect('/balances')->assertSessionHasNoErrors();
+
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('receipts.0.appliedCents', 5000)
+            ->where('receipts.0.creditCents', 5000)
+            ->where('receipts.0.manual', true));
+    }
+
+    /** @return array{0: Participant, 1: Participant, 2: Participant, 3: PaymentMethod} */
+    private function rateioCatalogs(): array
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria', 'active' => true]);
+        $joana = Participant::create(['name' => 'Joana', 'active' => true]);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX, 'active' => true]);
+
+        return [$self, $maria, $joana, $paymentMethod];
     }
 }

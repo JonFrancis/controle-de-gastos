@@ -96,7 +96,7 @@ class InstallmentService
                 'category_id' => $categoryId,
             ]);
 
-            $existing = $installment->occurrences()->with('allocations')->get()->keyBy('installment_number');
+            $existing = $installment->occurrences()->get()->keyBy('installment_number');
 
             foreach (range(1, $count) as $number) {
                 $existingOccurrence = $existing->get($number);
@@ -119,13 +119,6 @@ class InstallmentService
                     $existingOccurrence = $existing->get($number);
                     $existingOccurrence->update($attributes);
 
-                    if ($existingOccurrence->allocations->count() === 1) {
-                        $existingOccurrence->allocations->first()->update([
-                            'participant_id' => $participantId,
-                            'category_id' => $categoryId,
-                            'amount_cents' => $attributes['amount_cents'],
-                        ]);
-                    }
                 } else {
                     $installment->occurrences()->create($attributes);
                 }
@@ -136,6 +129,8 @@ class InstallmentService
                 ->whereNull('archived_at')
                 ->update(['archived_at' => now()]);
 
+            $this->allocations->synchronizeMaterialization($installment);
+
             return $installment->fresh();
         });
     }
@@ -145,8 +140,10 @@ class InstallmentService
     {
         $oldValues = $installment->getAttributes();
         $oldOccurrences = $this->occurrenceSnapshots($installment);
+        $oldAllocations = $this->allocationSnapshots($installment);
         $updated = $this->reschedule($installment, $data);
         $newOccurrences = $this->occurrenceSnapshots($updated);
+        $newAllocations = $this->allocationSnapshots($updated);
         $newValues = $updated->getAttributes();
         $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'payer_id', 'participant_id', 'payment_method_id', 'category_id'];
         $changedFields = collect($ruleFields)
@@ -189,6 +186,8 @@ class InstallmentService
                 'archived_occurrences' => max(0, (int) $oldValues['installment_count'] - $updated->installment_count),
                 'old_occurrences' => $oldOccurrences,
                 'new_occurrences' => $newOccurrences,
+                'old_allocations' => $oldAllocations,
+                'new_allocations' => $newAllocations,
                 'old_rule' => array_intersect_key($oldValues, array_flip($ruleFields)),
                 'new_rule' => array_intersect_key($newValues, array_flip($ruleFields)),
                 'changed_fields' => $changedFields,
@@ -241,6 +240,25 @@ class InstallmentService
     private function occurrenceSnapshots(Installment $installment): array
     {
         return $installment->occurrences()->orderBy('installment_number')->get()->map(fn (InstallmentOccurrence $occurrence): array => $occurrence->getAttributes())->all();
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function allocationSnapshots(Installment $installment): array
+    {
+        return $installment->occurrences()
+            ->with('allocations')
+            ->orderBy('installment_number')
+            ->get()
+            ->flatMap(fn (InstallmentOccurrence $occurrence) => $occurrence->allocations->map(fn ($allocation): array => [
+                'id' => $allocation->id,
+                'installment_occurrence_id' => $allocation->installment_occurrence_id,
+                'participant_id' => $allocation->participant_id,
+                'category_id' => $allocation->category_id,
+                'amount_cents' => $allocation->amount_cents,
+                'percentage_basis_points' => $allocation->percentage_basis_points,
+            ]))
+            ->values()
+            ->all();
     }
 
     private function invoiceImpactLabel(InstallmentOccurrence $occurrence): string

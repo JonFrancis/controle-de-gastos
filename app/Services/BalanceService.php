@@ -145,17 +145,21 @@ class BalanceService
     /** @return list<array<string, mixed>> */
     public function receipts(CarbonInterface $until): array
     {
-        return Receipt::query()->whereNull('archived_at')->whereDate('received_at', '<=', $until)->with(['participant:id,name', 'applications'])->orderByDesc('received_at')->orderByDesc('id')->get()->map(fn (Receipt $receipt): array => [
-            'id' => $receipt->id,
-            'participantId' => $receipt->participant_id,
-            'participant' => $receipt->participant?->name,
-            'receivedAt' => $receipt->received_at->toDateString(),
-            'amountCents' => $receipt->amount_cents,
-            'appliedCents' => (int) $receipt->applications->sum('amount_cents'),
-            'creditCents' => max(0, $receipt->amount_cents - (int) $receipt->applications->sum('amount_cents')),
-            'note' => $receipt->note,
-            'manual' => $receipt->is_manually_adjusted,
-        ])->all();
+        return Receipt::query()->whereNull('archived_at')->whereDate('received_at', '<=', $until)->with(['participant:id,name', 'applications' => fn ($query) => $query->whereNull('superseded_at')])->orderByDesc('received_at')->orderByDesc('id')->get()->map(function (Receipt $receipt): array {
+            $appliedCents = (int) $receipt->applications->filter(fn (ReceiptApplication $application): bool => $application->superseded_at === null)->sum('amount_cents');
+
+            return [
+                'id' => $receipt->id,
+                'participantId' => $receipt->participant_id,
+                'participant' => $receipt->participant?->name,
+                'receivedAt' => $receipt->received_at->toDateString(),
+                'amountCents' => $receipt->amount_cents,
+                'appliedCents' => $appliedCents,
+                'creditCents' => max(0, $receipt->amount_cents - $appliedCents),
+                'note' => $receipt->note,
+                'manual' => $receipt->is_manually_adjusted,
+            ];
+        })->all();
     }
 
     /** @return Collection<int, array<string, mixed>> */
