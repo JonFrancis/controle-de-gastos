@@ -9,6 +9,9 @@ use App\Models\Receipt;
 use App\Models\ReceiptApplication;
 use App\Models\RecurrenceOccurrence;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -19,9 +22,10 @@ class BalanceService
     {
         DB::transaction(function () use ($participantId): void {
             $debts = $this->debtItems()->filter(fn (array $debt): bool => $debt['participant_id'] === $participantId)->values();
+            $debtsByKey = $debts->keyBy('key');
             $validDebtKeys = $debts->pluck('key')->flip();
             $applicationsToReconcile = ReceiptApplication::query()
-                ->whereHas('receipt', fn ($query) => $query->where('participant_id', $participantId))
+                ->whereHas('receipt', fn (Builder $query): Builder => $query->where('participant_id', $participantId))
                 ->whereNull('superseded_at')
                 ->get()
                 ->filter(fn (ReceiptApplication $application): bool => $application->source === 'automatic' || ! $validDebtKeys->has($application->source_type.':'.$application->source_id));
@@ -30,21 +34,60 @@ class BalanceService
                 $applicationsToReconcile->toQuery()->update(['superseded_at' => now()]);
             }
 
+            $manualApplications = ReceiptApplication::query()
+                ->whereHas('receipt', fn (Builder $query): Builder => $query->where('participant_id', $participantId))
+                ->whereNull('superseded_at')
+                ->where('source', 'manual')
+                ->orderBy('id')
+                ->get();
+            $remainingManualDebts = $debts->mapWithKeys(fn (array $debt): array => [$debt['key'] => $debt['amount_cents']]);
+
+            foreach ($manualApplications as $application) {
+                $key = $application->source_type.':'.$application->source_id;
+
+                if (! $remainingManualDebts->has($key)) {
+                    continue;
+                }
+
+                $remaining = (int) $remainingManualDebts->get($key);
+                if ($application->amount_cents <= $remaining) {
+                    $remainingManualDebts->put($key, $remaining - $application->amount_cents);
+
+                    continue;
+                }
+
+                $application->update(['superseded_at' => now()]);
+                if ($remaining > 0) {
+                    $this->createApplication($application->receipt_id, $debtsByKey->get($key), $remaining, 'manual');
+                }
+                $remainingManualDebts->put($key, 0);
+            }
+
             $applications = ReceiptApplication::query()
-                ->whereHas('receipt', fn ($query) => $query->where('participant_id', $participantId))
+                ->whereHas('receipt', fn (Builder $query): Builder => $query->where('participant_id', $participantId))
                 ->whereNull('superseded_at')
                 ->get()
                 ->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)
                 ->map(fn (Collection $rows): int => (int) $rows->sum('amount_cents'));
             $remainingDebts = $debts->mapWithKeys(fn (array $debt): array => [$debt['key'] => max(0, $debt['amount_cents'] - ($applications[$debt['key']] ?? 0))]);
-            $receipts = Receipt::query()->where('participant_id', $participantId)->whereNull('archived_at')->with('applications')->orderBy('received_at')->orderBy('id')->get();
+            $receipts = Receipt::query()
+                ->where('participant_id', $participantId)
+                ->whereNull('archived_at')
+                ->with(['applications' => function (HasMany $query): void {
+                    $query->whereNull('superseded_at');
+                }])
+                ->orderBy('received_at')
+                ->orderBy('id')
+                ->get();
 
             foreach ($receipts as $receipt) {
                 if ($receipt->is_manually_adjusted) {
                     continue;
                 }
 
-                $available = $receipt->amount_cents - (int) $receipt->applications->sum('amount_cents');
+                $available = $receipt->amount_cents - (int) $receipt->applications
+                    ->filter(fn (ReceiptApplication $application): bool => $application->superseded_at === null)
+                    ->sum('amount_cents');
                 foreach ($debts as $debt) {
                     if ($available <= 0) {
                         break;
@@ -150,7 +193,9 @@ class BalanceService
     /** @return list<array<string, mixed>> */
     public function receipts(CarbonInterface $until): array
     {
-        return Receipt::query()->whereNull('archived_at')->whereDate('received_at', '<=', $until)->with(['participant:id,name', 'applications' => fn ($query) => $query->whereNull('superseded_at')])->orderByDesc('received_at')->orderByDesc('id')->get()->map(function (Receipt $receipt): array {
+        return Receipt::query()->whereNull('archived_at')->whereDate('received_at', '<=', $until)->with(['participant:id,name', 'applications' => function (HasMany $query): void {
+            $query->whereNull('superseded_at');
+        }])->orderByDesc('received_at')->orderByDesc('id')->get()->map(function (Receipt $receipt): array {
             $appliedCents = (int) $receipt->applications->filter(fn (ReceiptApplication $application): bool => $application->superseded_at === null)->sum('amount_cents');
 
             return [
@@ -180,7 +225,7 @@ class BalanceService
     {
         $selfId = $this->selfId();
         $rows = collect();
-        $purchases = Purchase::query()->active()->whereNotNull('payment_method_id')->with('allocations')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get();
+        $purchases = Purchase::query()->active()->whereNotNull('payment_method_id')->with('allocations')->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get();
         foreach ($purchases as $purchase) {
             if ($purchase->allocations->isEmpty()) {
                 $rows->push($this->row('purchase', $purchase->id, $purchase->purchased_at, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->description));
@@ -191,7 +236,7 @@ class BalanceService
                 $rows->push($this->row('purchase_allocation', $allocation->id, $purchase->purchased_at, $allocation->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $purchase->description));
             }
         }
-        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->with('allocations')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
+        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->with('allocations')->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
             if ($occurrence->allocations->isEmpty()) {
                 $rows->push($this->row('installment_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description));
 
@@ -202,7 +247,7 @@ class BalanceService
                 $rows->push($this->row('installment_allocation', $allocation->id, $occurrence->purchased_at, $allocation->amount_cents, $occurrence->payer_id ?? $selfId, $allocation->participant_id ?? $occurrence->participant_id ?? $selfId, $occurrence->description));
             }
         }
-        foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
+        foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
             $rows->push($this->row('recurrence_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description));
         }
 
@@ -212,7 +257,7 @@ class BalanceService
     /** @return Collection<string, int> */
     private function applicationsUntil(CarbonInterface $until): Collection
     {
-        return ReceiptApplication::query()->whereNull('superseded_at')->whereHas('receipt', fn ($query) => $query->whereNull('archived_at')->whereDate('received_at', '<=', $until))->get()->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)->map(fn (Collection $rows): int => (int) $rows->sum('amount_cents'));
+        return ReceiptApplication::query()->whereNull('superseded_at')->whereHas('receipt', fn (Builder $query): Builder => $query->whereNull('archived_at')->whereDate('received_at', '<=', $until))->get()->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)->map(fn (Collection $rows): int => (int) $rows->sum('amount_cents'));
     }
 
     /** @return Collection<int, object> */
@@ -225,7 +270,7 @@ class BalanceService
             ->groupBy('receipt_id');
 
         return Receipt::query()
-            ->leftJoinSub($applicationTotals, 'receipt_application_totals', fn ($join) => $join->on('receipts.id', '=', 'receipt_application_totals.receipt_id'))
+            ->leftJoinSub($applicationTotals, 'receipt_application_totals', fn (JoinClause $join): JoinClause => $join->on('receipts.id', '=', 'receipt_application_totals.receipt_id'))
             ->whereNull('receipts.archived_at')
             ->whereDate('receipts.received_at', '<=', $until)
             ->select('receipts.participant_id')
@@ -243,7 +288,7 @@ class BalanceService
         return Receipt::query()
             ->whereNull('archived_at')
             ->whereDate('received_at', '<=', $until)
-            ->when($since, fn ($query, CarbonInterface $start) => $query->whereDate('received_at', '>=', $start))
+            ->when($since, fn (Builder $query, CarbonInterface $start): Builder => $query->whereDate('received_at', '>=', $start))
             ->select('participant_id')
             ->selectRaw('COUNT(id) as receipt_count')
             ->groupBy('participant_id')

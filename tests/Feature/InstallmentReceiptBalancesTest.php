@@ -10,7 +10,9 @@ use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Receipt;
 use App\Models\ReceiptApplication;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -79,7 +81,7 @@ class InstallmentReceiptBalancesTest extends TestCase
 
         $installment = Installment::query()->latest('id')->firstOrFail();
         $allocations = InstallmentAllocation::query()
-            ->whereHas('occurrence', fn ($query) => $query->where('installment_id', $installment->id))
+            ->whereHas('occurrence', fn (Builder $query): Builder => $query->where('installment_id', $installment->id))
             ->join('installment_occurrences', 'installment_occurrences.id', '=', 'installment_allocations.installment_occurrence_id')
             ->orderBy('installment_occurrences.installment_number')
             ->select('installment_allocations.*')
@@ -262,7 +264,7 @@ class InstallmentReceiptBalancesTest extends TestCase
 
         $installment = Installment::query()->latest('id')->firstOrFail();
         $oldOccurrences = $installment->occurrences()->with('allocations')->orderBy('installment_number')->get();
-        $oldAllocationIds = $oldOccurrences->flatMap(fn ($occurrence) => $occurrence->allocations->pluck('id'))->values()->all();
+        $oldAllocationIds = $oldOccurrences->flatMap(fn (InstallmentOccurrence $occurrence): Collection => $occurrence->allocations->pluck('id'))->values()->all();
         $firstMariaAllocation = $oldOccurrences[0]->allocations->firstWhere('participant_id', $maria->id);
         $secondMariaAllocation = $oldOccurrences[1]->allocations->firstWhere('participant_id', $maria->id);
 
@@ -282,9 +284,9 @@ class InstallmentReceiptBalancesTest extends TestCase
 
         $updatedOccurrences = $installment->fresh()->occurrences()->whereNull('archived_at')->with('allocations')->orderBy('installment_number')->get();
         $this->assertSame([4000, 4000, 4000], $updatedOccurrences->pluck('amount_cents')->all());
-        $this->assertSame(6, $updatedOccurrences->sum(fn ($occurrence): int => $occurrence->allocations->count()));
-        $this->assertSame([4000, 4000, 4000], $updatedOccurrences->map(fn ($occurrence): int => (int) $occurrence->allocations->sum('amount_cents'))->all());
-        $this->assertSame($oldAllocationIds, $updatedOccurrences->take(2)->flatMap(fn ($occurrence) => $occurrence->allocations->pluck('id'))->values()->all());
+        $this->assertSame(6, $updatedOccurrences->sum(fn (InstallmentOccurrence $occurrence): int => $occurrence->allocations->count()));
+        $this->assertSame([4000, 4000, 4000], $updatedOccurrences->map(fn (InstallmentOccurrence $occurrence): int => (int) $occurrence->allocations->sum('amount_cents'))->all());
+        $this->assertSame($oldAllocationIds, $updatedOccurrences->take(2)->flatMap(fn (InstallmentOccurrence $occurrence): Collection => $occurrence->allocations->pluck('id'))->values()->all());
         $this->assertSame([2400, 1600], $updatedOccurrences[0]->allocations->sortBy('participant_id')->pluck('amount_cents')->all());
         $this->assertSame([2400, 1600], $updatedOccurrences[2]->allocations->sortBy('participant_id')->pluck('amount_cents')->all());
 
@@ -292,6 +294,20 @@ class InstallmentReceiptBalancesTest extends TestCase
             [$firstMariaAllocation->id, 2400],
             [$secondMariaAllocation->id, 600],
         ], ReceiptApplication::query()->where('receipt_id', Receipt::query()->firstOrFail()->id)->whereNull('superseded_at')->orderBy('id')->get()->map(fn (ReceiptApplication $application): array => [$application->source_id, $application->amount_cents])->all());
+        $this->assertDatabaseHas('receipt_applications', [
+            'receipt_id' => Receipt::query()->firstOrFail()->id,
+            'source_type' => 'installment_allocation',
+            'source_id' => $firstMariaAllocation->id,
+            'amount_cents' => 2400,
+            'source' => 'automatic',
+            'superseded_at' => null,
+        ]);
+        $this->assertTrue(ReceiptApplication::query()
+            ->where('receipt_id', Receipt::query()->firstOrFail()->id)
+            ->where('source_id', $firstMariaAllocation->id)
+            ->where('amount_cents', 3000)
+            ->whereNotNull('superseded_at')
+            ->exists());
         $this->get('/balances?month=2026-11')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.name', 'Joana')
             ->where('participants.0.receivableCents', 3200)
@@ -419,6 +435,80 @@ class InstallmentReceiptBalancesTest extends TestCase
             ->where('receipts.0.appliedCents', 0)
             ->where('receipts.0.creditCents', 3000)
             ->where('participants.1.receivableCents', 5000));
+    }
+
+    public function test_rescheduling_reconciles_manual_overapplication_without_reassigning_credit_to_another_debt(): void
+    {
+        [$self, $maria, $joana, $paymentMethod] = $this->rateioCatalogs();
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-01',
+            'description' => 'Parcelamento com saldo reduzido',
+            'total' => '100,00',
+            'installment_count' => 2,
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [
+                ['participant_id' => $maria->id, 'amount' => '60,00'],
+                ['participant_id' => $joana->id, 'amount' => '40,00'],
+            ],
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $mariaAllocation = $installment->occurrences()
+            ->where('installment_number', 1)
+            ->firstOrFail()
+            ->allocations()
+            ->where('participant_id', $maria->id)
+            ->firstOrFail();
+
+        $this->post('/receipts', [
+            'participant_id' => $maria->id,
+            'received_at' => '2026-10-10',
+            'amount' => '30,00',
+        ])->assertRedirect('/balances');
+        $receipt = Receipt::query()->firstOrFail();
+
+        $this->put("/receipts/{$receipt->id}/applications", [
+            'applications' => [[
+                'source_type' => 'installment_allocation',
+                'source_id' => $mariaAllocation->id,
+                'amount' => '30,00',
+            ]],
+        ])->assertRedirect('/balances')->assertSessionHasNoErrors();
+        $manualApplication = ReceiptApplication::query()
+            ->where('receipt_id', $receipt->id)
+            ->where('source', 'manual')
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-01',
+            'end_date' => '2026-11-01',
+            'total' => '60,00',
+            'payment_method_id' => $paymentMethod->id,
+            'confirmation' => '1',
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $manualApplication->refresh();
+        $this->assertNotNull($manualApplication->superseded_at);
+        $this->assertSame([
+            [$mariaAllocation->id, 1800, 'manual'],
+        ], ReceiptApplication::query()
+            ->where('receipt_id', $receipt->id)
+            ->whereNull('superseded_at')
+            ->get()
+            ->map(fn (ReceiptApplication $application): array => [$application->source_id, $application->amount_cents, $application->source])
+            ->all());
+        $this->assertCount(3, $receipt->fresh()->applicationHistory);
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('receipts.0.appliedCents', 1800)
+            ->where('receipts.0.creditCents', 1200)
+            ->where('participants.0.name', 'Joana')
+            ->where('participants.0.receivableCents', 1200)
+            ->where('participants.1.name', 'Maria')
+            ->where('participants.1.receivableCents', 0));
     }
 
     /** @return array{0: Participant, 1: Participant, 2: Participant, 3: PaymentMethod} */

@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use App\Models\Installment;
+use App\Models\InstallmentAllocation;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class InstallmentService
@@ -206,7 +208,7 @@ class InstallmentService
             ->orderBy('installment_number')
             ->get();
         $invoiceImpacts = $occurrences->groupBy(fn (InstallmentOccurrence $occurrence): string => $this->invoiceImpactLabel($occurrence))
-            ->map(fn ($rows, string $label): array => [
+            ->map(fn (Collection $rows, string $label): array => [
                 'label' => $label,
                 'installmentNumbers' => $rows->pluck('installment_number')->map(fn (int $number): int => $number)->values()->all(),
                 'totalCents' => (int) $rows->sum('amount_cents'),
@@ -276,7 +278,7 @@ class InstallmentService
             ->with('allocations')
             ->orderBy('installment_number')
             ->get()
-            ->flatMap(fn (InstallmentOccurrence $occurrence) => $occurrence->allocations->map(fn ($allocation): array => [
+            ->flatMap(fn (InstallmentOccurrence $occurrence): Collection => $occurrence->allocations->map(fn (InstallmentAllocation $allocation): array => [
                 'id' => $allocation->id,
                 'installment_occurrence_id' => $allocation->installment_occurrence_id,
                 'participant_id' => $allocation->participant_id,
