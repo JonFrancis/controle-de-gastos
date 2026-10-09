@@ -146,15 +146,25 @@ class InstallmentService
     public function rescheduleWithImpact(Installment $installment, array $data): array
     {
         $oldValues = $installment->getAttributes();
+        $oldAllocationMode = $installment->allocation_mode;
+        $oldAllocationRule = $installment->allocation_rule;
         $oldOccurrences = $this->occurrenceSnapshots($installment);
         $oldAllocations = $this->allocationSnapshots($installment);
         $updated = $this->reschedule($installment, $data);
         $newOccurrences = $this->occurrenceSnapshots($updated);
         $newAllocations = $this->allocationSnapshots($updated);
         $newValues = $updated->getAttributes();
-        $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'payer_id', 'participant_id', 'payment_method_id', 'category_id'];
+        $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'payer_id', 'participant_id', 'payment_method_id', 'category_id', 'allocation_mode', 'allocation_rule'];
+        $oldRule = array_intersect_key($oldValues, array_flip($ruleFields));
+        $oldRule['allocation_mode'] = $oldAllocationMode;
+        $oldRule['allocation_rule'] = $oldAllocationRule;
+        $newRule = array_intersect_key($newValues, array_flip($ruleFields));
+        $newRule['allocation_mode'] = $updated->allocation_mode;
+        $newRule['allocation_rule'] = $updated->allocation_rule;
         $changedFields = collect($ruleFields)
-            ->filter(fn (string $field): bool => (string) ($oldValues[$field] ?? null) !== (string) ($newValues[$field] ?? null))
+            ->filter(fn (string $field): bool => $field === 'allocation_rule'
+                ? ($oldRule[$field] ?? null) !== ($newRule[$field] ?? null)
+                : (string) ($oldRule[$field] ?? null) !== (string) ($newRule[$field] ?? null))
             ->values()
             ->all();
         $oldOccurrenceMap = collect($oldOccurrences)->keyBy('id');
@@ -195,8 +205,8 @@ class InstallmentService
                 'new_occurrences' => $newOccurrences,
                 'old_allocations' => $oldAllocations,
                 'new_allocations' => $newAllocations,
-                'old_rule' => array_intersect_key($oldValues, array_flip($ruleFields)),
-                'new_rule' => array_intersect_key($newValues, array_flip($ruleFields)),
+                'old_rule' => $oldRule,
+                'new_rule' => $newRule,
                 'changed_fields' => $changedFields,
                 'affected_occurrence_ids' => collect($newOccurrences)->whereNull('archived_at')->pluck('id')->values()->all(),
                 'invoice_impacts' => $invoiceImpacts,

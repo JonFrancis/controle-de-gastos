@@ -876,17 +876,23 @@ class InstallmentsTest extends TestCase
             'end_date' => '2027-01-12',
             'description' => 'Descrição auditada',
             'total' => '100,00',
+            'allocation_mode' => 'percentage',
+            'allocations' => [['participant_id' => null, 'percentage' => '100,00']],
             'confirmation' => '1',
         ])->assertRedirect('/installments');
 
         $audit = AuditLog::query()->where('auditable_type', $installment->getMorphClass())->where('auditable_id', $installment->id)->latest('id')->firstOrFail();
-        $this->assertSame(['start_date', 'description'], $audit->metadata['changed_fields']);
+        $this->assertSame(['start_date', 'description', 'allocation_mode', 'allocation_rule'], $audit->metadata['changed_fields']);
         $this->assertCount(3, $audit->metadata['old_occurrences']);
         $this->assertCount(3, $audit->metadata['new_occurrences']);
         $this->assertCount(3, $audit->metadata['invoice_impacts']);
         $this->assertTrue($audit->metadata['balances_reconciled']);
         $this->assertSame('Compra parcelada', $audit->metadata['old_rule']['description']);
         $this->assertSame('Descrição auditada', $audit->metadata['new_rule']['description']);
+        $this->assertSame('equal', $audit->metadata['old_rule']['allocation_mode']);
+        $this->assertSame('percentage', $audit->metadata['new_rule']['allocation_mode']);
+        $this->assertIsArray($audit->metadata['old_rule']['allocation_rule']);
+        $this->assertIsArray($audit->metadata['new_rule']['allocation_rule']);
     }
 
     public function test_confirmed_schedule_edit_expands_the_schedule_and_rebalances_every_occurrence(): void
