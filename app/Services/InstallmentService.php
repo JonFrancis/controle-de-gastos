@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Installment;
+use App\Models\InstallmentAllocation;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use Carbon\CarbonImmutable;
@@ -147,9 +148,12 @@ class InstallmentService
     {
         $oldValues = $installment->getAttributes();
         $oldOccurrences = $this->occurrenceSnapshots($installment);
+        $oldAllocations = $this->allocationSnapshots($installment);
         $updated = $this->reschedule($installment, $data);
         $newOccurrences = $this->occurrenceSnapshots($updated);
-        $newValues = $updated->getAttributes();
+        $newAllocations = $this->allocationSnapshots($updated);
+        $oldValues['allocations'] = $oldAllocations;
+        $newValues = [...$updated->getAttributes(), 'allocations' => $newAllocations];
         $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'allocation_mode', 'payer_id', 'participant_id', 'payment_method_id', 'category_id'];
         $changedFields = collect($ruleFields)
             ->filter(fn (string $field): bool => (string) ($oldValues[$field] ?? null) !== (string) ($newValues[$field] ?? null))
@@ -191,6 +195,8 @@ class InstallmentService
                 'archived_occurrences' => max(0, (int) $oldValues['installment_count'] - $updated->installment_count),
                 'old_occurrences' => $oldOccurrences,
                 'new_occurrences' => $newOccurrences,
+                'old_allocations' => $oldAllocations,
+                'new_allocations' => $newAllocations,
                 'old_rule' => array_intersect_key($oldValues, array_flip($ruleFields)),
                 'new_rule' => array_intersect_key($newValues, array_flip($ruleFields)),
                 'changed_fields' => $changedFields,
@@ -242,7 +248,32 @@ class InstallmentService
     /** @return list<array<string, mixed>> */
     private function occurrenceSnapshots(Installment $installment): array
     {
-        return $installment->occurrences()->orderBy('installment_number')->get()->map(fn (InstallmentOccurrence $occurrence): array => $occurrence->getAttributes())->all();
+        return $installment->occurrences()
+            ->with('allocations')
+            ->orderBy('installment_number')
+            ->get()
+            ->map(fn (InstallmentOccurrence $occurrence): array => [
+                ...$occurrence->getAttributes(),
+                'allocations' => $occurrence->allocations
+                    ->sortBy('id')
+                    ->map(fn (InstallmentAllocation $allocation): array => $allocation->getAttributes())
+                    ->values()
+                    ->all(),
+            ])
+            ->all();
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function allocationSnapshots(Installment $installment): array
+    {
+        return $installment->occurrences()
+            ->with('allocations')
+            ->orderBy('installment_number')
+            ->get()
+            ->flatMap(fn (InstallmentOccurrence $occurrence) => $occurrence->allocations->sortBy('id'))
+            ->map(fn (InstallmentAllocation $allocation): array => $allocation->getAttributes())
+            ->values()
+            ->all();
     }
 
     private function invoiceImpactLabel(InstallmentOccurrence $occurrence): string

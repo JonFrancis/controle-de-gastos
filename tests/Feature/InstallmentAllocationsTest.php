@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Installment;
 use App\Models\InstallmentAllocation;
@@ -138,6 +139,156 @@ class InstallmentAllocationsTest extends TestCase
         $updated = $installment->fresh()->occurrences()->with('allocations')->orderBy('installment_number')->get();
         $this->assertSame([7500, 5000], $updated->pluck('amount_cents')->all());
         $this->assertSame([[3750, 3750], [2500, 2500]], $updated->map(fn ($occurrence): array => $occurrence->allocations->sortBy('participant_id')->pluck('amount_cents')->all())->all());
+    }
+
+    public function test_adjusting_an_occurrence_remaps_existing_receipt_applications_to_preserved_rateios(): void
+    {
+        [$self, $maria, $paymentMethod] = $this->catalogs();
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-12',
+            'description' => 'Compra com recebimento histórico',
+            'total' => '100,00',
+            'installment_count' => 2,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [
+                ['participant_id' => $self->id, 'amount' => '50,00'],
+                ['participant_id' => $maria->id, 'amount' => '50,00'],
+            ],
+        ])->assertRedirect('/installments');
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $occurrence = $installment->occurrences()->where('installment_number', 1)->firstOrFail();
+        $allocation = $occurrence->allocations()->where('participant_id', $self->id)->firstOrFail();
+        $allocation->delete();
+        $allocation = InstallmentAllocation::factory()
+            ->forOccurrence($occurrence)
+            ->forParticipant($self)
+            ->create(['amount_cents' => 5000]);
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-20', 'amount_cents' => 1000]);
+        $application = ReceiptApplication::create([
+            'receipt_id' => $receipt->id,
+            'source_type' => 'installment_allocation',
+            'source_id' => $allocation->id,
+            'amount_cents' => 1000,
+            'source' => 'manual',
+        ]);
+
+        $this->patch("/installment-occurrences/{$occurrence->id}", ['amount' => '75,00'])->assertRedirect('/installments');
+
+        $remappedAllocation = $occurrence->fresh()->allocations()->where('participant_id', $self->id)->firstOrFail();
+        $this->assertSame($allocation->id, $remappedAllocation->id);
+        $this->assertSame($remappedAllocation->id, $application->fresh()->source_id);
+        $this->assertModelExists($application->fresh());
+    }
+
+    public function test_complete_rateio_edit_after_an_adjustment_closes_every_occurrence_without_remainder(): void
+    {
+        [$self, $maria, $paymentMethod] = $this->catalogs();
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-12',
+            'description' => 'Compra com ajuste e Rateio',
+            'total' => '100,00',
+            'installment_count' => 3,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'equal',
+            'allocations' => [
+                ['participant_id' => $self->id],
+                ['participant_id' => $maria->id],
+            ],
+        ])->assertRedirect('/installments');
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $adjustedOccurrence = $installment->occurrences()->where('installment_number', 2)->firstOrFail();
+        $historicalAllocation = $adjustedOccurrence->allocations()->where('participant_id', $self->id)->firstOrFail();
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-20', 'amount_cents' => 1000]);
+        $application = ReceiptApplication::create([
+            'receipt_id' => $receipt->id,
+            'source_type' => 'installment_allocation',
+            'source_id' => $historicalAllocation->id,
+            'amount_cents' => 1000,
+            'source' => 'manual',
+        ]);
+
+        $this->patch("/installment-occurrences/{$adjustedOccurrence->id}", ['amount' => '35,00'])->assertRedirect('/installments');
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-12-12',
+            'total' => '100,00',
+            'allocation_mode' => 'amount',
+            'allocations' => [
+                ['participant_id' => $self->id, 'amount' => '70,00'],
+                ['participant_id' => $maria->id, 'amount' => '30,00'],
+            ],
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $occurrences = $installment->fresh()->occurrences()->with('allocations')->whereNull('archived_at')->orderBy('installment_number')->get();
+        $this->assertSame([3333, 3500, 3334], $occurrences->pluck('amount_cents')->all());
+        $this->assertSame([3333, 3500, 3334], $occurrences->map(fn ($occurrence): int => (int) $occurrence->allocations->sum('amount_cents'))->all());
+        $this->assertSame($historicalAllocation->id, $occurrences[1]->allocations->where('participant_id', $self->id)->firstOrFail()->id);
+        $this->assertSame($historicalAllocation->id, $application->fresh()->source_id);
+    }
+
+    public function test_schedule_audit_payloads_include_old_and_new_rateios(): void
+    {
+        [$self, $maria, $paymentMethod] = $this->catalogs();
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-12',
+            'description' => 'Compra auditada',
+            'total' => '100,00',
+            'installment_count' => 2,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'equal',
+            'allocations' => [
+                ['participant_id' => $self->id],
+                ['participant_id' => $maria->id],
+            ],
+        ])->assertRedirect('/installments');
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-11-12',
+            'total' => '100,00',
+            'allocation_mode' => 'amount',
+            'allocations' => [
+                ['participant_id' => $self->id, 'amount' => '70,00'],
+                ['participant_id' => $maria->id, 'amount' => '30,00'],
+            ],
+            'confirmation' => '1',
+        ])->assertRedirect('/installments');
+
+        $audit = AuditLog::query()->where('action', AuditLog::ACTION_UPDATE)->latest('id')->firstOrFail();
+        $this->assertSame(4, count($audit->old_values['allocations']));
+        $this->assertSame(4, count($audit->new_values['allocations']));
+        $this->assertSame(2500, $audit->old_values['allocations'][0]['amount_cents']);
+        $this->assertSame(3500, $audit->new_values['allocations'][0]['amount_cents']);
+        $this->assertSame(2, count($audit->metadata['old_occurrences'][0]['allocations']));
+        $this->assertSame(2, count($audit->metadata['new_occurrences'][0]['allocations']));
+    }
+
+    public function test_rateio_validation_messages_use_the_glossary_term(): void
+    {
+        [$self, $maria, $paymentMethod] = $this->catalogs();
+
+        $this->from('/installments')->post('/installments', [
+            'start_date' => '2026-10-12',
+            'description' => 'Rateio inválido',
+            'total' => '100,00',
+            'installment_count' => 2,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [
+                ['participant_id' => $self->id, 'amount' => '30,00'],
+                ['participant_id' => $maria->id, 'amount' => '30,00'],
+            ],
+        ])->assertRedirect('/installments')->assertSessionHasErrors(['allocations' => 'A soma dos Rateios precisa ser exatamente igual ao valor do parcelamento.']);
     }
 
     public function test_complete_schedule_edit_replaces_the_rule_for_active_occurrences(): void

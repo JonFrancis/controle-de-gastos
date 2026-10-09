@@ -26,7 +26,7 @@ class UpdateReceiptApplicationsRequest extends FormRequest
         return [
             'applications' => ['nullable', 'array'],
             'applications.*' => ['required', 'array'],
-            'applications.*.source_type' => ['required', 'string', 'in:purchase_allocation,installment_allocation,installment_occurrence,recurrence_occurrence'],
+            'applications.*.source_type' => ['required', 'string', 'in:purchase_allocation,installment_occurrence,recurrence_occurrence'],
             'applications.*.source_id' => ['required', 'integer', 'min:1'],
             'applications.*.amount' => ['required', 'decimal:0,2', 'gt:0'],
         ];
