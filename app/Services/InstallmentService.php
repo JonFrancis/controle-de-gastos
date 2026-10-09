@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Installment;
-use App\Models\InstallmentAllocation;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use Carbon\CarbonImmutable;
@@ -83,21 +82,14 @@ class InstallmentService
         $selfId = Participant::query()->where('is_default', true)->value('id');
         $categoryId = $participantId === null || (int) $participantId === (int) $selfId ? $categoryId : null;
         $financialScheduleChanged = $totalCents !== (int) $installment->total_cents || $count !== (int) $installment->installment_count;
-        $allocationMode = $data['allocation_mode'] ?? $installment->allocation_mode ?? 'equal';
-        $allocationRows = array_key_exists('allocations', $data)
-            ? $data['allocations']
-            : (array_key_exists('participant_id', $data) || array_key_exists('category_id', $data)
-                ? [['participant_id' => $participantId, 'category_id' => $categoryId, 'amount' => $totalCents / 100]]
-                : ($financialScheduleChanged ? $this->allocations->rowsForExistingRule($installment, $totalCents) : null));
 
-        return DB::transaction(function () use ($installment, $startDate, $count, $baseCents, $remainder, $totalCents, $description, $cardName, $payerId, $participantId, $paymentMethodId, $categoryId, $financialScheduleChanged, $allocationMode, $allocationRows): Installment {
+        return DB::transaction(function () use ($installment, $startDate, $count, $baseCents, $remainder, $totalCents, $description, $cardName, $payerId, $participantId, $paymentMethodId, $categoryId, $financialScheduleChanged): Installment {
             $installment->update([
                 'start_date' => $startDate->toDateString(),
                 'description' => $description,
                 'card_name' => $cardName,
                 'total_cents' => $totalCents,
                 'installment_count' => $count,
-                'allocation_mode' => $allocationMode,
                 'payer_id' => $payerId,
                 'participant_id' => $participantId,
                 'payment_method_id' => $paymentMethodId,
@@ -135,10 +127,6 @@ class InstallmentService
                 ->whereNull('archived_at')
                 ->update(['archived_at' => now()]);
 
-            if ($allocationRows !== null) {
-                $this->allocations->save($installment->fresh(), $allocationMode, $allocationRows);
-            }
-
             return $installment->fresh();
         });
     }
@@ -148,13 +136,10 @@ class InstallmentService
     {
         $oldValues = $installment->getAttributes();
         $oldOccurrences = $this->occurrenceSnapshots($installment);
-        $oldAllocations = $this->allocationSnapshots($installment);
         $updated = $this->reschedule($installment, $data);
         $newOccurrences = $this->occurrenceSnapshots($updated);
-        $newAllocations = $this->allocationSnapshots($updated);
-        $oldValues['allocations'] = $oldAllocations;
-        $newValues = [...$updated->getAttributes(), 'allocations' => $newAllocations];
-        $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'allocation_mode', 'payer_id', 'participant_id', 'payment_method_id', 'category_id'];
+        $newValues = $updated->getAttributes();
+        $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'payer_id', 'participant_id', 'payment_method_id', 'category_id'];
         $changedFields = collect($ruleFields)
             ->filter(fn (string $field): bool => (string) ($oldValues[$field] ?? null) !== (string) ($newValues[$field] ?? null))
             ->values()
@@ -195,8 +180,6 @@ class InstallmentService
                 'archived_occurrences' => max(0, (int) $oldValues['installment_count'] - $updated->installment_count),
                 'old_occurrences' => $oldOccurrences,
                 'new_occurrences' => $newOccurrences,
-                'old_allocations' => $oldAllocations,
-                'new_allocations' => $newAllocations,
                 'old_rule' => array_intersect_key($oldValues, array_flip($ruleFields)),
                 'new_rule' => array_intersect_key($newValues, array_flip($ruleFields)),
                 'changed_fields' => $changedFields,
@@ -248,32 +231,7 @@ class InstallmentService
     /** @return list<array<string, mixed>> */
     private function occurrenceSnapshots(Installment $installment): array
     {
-        return $installment->occurrences()
-            ->with('allocations')
-            ->orderBy('installment_number')
-            ->get()
-            ->map(fn (InstallmentOccurrence $occurrence): array => [
-                ...$occurrence->getAttributes(),
-                'allocations' => $occurrence->allocations
-                    ->sortBy('id')
-                    ->map(fn (InstallmentAllocation $allocation): array => $allocation->getAttributes())
-                    ->values()
-                    ->all(),
-            ])
-            ->all();
-    }
-
-    /** @return list<array<string, mixed>> */
-    private function allocationSnapshots(Installment $installment): array
-    {
-        return $installment->occurrences()
-            ->with('allocations')
-            ->orderBy('installment_number')
-            ->get()
-            ->flatMap(fn (InstallmentOccurrence $occurrence) => $occurrence->allocations->sortBy('id'))
-            ->map(fn (InstallmentAllocation $allocation): array => $allocation->getAttributes())
-            ->values()
-            ->all();
+        return $installment->occurrences()->orderBy('installment_number')->get()->map(fn (InstallmentOccurrence $occurrence): array => $occurrence->getAttributes())->all();
     }
 
     private function invoiceImpactLabel(InstallmentOccurrence $occurrence): string

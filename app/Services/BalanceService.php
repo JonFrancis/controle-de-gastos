@@ -182,16 +182,8 @@ class BalanceService
                 $rows->push($this->row('purchase_allocation', $allocation->id, $purchase->purchased_at, $allocation->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $purchase->description));
             }
         }
-        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->with('allocations')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
-            if ($occurrence->allocations->isEmpty()) {
-                $rows->push($this->row('installment_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description));
-
-                continue;
-            }
-
-            foreach ($occurrence->allocations as $allocation) {
-                $rows->push($this->row('installment_allocation', $allocation->id, $occurrence->purchased_at, $allocation->amount_cents, $occurrence->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $occurrence->description));
-            }
+        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
+            $rows->push($this->row('installment_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description));
         }
         foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->when($since, fn ($query) => $query->whereDate('purchased_at', '>=', $since))->when($until, fn ($query) => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
             $rows->push($this->row('recurrence_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description));
