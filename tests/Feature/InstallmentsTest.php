@@ -72,6 +72,26 @@ class InstallmentsTest extends TestCase
                 ->where('installments.0.category', 'Casa'));
     }
 
+    public function test_installments_listing_ignores_archived_occurrence_rateios_and_legacy_category_without_eu_rateio(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $joana = Participant::create(['name' => 'Joana']);
+        $legacyCategory = Category::create(['name' => 'Legado']);
+        $archivedCategory = Category::create(['name' => 'Arquivada']);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $installment = Installment::create(['start_date' => '2026-10-12', 'description' => 'Compra com histórico', 'total_cents' => 10000, 'installment_count' => 2, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id, 'category_id' => $legacyCategory->id]);
+        $activeOccurrence = $installment->occurrences()->create(['installment_number' => 1, 'purchased_at' => '2026-10-12', 'description' => 'Compra com histórico', 'amount_cents' => 5000, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $activeOccurrence->id, 'participant_id' => $maria->id, 'amount_cents' => 5000]);
+        $archivedOccurrence = $installment->occurrences()->create(['installment_number' => 2, 'purchased_at' => '2026-11-12', 'description' => 'Compra com histórico', 'amount_cents' => 5000, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id, 'archived_at' => now()]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $archivedOccurrence->id, 'participant_id' => $joana->id, 'category_id' => $archivedCategory->id, 'amount_cents' => 5000]);
+
+        $this->get('/installments')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('installments.0.participant', 'Maria')
+                ->where('installments.0.category', null));
+    }
+
     public function test_installment_occurrence_is_visible_in_calendar_and_invoice_cycle(): void
     {
         $card = PaymentMethod::create(['name' => 'Cartão', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 10]);

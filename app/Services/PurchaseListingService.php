@@ -103,7 +103,9 @@ class PurchaseListingService
             'payer' => $purchase->payer?->name,
             'participant' => $purchase->allocations->isNotEmpty() ? $purchase->allocations->map(fn ($allocation): ?string => $allocation->participant?->name)->filter()->join(', ') : $purchase->participant?->name,
             'paymentMethod' => $purchase->paymentMethod?->name,
-            'category' => $purchase->allocations->firstWhere('participant_id', $selfId)?->category?->name ?? $purchase->category?->name,
+            'category' => $purchase->allocations->isNotEmpty()
+                ? $purchase->allocations->firstWhere('participant_id', $selfId)?->category?->name
+                : $purchase->category?->name,
         ];
     }
 
@@ -133,7 +135,7 @@ class PurchaseListingService
                 ? $allocations->map(fn ($allocation): string => $allocation->participant?->name ?? 'Eu')->unique()->join(', ')
                 : $occurrence->participant?->name,
             'paymentMethod' => $occurrence->paymentMethod?->name,
-            'category' => $selfAllocation?->category?->name ?? $occurrence->category?->name,
+            'category' => $allocations->isNotEmpty() ? $selfAllocation?->category?->name : $occurrence->category?->name,
             'isAdjusted' => $occurrence->is_adjusted,
         ];
     }

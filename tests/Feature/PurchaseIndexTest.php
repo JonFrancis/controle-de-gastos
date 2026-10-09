@@ -9,6 +9,7 @@ use App\Models\InstallmentAllocation;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
+use App\Models\PurchaseAllocation;
 use App\Models\Recurrence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -536,6 +537,24 @@ class PurchaseIndexTest extends TestCase
                 ->where('monthTotalCents', 5000)
                 ->where('occurrences.0.participant', 'Maria')
                 ->where('occurrences.0.category', 'Legado'));
+    }
+
+    public function test_rateio_without_eu_does_not_fall_back_to_legacy_category_in_purchase_listings(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $category = Category::create(['name' => 'Legado']);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $purchase = Purchase::create(['purchased_at' => '2026-10-12', 'description' => 'Compra sem Eu', 'amount_cents' => 5000, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id, 'category_id' => $category->id]);
+        PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $maria->id, 'category_id' => null, 'amount_cents' => 5000]);
+        $installment = Installment::create(['start_date' => '2026-10-12', 'description' => 'Parcelamento sem Eu', 'total_cents' => 10000, 'installment_count' => 2, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id, 'category_id' => $category->id]);
+        $occurrence = $installment->occurrences()->create(['installment_number' => 1, 'purchased_at' => '2026-10-12', 'description' => 'Parcelamento sem Eu', 'amount_cents' => 5000, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id, 'category_id' => $category->id]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $maria->id, 'category_id' => null, 'amount_cents' => 5000]);
+
+        $this->get('/purchases?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('purchases.0.category', null)
+                ->where('occurrences.0.category', null));
     }
 
     public function test_purchase_can_be_updated_and_audit_the_change(): void

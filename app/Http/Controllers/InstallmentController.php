@@ -31,7 +31,8 @@ class InstallmentController extends Controller
             ->orderByDesc('id')
             ->get()
             ->map(function (Installment $installment) use ($selfId): array {
-                $allocations = $installment->occurrences->flatMap->allocations;
+                $activeOccurrences = $installment->occurrences->whereNull('archived_at');
+                $allocations = $activeOccurrences->flatMap->allocations;
                 $selfAllocation = $allocations->first(fn ($allocation): bool => $allocation->participant_id === null || (int) $allocation->participant_id === $selfId);
 
                 return [
@@ -46,7 +47,7 @@ class InstallmentController extends Controller
                         ? $allocations->map(fn ($allocation): string => $allocation->participant?->name ?? 'Eu')->unique()->join(', ')
                         : $installment->participant?->name,
                     'paymentMethod' => $installment->paymentMethod?->name,
-                    'category' => $selfAllocation?->category?->name ?? $installment->category?->name,
+                    'category' => $allocations->isNotEmpty() ? $selfAllocation?->category?->name : $installment->category?->name,
                     'archivedAt' => $installment->archived_at?->toIso8601String(),
                     'occurrences' => $installment->occurrences->map(fn ($occurrence): array => [
                         'id' => $occurrence->id,
