@@ -6,6 +6,8 @@ use App\Models\Installment;
 use App\Models\InstallmentAllocation;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
+use App\Models\ReceiptApplication;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -19,8 +21,95 @@ class InstallmentAllocationService
         $rows = $this->ruleRows($installment->total_cents, $mode, $allocations);
 
         DB::transaction(function () use ($installment, $mode, $rows): void {
-            $installment->update(['allocation_mode' => $mode]);
+            $installment->update(['allocation_mode' => $mode, 'allocation_rule' => $rows]);
             $this->materialize($installment, $rows);
+        });
+    }
+
+    /** @return array{mode: string, allocations: list<array{participantId: int|null, categoryId: int|null, amountCents: int, percentageBasisPoints: int|null}>} */
+    public function editorRule(Installment $installment): array
+    {
+        $occurrences = $installment->occurrences()
+            ->whereNull('archived_at')
+            ->with('allocations')
+            ->orderBy('installment_number')
+            ->get();
+        $occurrence = $occurrences->first(fn (InstallmentOccurrence $candidate): bool => $candidate->allocations->isNotEmpty() && ! $candidate->is_adjusted)
+            ?? $occurrences->first(fn (InstallmentOccurrence $candidate): bool => $candidate->allocations->isNotEmpty());
+
+        $mode = $installment->allocation_mode ?? 'equal';
+        $persistedRule = $installment->allocation_rule;
+
+        if ($occurrence === null) {
+            return [
+                'mode' => $mode,
+                'allocations' => is_array($persistedRule) && $persistedRule !== []
+                    ? $this->editorRows($persistedRule)
+                    : [[
+                        'participantId' => $installment->participant_id,
+                        'categoryId' => $installment->category_id,
+                        'amountCents' => $installment->total_cents,
+                        'percentageBasisPoints' => null,
+                    ]],
+            ];
+        }
+
+        return [
+            'mode' => $mode,
+            'allocations' => is_array($persistedRule) && $persistedRule !== []
+                ? $this->editorRows($persistedRule)
+                : $this->rowsForExistingRule($occurrences, $occurrence, $mode),
+        ];
+    }
+
+    /** @param list<array{participant_id: int|string|null, category_id?: int|string|null, amount?: int|string|null, percentage?: int|string|null}> $allocations */
+    public function synchronizeRule(Installment $installment, string $mode, array $allocations, ?int $previousTotalCents = null): void
+    {
+        $effectiveAllocations = $this->scaleAmountAllocations($allocations, $mode, $previousTotalCents, $installment->total_cents);
+        $rows = $this->ruleRows($installment->total_cents, $mode, $effectiveAllocations);
+
+        DB::transaction(function () use ($installment, $mode, $rows): void {
+            $installment->update(['allocation_mode' => $mode, 'allocation_rule' => $rows]);
+            $occurrences = $installment->occurrences()
+                ->whereNull('archived_at')
+                ->with('allocations')
+                ->orderBy('installment_number')
+                ->get();
+            $configuredTotal = (int) collect($rows)->sum('amount_cents');
+            $occurrenceTotal = (int) $occurrences->sum('amount_cents');
+            $preserveConfiguredTotals = $configuredTotal === $occurrenceTotal && $occurrences->every(fn (InstallmentOccurrence $occurrence): bool => ! $occurrence->is_adjusted);
+            $remaining = collect($rows)->pluck('amount_cents')->map(fn (int $amount): int => $amount)->all();
+
+            foreach ($occurrences as $index => $occurrence) {
+                $amounts = $preserveConfiguredTotals && $index === $occurrences->count() - 1
+                    ? $remaining
+                    : $this->apportion($occurrence->amount_cents, $preserveConfiguredTotals ? $remaining : collect($rows)->pluck('amount_cents')->all());
+
+                if ($preserveConfiguredTotals) {
+                    $remaining = array_map(fn (int $remainingAmount, int $allocated): int => $remainingAmount - $allocated, $remaining, $amounts);
+                }
+
+                $this->replaceOccurrenceAllocations($occurrence, $rows, $amounts);
+            }
+        });
+    }
+
+    public function redistributeOccurrence(InstallmentOccurrence $occurrence): void
+    {
+        DB::transaction(function () use ($occurrence): void {
+            $occurrence->load('allocations');
+
+            if ($occurrence->allocations->isEmpty()) {
+                $occurrence->allocations()->create([
+                    'participant_id' => $occurrence->participant_id,
+                    'category_id' => $occurrence->category_id,
+                    'amount_cents' => $occurrence->amount_cents,
+                ]);
+
+                return;
+            }
+
+            $this->synchronizeOccurrence($occurrence);
         });
     }
 
@@ -174,6 +263,134 @@ class InstallmentAllocationService
         foreach ($allocations as $index => $allocation) {
             $allocation->update(['amount_cents' => $amounts[$index]]);
         }
+    }
+
+    /** @param list<array{participant_id: int|null, category_id: int|null, amount_cents: int, percentage_basis_points: int|null}> $rows @param list<int> $amounts */
+    private function replaceOccurrenceAllocations(InstallmentOccurrence $occurrence, array $rows, array $amounts): void
+    {
+        $available = $occurrence->allocations->keyBy(fn (InstallmentAllocation $allocation): string => $this->participantKey($allocation->participant_id));
+        $allocationIds = $available->pluck('id')->all();
+        $allocationIdsWithReceipts = ReceiptApplication::query()
+            ->where('source_type', 'installment_allocation')
+            ->whereIn('source_id', $allocationIds)
+            ->pluck('source_id')
+            ->map(fn (int|string $sourceId): int => (int) $sourceId)
+            ->flip();
+
+        foreach ($rows as $index => $row) {
+            $allocation = $available->pull($this->participantKey($row['participant_id']));
+            $attributes = [
+                'participant_id' => $row['participant_id'],
+                'category_id' => $row['category_id'],
+                'amount_cents' => $amounts[$index],
+                'percentage_basis_points' => $row['percentage_basis_points'],
+            ];
+
+            if ($allocation instanceof InstallmentAllocation) {
+                $allocation->update($attributes);
+
+                continue;
+            }
+
+            $occurrence->allocations()->create($attributes);
+        }
+
+        $available->each(function (InstallmentAllocation $allocation) use ($allocationIdsWithReceipts): void {
+            if ($allocationIdsWithReceipts->has($allocation->id)) {
+                $allocation->update(['amount_cents' => 0]);
+
+                return;
+            }
+
+            $allocation->delete();
+        });
+    }
+
+    /** @return list<array{participantId: int|null, categoryId: int|null, amountCents: int, percentageBasisPoints: int|null}> */
+    private function rowsForExistingRule(Collection $occurrences, InstallmentOccurrence $template, string $mode): array
+    {
+        if ($mode !== 'amount') {
+            $weights = $template->allocations->pluck('amount_cents')->map(fn (int $amount): int => $amount)->all();
+            $amounts = $this->apportion((int) $template->installment->total_cents, $weights);
+
+            return $template->allocations->values()->map(function (InstallmentAllocation $allocation, int $index) use ($amounts): array {
+                return [
+                    'participantId' => $allocation->participant_id,
+                    'categoryId' => $allocation->category_id,
+                    'amountCents' => $amounts[$index],
+                    'percentageBasisPoints' => $allocation->percentage_basis_points,
+                ];
+            })->all();
+        }
+
+        $sourceOccurrences = $occurrences->filter(fn (InstallmentOccurrence $candidate): bool => ! $candidate->is_adjusted);
+        if ($sourceOccurrences->isEmpty()) {
+            $sourceOccurrences = collect([$template]);
+        }
+
+        $totals = [];
+        foreach ($sourceOccurrences as $occurrence) {
+            foreach ($occurrence->allocations as $allocation) {
+                if ($allocation->amount_cents === 0) {
+                    continue;
+                }
+
+                $key = $this->participantKey($allocation->participant_id);
+                $totals[$key] ??= [
+                    'participantId' => $allocation->participant_id,
+                    'categoryId' => $allocation->category_id,
+                    'amountCents' => 0,
+                    'percentageBasisPoints' => null,
+                ];
+                $totals[$key]['amountCents'] += $allocation->amount_cents;
+            }
+        }
+
+        if ($totals === []) {
+            return [];
+        }
+
+        $amounts = $this->apportion((int) $template->installment->total_cents, array_column(array_values($totals), 'amountCents'));
+
+        return collect(array_values($totals))->values()->map(function (array $row, int $index) use ($amounts): array {
+            return [...$row, 'amountCents' => $amounts[$index]];
+        })->all();
+    }
+
+    /** @param list<array{participant_id: int|null, category_id: int|null, amount_cents: int, percentage_basis_points: int|null}> $rows @return list<array{participantId: int|null, categoryId: int|null, amountCents: int, percentageBasisPoints: int|null}> */
+    private function editorRows(array $rows): array
+    {
+        return collect($rows)->map(fn (array $row): array => [
+            'participantId' => $row['participant_id'] ?? null,
+            'categoryId' => $row['category_id'] ?? null,
+            'amountCents' => (int) ($row['amount_cents'] ?? 0),
+            'percentageBasisPoints' => isset($row['percentage_basis_points']) ? (int) $row['percentage_basis_points'] : null,
+        ])->values()->all();
+    }
+
+    /** @param list<array{participant_id: int|string|null, category_id?: int|string|null, amount?: int|string|null, percentage?: int|string|null}> $allocations @return list<array{participant_id: int|string|null, category_id?: int|string|null, amount?: int|string|null, percentage?: int|string|null}> */
+    private function scaleAmountAllocations(array $allocations, string $mode, ?int $previousTotalCents, int $totalCents): array
+    {
+        if ($mode !== 'amount' || $previousTotalCents === null || $previousTotalCents === $totalCents) {
+            return $allocations;
+        }
+
+        $amounts = collect($allocations)->map(fn (array $allocation): int => $this->moneyToCents($allocation['amount'] ?? '0'))->all();
+        if ((int) array_sum($amounts) !== $previousTotalCents) {
+            return $allocations;
+        }
+
+        $scaledAmounts = $this->apportion($totalCents, $amounts);
+
+        return collect($allocations)->map(fn (array $allocation, int $index): array => [
+            ...$allocation,
+            'amount' => number_format($scaledAmounts[$index] / 100, 2, '.', ''),
+        ])->all();
+    }
+
+    private function participantKey(?int $participantId): string
+    {
+        return $participantId === null ? 'self' : (string) $participantId;
     }
 
     /** @param list<int> $weights @return list<int> */

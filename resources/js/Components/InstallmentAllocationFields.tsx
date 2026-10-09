@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
+import { removeAllocationRow, updateAllocationParticipant } from './installmentAllocationRows.mjs';
 
 export type AllocationOption = { id: number; name: string; is_default?: boolean };
-export type InstallmentAllocationRow = { participant_id: string; category_id: string; amount: string; percentage: string };
+export type InstallmentAllocationRow = { participant_id: string; participant_id_is_null?: boolean; category_id: string; amount: string; percentage: string };
 
 type Props = {
     participants: AllocationOption[];
@@ -19,7 +20,7 @@ const selectClass = 'w-full rounded-xl border border-white/10 bg-slate-800 px-3 
 export default function InstallmentAllocationFields({ participants, categories, mode, rows, onModeChange, onRowsChange, error }: Props) {
     const selfId = participants.find((participant) => participant.is_default)?.id.toString() ?? '';
     const availableParticipantId = useMemo(() => participants.find((participant) => !rows.some((row) => row.participant_id === participant.id.toString()))?.id.toString() ?? selfId, [participants, rows, selfId]);
-    const updateRow = (index: number, key: keyof InstallmentAllocationRow, value: string) => onRowsChange(rows.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row));
+    const updateRow = (index: number, key: keyof InstallmentAllocationRow, value: string) => onRowsChange(rows.map((row, rowIndex) => rowIndex !== index ? row : key === 'participant_id' ? updateAllocationParticipant(row, value, selfId) : { ...row, [key]: value }));
 
     return <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:col-span-2">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
@@ -34,7 +35,7 @@ export default function InstallmentAllocationFields({ participants, categories, 
             </select>
         </div>
         <div className="mt-4 space-y-3">
-            {rows.map((row, index) => <div key={index} className="grid gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 sm:grid-cols-[1fr_1fr_9rem] sm:items-center">
+            {rows.map((row, index) => <div key={index} className="grid gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 sm:grid-cols-[1fr_1fr_9rem_auto] sm:items-center">
                 <select required aria-label={`Participante do rateio ${index + 1}`} value={row.participant_id} onChange={(event) => updateRow(index, 'participant_id', event.target.value)} className={selectClass}>
                     <option value="">Selecione o participante</option>
                     {participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}
@@ -45,6 +46,7 @@ export default function InstallmentAllocationFields({ participants, categories, 
                 </select> : <div />}
                 {mode === 'amount' && <input aria-label={`Valor do rateio ${index + 1}`} value={row.amount} onChange={(event) => updateRow(index, 'amount', event.target.value)} placeholder="Valor total" inputMode="decimal" className={inputClass} />}
                 {mode === 'percentage' && <input aria-label={`Percentual do rateio ${index + 1}`} value={row.percentage} onChange={(event) => updateRow(index, 'percentage', event.target.value)} placeholder="% total" inputMode="decimal" className={inputClass} />}
+                {rows.length > 1 && <button type="button" aria-label={`Remover participante do rateio ${index + 1}`} onClick={() => onRowsChange(removeAllocationRow(rows, index))} className="rounded-xl border border-rose-300/30 px-3 py-2.5 text-sm font-semibold text-rose-300">Remover</button>}
             </div>)}
         </div>
         {error && <p className="mt-3 text-sm text-rose-300">{error}</p>}
