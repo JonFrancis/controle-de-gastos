@@ -33,6 +33,9 @@ class InstallmentController extends Controller
             ->map(function (Installment $installment) use ($selfId): array {
                 $activeOccurrences = $installment->occurrences->whereNull('archived_at');
                 $allocations = $activeOccurrences->flatMap->allocations;
+                $allocations = $allocations->isNotEmpty()
+                    ? $allocations
+                    : $installment->occurrences->whereNotNull('archived_at')->flatMap->allocations;
                 $selfAllocation = $allocations->first(fn ($allocation): bool => $allocation->participant_id === null || (int) $allocation->participant_id === $selfId);
 
                 return [

@@ -92,6 +92,26 @@ class InstallmentsTest extends TestCase
                 ->where('installments.0.category', null));
     }
 
+    public function test_installments_listing_uses_rateios_from_a_fully_archived_installment(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $legacyParticipant = Participant::create(['name' => 'Legado']);
+        $maria = Participant::create(['name' => 'Maria']);
+        $legacyCategory = Category::create(['name' => 'Categoria legada']);
+        $rateioCategory = Category::create(['name' => 'Categoria rateada']);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $archivedAt = now();
+        $installment = Installment::create(['start_date' => '2026-10-12', 'description' => 'Parcelamento arquivado', 'total_cents' => 10000, 'installment_count' => 1, 'payer_id' => $self->id, 'participant_id' => $legacyParticipant->id, 'payment_method_id' => $paymentMethod->id, 'category_id' => $legacyCategory->id, 'archived_at' => $archivedAt]);
+        $occurrence = $installment->occurrences()->create(['installment_number' => 1, 'purchased_at' => '2026-10-12', 'description' => 'Parcelamento arquivado', 'amount_cents' => 10000, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id, 'category_id' => $legacyCategory->id, 'archived_at' => $archivedAt]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $self->id, 'category_id' => $rateioCategory->id, 'amount_cents' => 5000]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $maria->id, 'amount_cents' => 5000]);
+
+        $this->get('/installments')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('installments.0.participant', 'Eu, Maria')
+                ->where('installments.0.category', 'Categoria rateada'));
+    }
+
     public function test_installment_occurrence_is_visible_in_calendar_and_invoice_cycle(): void
     {
         $card = PaymentMethod::create(['name' => 'Cartão', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 10]);
