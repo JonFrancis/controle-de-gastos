@@ -364,6 +364,63 @@ class InstallmentReceiptBalancesTest extends TestCase
             ->where('receipts.0.manual', true));
     }
 
+    public function test_rescheduling_archived_rateio_supersedes_manual_application_and_restores_receipt_credit(): void
+    {
+        [$self, $maria, , $paymentMethod] = $this->rateioCatalogs();
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-01',
+            'description' => 'Parcelamento reduzido após recebimento',
+            'total' => '120,00',
+            'installment_count' => 3,
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [['participant_id' => $maria->id, 'amount' => '120,00']],
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $archivedAllocation = $installment->occurrences()
+            ->where('installment_number', 3)
+            ->firstOrFail()
+            ->allocations()
+            ->firstOrFail();
+
+        $this->post('/receipts', [
+            'participant_id' => $maria->id,
+            'received_at' => '2026-10-10',
+            'amount' => '30,00',
+        ])->assertRedirect('/balances');
+        $receipt = Receipt::query()->firstOrFail();
+
+        $this->put("/receipts/{$receipt->id}/applications", [
+            'applications' => [[
+                'source_type' => 'installment_allocation',
+                'source_id' => $archivedAllocation->id,
+                'amount' => '30,00',
+            ]],
+        ])->assertRedirect('/balances')->assertSessionHasNoErrors();
+
+        $application = ReceiptApplication::query()->where('receipt_id', $receipt->id)->where('source', 'manual')->latest('id')->firstOrFail();
+        $this->assertNull($application->superseded_at);
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-01',
+            'end_date' => '2026-11-01',
+            'total' => '100,00',
+            'payment_method_id' => $paymentMethod->id,
+            'confirmation' => '1',
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $application->refresh();
+        $this->assertNotNull($application->superseded_at);
+        $this->assertCount(2, $receipt->fresh()->applicationHistory);
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('receipts.0.appliedCents', 0)
+            ->where('receipts.0.creditCents', 3000)
+            ->where('participants.1.receivableCents', 5000));
+    }
+
     /** @return array{0: Participant, 1: Participant, 2: Participant, 3: PaymentMethod} */
     private function rateioCatalogs(): array
     {

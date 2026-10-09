@@ -18,13 +18,18 @@ class BalanceService
     public function reconcileParticipant(int $participantId): void
     {
         DB::transaction(function () use ($participantId): void {
-            ReceiptApplication::query()
+            $debts = $this->debtItems()->filter(fn (array $debt): bool => $debt['participant_id'] === $participantId)->values();
+            $validDebtKeys = $debts->pluck('key')->flip();
+            $applicationsToReconcile = ReceiptApplication::query()
                 ->whereHas('receipt', fn ($query) => $query->where('participant_id', $participantId))
                 ->whereNull('superseded_at')
-                ->where('source', 'automatic')
-                ->update(['superseded_at' => now()]);
+                ->get()
+                ->filter(fn (ReceiptApplication $application): bool => $application->source === 'automatic' || ! $validDebtKeys->has($application->source_type.':'.$application->source_id));
 
-            $debts = $this->debtItems()->filter(fn (array $debt): bool => $debt['participant_id'] === $participantId)->values();
+            if ($applicationsToReconcile->isNotEmpty()) {
+                $applicationsToReconcile->toQuery()->update(['superseded_at' => now()]);
+            }
+
             $applications = ReceiptApplication::query()
                 ->whereHas('receipt', fn ($query) => $query->where('participant_id', $participantId))
                 ->whereNull('superseded_at')

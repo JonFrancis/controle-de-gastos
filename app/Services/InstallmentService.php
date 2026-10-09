@@ -236,13 +236,40 @@ class InstallmentService
         return (int) round(((float) str_replace(',', '.', (string) $value)) * 100);
     }
 
-    /** @return list<array<string, mixed>> */
+    /**
+     * @return list<array{
+     *     id: int,
+     *     installment_id: int,
+     *     installment_number: int,
+     *     purchased_at: string,
+     *     description: string,
+     *     card_name: string|null,
+     *     amount_cents: int,
+     *     payer_id: int|null,
+     *     participant_id: int|null,
+     *     payment_method_id: int|null,
+     *     category_id: int|null,
+     *     is_adjusted: bool|int,
+     *     archived_at: string|null,
+     *     created_at: string,
+     *     updated_at: string
+     * }>
+     */
     private function occurrenceSnapshots(Installment $installment): array
     {
         return $installment->occurrences()->orderBy('installment_number')->get()->map(fn (InstallmentOccurrence $occurrence): array => $occurrence->getAttributes())->all();
     }
 
-    /** @return list<array<string, mixed>> */
+    /**
+     * @return list<array{
+     *     id: int,
+     *     installment_occurrence_id: int,
+     *     participant_id: int|null,
+     *     category_id: int|null,
+     *     amount_cents: int,
+     *     percentage_basis_points: int|null
+     * }>
+     */
     private function allocationSnapshots(Installment $installment): array
     {
         return $installment->occurrences()
