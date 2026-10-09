@@ -3,10 +3,12 @@
 namespace App\Services;
 
 use App\Models\Installment;
+use App\Models\InstallmentAllocation;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class InstallmentService
@@ -116,7 +118,9 @@ class InstallmentService
                 ];
 
                 if ($existing->has($number)) {
-                    $existing->get($number)->update($attributes);
+                    $existingOccurrence = $existing->get($number);
+                    $existingOccurrence->update($attributes);
+
                 } else {
                     $installment->occurrences()->create($attributes);
                 }
@@ -127,6 +131,8 @@ class InstallmentService
                 ->whereNull('archived_at')
                 ->update(['archived_at' => now()]);
 
+            $this->allocations->synchronizeMaterialization($installment);
+
             return $installment->fresh();
         });
     }
@@ -136,8 +142,10 @@ class InstallmentService
     {
         $oldValues = $installment->getAttributes();
         $oldOccurrences = $this->occurrenceSnapshots($installment);
+        $oldAllocations = $this->allocationSnapshots($installment);
         $updated = $this->reschedule($installment, $data);
         $newOccurrences = $this->occurrenceSnapshots($updated);
+        $newAllocations = $this->allocationSnapshots($updated);
         $newValues = $updated->getAttributes();
         $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'payer_id', 'participant_id', 'payment_method_id', 'category_id'];
         $changedFields = collect($ruleFields)
@@ -180,6 +188,8 @@ class InstallmentService
                 'archived_occurrences' => max(0, (int) $oldValues['installment_count'] - $updated->installment_count),
                 'old_occurrences' => $oldOccurrences,
                 'new_occurrences' => $newOccurrences,
+                'old_allocations' => $oldAllocations,
+                'new_allocations' => $newAllocations,
                 'old_rule' => array_intersect_key($oldValues, array_flip($ruleFields)),
                 'new_rule' => array_intersect_key($newValues, array_flip($ruleFields)),
                 'changed_fields' => $changedFields,
@@ -198,7 +208,7 @@ class InstallmentService
             ->orderBy('installment_number')
             ->get();
         $invoiceImpacts = $occurrences->groupBy(fn (InstallmentOccurrence $occurrence): string => $this->invoiceImpactLabel($occurrence))
-            ->map(fn ($rows, string $label): array => [
+            ->map(fn (Collection $rows, string $label): array => [
                 'label' => $label,
                 'installmentNumbers' => $rows->pluck('installment_number')->map(fn (int $number): int => $number)->values()->all(),
                 'totalCents' => (int) $rows->sum('amount_cents'),
@@ -228,10 +238,56 @@ class InstallmentService
         return (int) round(((float) str_replace(',', '.', (string) $value)) * 100);
     }
 
-    /** @return list<array<string, mixed>> */
+    /**
+     * @return list<array{
+     *     id: int,
+     *     installment_id: int,
+     *     installment_number: int,
+     *     purchased_at: string,
+     *     description: string,
+     *     card_name: string|null,
+     *     amount_cents: int,
+     *     payer_id: int|null,
+     *     participant_id: int|null,
+     *     payment_method_id: int|null,
+     *     category_id: int|null,
+     *     is_adjusted: bool|int,
+     *     archived_at: string|null,
+     *     created_at: string,
+     *     updated_at: string
+     * }>
+     */
     private function occurrenceSnapshots(Installment $installment): array
     {
         return $installment->occurrences()->orderBy('installment_number')->get()->map(fn (InstallmentOccurrence $occurrence): array => $occurrence->getAttributes())->all();
+    }
+
+    /**
+     * @return list<array{
+     *     id: int,
+     *     installment_occurrence_id: int,
+     *     participant_id: int|null,
+     *     category_id: int|null,
+     *     amount_cents: int,
+     *     percentage_basis_points: int|null
+     * }>
+     */
+    private function allocationSnapshots(Installment $installment): array
+    {
+        return $installment->occurrences()
+            ->with('allocations')
+            ->orderBy('installment_number')
+            ->get()
+            ->flatMap(fn (InstallmentOccurrence $occurrence): Collection => $occurrence->allocations->map(fn (InstallmentAllocation $allocation): array => [
+                'id' => $allocation->id,
+                'installment_occurrence_id' => $allocation->installment_occurrence_id,
+                'participant_id' => $allocation->participant_id,
+                'category_id' => $allocation->category_id,
+                'amount_cents' => $allocation->amount_cents,
+                'percentage_basis_points' => $allocation->percentage_basis_points,
+            ]))
+            ->values()
+            ->all();
     }
 
     private function invoiceImpactLabel(InstallmentOccurrence $occurrence): string
