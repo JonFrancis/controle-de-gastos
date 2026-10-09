@@ -3,10 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\AuditLog;
+use App\Models\Category;
 use App\Models\Installment;
+use App\Models\InstallmentAllocation;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
+use App\Models\PurchaseAllocation;
 use App\Models\Recurrence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -477,6 +480,81 @@ class PurchaseIndexTest extends TestCase
 
         $this->get('/purchases?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page->where('purchases.0.editUrl', route('purchases.edit', $purchase, false)));
+    }
+
+    public function test_rateio_installment_listing_shows_participants_and_category_without_duplicating_occurrence_total(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $category = Category::create(['name' => 'Casa']);
+        $card = $this->createCreditCard('Cartão rateado', 10, 15);
+        $installment = Installment::create([
+            'start_date' => '2026-10-12',
+            'description' => 'Compra rateada',
+            'total_cents' => 20000,
+            'installment_count' => 2,
+            'payer_id' => $self->id,
+            'payment_method_id' => $card->id,
+        ]);
+        $occurrence = $installment->occurrences()->create([
+            'installment_number' => 1,
+            'purchased_at' => '2026-10-12',
+            'description' => 'Compra rateada',
+            'amount_cents' => 10000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $card->id,
+        ]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $self->id, 'category_id' => $category->id, 'amount_cents' => 4000]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $maria->id, 'amount_cents' => 6000]);
+
+        $this->get('/purchases?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('monthTotalCents', 10000)
+                ->has('occurrences', 1)
+                ->where('occurrences.0.participant', 'Eu, Maria')
+                ->where('occurrences.0.category', 'Casa')
+                ->where('occurrences.0.amountCents', 10000));
+
+        $this->get('/purchases?month=2026-11&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('invoiceGroups.0.totalCents', 10000)
+                ->has('invoiceGroups.0.purchases', 1)
+                ->where('invoiceGroups.0.purchases.0.participant', 'Eu, Maria')
+                ->where('invoiceGroups.0.purchases.0.amountCents', 10000));
+    }
+
+    public function test_legacy_installment_listing_falls_back_to_occurrence_participant_and_category(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $category = Category::create(['name' => 'Legado']);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $installment = Installment::create(['start_date' => '2026-10-12', 'description' => 'Parcelamento legado', 'total_cents' => 10000, 'installment_count' => 2, 'payer_id' => $self->id, 'participant_id' => $maria->id, 'payment_method_id' => $paymentMethod->id, 'category_id' => $category->id]);
+        $installment->occurrences()->create(['installment_number' => 1, 'purchased_at' => '2026-10-12', 'description' => 'Parcelamento legado', 'amount_cents' => 5000, 'payer_id' => $self->id, 'participant_id' => $maria->id, 'payment_method_id' => $paymentMethod->id, 'category_id' => $category->id]);
+
+        $this->get('/purchases?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('monthTotalCents', 5000)
+                ->where('occurrences.0.participant', 'Maria')
+                ->where('occurrences.0.category', 'Legado'));
+    }
+
+    public function test_rateio_without_eu_does_not_fall_back_to_legacy_category_in_purchase_listings(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $category = Category::create(['name' => 'Legado']);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $purchase = Purchase::create(['purchased_at' => '2026-10-12', 'description' => 'Compra sem Eu', 'amount_cents' => 5000, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id, 'category_id' => $category->id]);
+        PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $maria->id, 'category_id' => null, 'amount_cents' => 5000]);
+        $installment = Installment::create(['start_date' => '2026-10-12', 'description' => 'Parcelamento sem Eu', 'total_cents' => 10000, 'installment_count' => 2, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id, 'category_id' => $category->id]);
+        $occurrence = $installment->occurrences()->create(['installment_number' => 1, 'purchased_at' => '2026-10-12', 'description' => 'Parcelamento sem Eu', 'amount_cents' => 5000, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id, 'category_id' => $category->id]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $maria->id, 'category_id' => null, 'amount_cents' => 5000]);
+
+        $this->get('/purchases?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('purchases.0.category', null)
+                ->where('occurrences.0.category', null));
     }
 
     public function test_purchase_can_be_updated_and_audit_the_change(): void

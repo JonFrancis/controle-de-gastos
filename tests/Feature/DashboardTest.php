@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AppSetting;
 use App\Models\Category;
 use App\Models\Installment;
+use App\Models\InstallmentAllocation;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
@@ -285,6 +286,35 @@ class DashboardTest extends TestCase
             'recurrence_id' => $recurrence->id,
             'purchased_at' => '2026-10-10 00:00:00',
         ]);
+    }
+
+    public function test_dashboard_calculates_rateio_installment_totals_once_and_uses_allocation_values(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $category = Category::create(['name' => 'Casa']);
+        $pix = PaymentMethod::create(['name' => 'Cartão rateado', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 10]);
+        $pix->latestInvoiceSetting()->update(['due_day' => 15, 'effective_from' => '2026-01-01']);
+        $installment = Installment::create(['start_date' => '2026-10-12', 'description' => 'Compra rateada', 'total_cents' => 20000, 'installment_count' => 2, 'payer_id' => $self->id, 'payment_method_id' => $pix->id]);
+        $occurrence = $installment->occurrences()->create(['installment_number' => 1, 'purchased_at' => '2026-10-12', 'description' => 'Compra rateada', 'amount_cents' => 10000, 'payer_id' => $self->id, 'payment_method_id' => $pix->id]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $self->id, 'category_id' => $category->id, 'amount_cents' => 3000]);
+        InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $maria->id, 'amount_cents' => 7000]);
+
+        $this->get('/?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.ownConsumptionCents', 3000)
+                ->where('summary.totalDisbursedCents', 10000)
+                ->where('personChart.expenses.0.name', 'Maria')
+                ->where('personChart.expenses.0.amountCents', 7000)
+                ->where('charts.paymentMethodTotals.0.name', 'Cartão rateado')
+                ->where('charts.paymentMethodTotals.0.amountCents', 10000)
+                ->where('charts.movement.0.amountCents', 3000));
+
+        $this->get('/?month=2026-11&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('invoiceGroups.0.totalCents', 10000)
+                ->has('invoiceGroups.0.purchases', 1)
+                ->where('invoiceGroups.0.purchases.0.participant', 'Eu, Maria'));
     }
 
     public function test_dashboard_exposes_salary_configuration_state_and_negative_deficit(): void
