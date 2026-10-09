@@ -17,18 +17,19 @@ use Inertia\Response;
 
 class InstallmentOccurrenceController extends Controller
 {
-    public function edit(InstallmentOccurrence $installmentOccurrence, InstallmentCatalogService $catalogs, InstallmentService $service): Response
+    public function edit(InstallmentOccurrence $installmentOccurrence, InstallmentCatalogService $catalogs, InstallmentAllocationService $allocationService, InstallmentService $service): Response
     {
         if ((int) $installmentOccurrence->installment_number === 1) {
             $installment = $installmentOccurrence->load('installment')->installment;
-            $allocationRows = $installment->occurrences()
-                ->whereNull('archived_at')
-                ->with(['allocations.participant:id,name', 'allocations.category:id,name'])
-                ->orderBy('installment_number')
-                ->get()
-                ->flatMap(fn ($occurrence) => $occurrence->allocations)
-                ->groupBy(fn ($allocation): string => $allocation->participant_id === null ? 'self' : (string) $allocation->participant_id)
-                ->map(fn ($allocations): object => $allocations->first()->setAttribute('amount_cents', (int) $allocations->sum('amount_cents')))
+            $catalogData = $catalogs->all();
+            $selfId = $catalogData['participants']->firstWhere('is_default', true)?->id;
+            $allocationRows = collect($allocationService->rowsForExistingRule($installment, $installment->total_cents))
+                ->map(fn (array $row): array => [
+                    'participantId' => $row['participant_id'] ?? $selfId,
+                    'categoryId' => $row['category_id'],
+                    'amountCents' => (int) round(((float) ($row['amount'] ?? 0)) * 100),
+                    'percentageBasisPoints' => ($row['percentage'] ?? null) === null ? null : (int) round(((float) $row['percentage']) * 100),
+                ])
                 ->values();
 
             return Inertia::render('Installments/Edit', [
@@ -45,12 +46,7 @@ class InstallmentOccurrenceController extends Controller
                     'participantId' => $installment->participant_id,
                     'paymentMethodId' => $installment->payment_method_id,
                     'categoryId' => $installment->category_id,
-                    'allocations' => $allocationRows->map(fn ($allocation): array => [
-                        'participantId' => $allocation->participant_id,
-                        'categoryId' => $allocation->category_id,
-                        'amountCents' => $allocation->amount_cents,
-                        'percentageBasisPoints' => $allocation->percentage_basis_points,
-                    ])->values(),
+                    'allocations' => $allocationRows,
                     'occurrences' => $installment->occurrences()->orderBy('installment_number')->get()->map(fn ($occurrence): array => [
                         'id' => $occurrence->id,
                         'number' => $occurrence->installment_number,
@@ -61,7 +57,7 @@ class InstallmentOccurrenceController extends Controller
                     ])->values(),
                 ],
                 'schedulePreview' => $service->schedulePreview($installment),
-                ...$catalogs->all(),
+                ...$catalogData,
             ]);
         }
 
@@ -73,11 +69,23 @@ class InstallmentOccurrenceController extends Controller
     public function update(UpdateInstallmentOccurrenceRequest $request, InstallmentOccurrence $installmentOccurrence, InstallmentAllocationService $allocationService, BalanceService $balanceService, AuditService $audit): RedirectResponse
     {
         $oldValues = $installmentOccurrence->getAttributes();
+        $oldAllocations = $installmentOccurrence->allocations()->orderBy('id')->get()->map(fn ($allocation): array => $allocation->getAttributes())->all();
         $amount = (int) round(((float) $request->validated('amount')) * 100);
         $installmentOccurrence->update(['amount_cents' => $amount, 'is_adjusted' => true]);
         $allocationService->redistribute($installmentOccurrence->fresh(), $amount);
         $balanceService->reconcileAll();
-        $audit->record(AuditLog::ACTION_UPDATE, $installmentOccurrence, oldValues: $oldValues, newValues: $installmentOccurrence->fresh()->getAttributes());
+        $updatedOccurrence = $installmentOccurrence->fresh();
+        $newValues = [
+            ...$updatedOccurrence->getAttributes(),
+            'allocations' => $updatedOccurrence->allocations()->orderBy('id')->get()->map(fn ($allocation): array => $allocation->getAttributes())->all(),
+        ];
+        $audit->record(
+            AuditLog::ACTION_UPDATE,
+            $installmentOccurrence,
+            oldValues: [...$oldValues, 'allocations' => $oldAllocations],
+            newValues: $newValues,
+            metadata: ['type' => 'occurrence_adjustment', 'old_allocations' => $oldAllocations, 'new_allocations' => $newValues['allocations']],
+        );
 
         return to_route('installments.index')->with('success', 'Parcela ajustada com sucesso.');
     }

@@ -52,7 +52,7 @@ class InstallmentAllocationService
         });
     }
 
-    /** @return list<array{participant_id: int|null, category_id: int|null, amount: int|float|string|null, percentage: int|float|string|null}> */
+    /** @return list<array{participant_id: int|null, category_id: int|null, amount?: int|float|string|null, percentage?: int|float|string|null}> */
     public function rowsForExistingRule(Installment $installment, int $totalCents): array
     {
         $occurrences = $installment->occurrences()->whereNull('archived_at')->with('allocations')->orderBy('installment_number')->get();

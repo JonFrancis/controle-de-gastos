@@ -24,7 +24,7 @@ class InstallmentController extends Controller
     public function index(): Response
     {
         $installments = Installment::query()
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'category:id,name', 'occurrences' => fn ($query) => $query->with(['allocations.participant:id,name', 'allocations.category:id,name'])->orderBy('installment_number')])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'category:id,name', 'occurrences' => fn ($query) => $query->orderBy('installment_number')])
             ->orderByDesc('start_date')
             ->orderByDesc('id')
             ->get()
@@ -35,11 +35,10 @@ class InstallmentController extends Controller
                 'cardName' => $installment->card_name,
                 'totalCents' => $installment->total_cents,
                 'installmentCount' => $installment->installment_count,
-                'allocationMode' => $installment->allocation_mode,
                 'payer' => $installment->payer?->name,
-                'participant' => $installment->occurrences->flatMap(fn ($occurrence) => $occurrence->allocations->pluck('participant.name'))->filter()->unique()->join(', ') ?: $installment->participant?->name,
+                'participant' => $installment->participant?->name,
                 'paymentMethod' => $installment->paymentMethod?->name,
-                'category' => $installment->occurrences->flatMap(fn ($occurrence) => $occurrence->allocations->pluck('category.name'))->filter()->first() ?? $installment->category?->name,
+                'category' => $installment->category?->name,
                 'archivedAt' => $installment->archived_at?->toIso8601String(),
                 'occurrences' => $installment->occurrences->map(fn ($occurrence): array => [
                     'id' => $occurrence->id,
@@ -48,15 +47,6 @@ class InstallmentController extends Controller
                     'amountCents' => $occurrence->amount_cents,
                     'isAdjusted' => $occurrence->is_adjusted,
                     'archivedAt' => $occurrence->archived_at?->toIso8601String(),
-                    'allocations' => $occurrence->allocations->map(fn ($allocation): array => [
-                        'id' => $allocation->id,
-                        'participantId' => $allocation->participant_id,
-                        'participant' => $allocation->participant?->name,
-                        'categoryId' => $allocation->category_id,
-                        'category' => $allocation->category?->name,
-                        'amountCents' => $allocation->amount_cents,
-                        'percentageBasisPoints' => $allocation->percentage_basis_points,
-                    ])->values(),
                 ])->values(),
             ]);
 

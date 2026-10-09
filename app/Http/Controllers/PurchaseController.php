@@ -47,7 +47,7 @@ class PurchaseController extends Controller
             'view' => $view,
             'monthTotalCents' => (int) ($view === 'invoice' ? $invoiceGroups->sum('totalCents') : $purchases->sum('amount_cents') + $occurrences->sum('amount_cents')),
             'purchases' => $view === 'calendar' ? $purchases->map(fn (Purchase $purchase): array => $purchaseListingService->purchaseData($purchase, $selfId))->values() : [],
-            'occurrences' => $view === 'calendar' ? $occurrences->map(fn ($occurrence): array => $purchaseListingService->occurrenceData($occurrence, $selfId))->values() : [],
+            'occurrences' => $view === 'calendar' ? $occurrences->map(fn ($occurrence): array => $purchaseListingService->occurrenceData($occurrence))->values() : [],
             'invoiceGroups' => $invoiceGroups,
             'flash' => ['success' => session('success')],
         ]);
