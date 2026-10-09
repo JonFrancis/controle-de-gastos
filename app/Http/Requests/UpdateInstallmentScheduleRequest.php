@@ -30,9 +30,10 @@ class UpdateInstallmentScheduleRequest extends FormRequest
             'payment_method_id' => ['sometimes', 'required', Rule::exists('payment_methods', 'id')->where('active', true)],
             'category_id' => ['sometimes', 'nullable', Rule::exists('categories', 'id')->where('active', true)],
             'allocation_mode' => ['sometimes', 'required', 'string', 'in:equal,amount,percentage'],
-            'allocations' => ['sometimes', 'required', 'array', 'min:1'],
+            'allocations' => ['sometimes', 'array'],
             'allocations.*' => ['required', 'array'],
             'allocations.*.participant_id' => ['present', 'nullable', Rule::exists('participants', 'id')->where('active', true)],
+            'allocations.*.participant_id_is_null' => ['sometimes', 'boolean'],
             'allocations.*.category_id' => ['nullable', Rule::exists('categories', 'id')->where('active', true)],
             'allocations.*.amount' => ['nullable', 'numeric', 'min:0'],
             'allocations.*.percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -48,6 +49,10 @@ class UpdateInstallmentScheduleRequest extends FormRequest
             $data['allocations'] = collect($this->input('allocations'))->map(function (mixed $allocation): mixed {
                 if (! is_array($allocation)) {
                     return $allocation;
+                }
+
+                if (($allocation['participant_id_is_null'] ?? false) === true) {
+                    $allocation['participant_id'] = null;
                 }
 
                 return [

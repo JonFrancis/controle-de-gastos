@@ -131,7 +131,7 @@ class InstallmentService
                 ->whereNull('archived_at')
                 ->update(['archived_at' => now()]);
 
-            if (array_key_exists('allocations', $data)) {
+            if (array_key_exists('allocations', $data) && $data['allocations'] !== []) {
                 $this->allocations->synchronizeRule($installment, $data['allocation_mode'] ?? $installment->allocation_mode ?? 'equal', $data['allocations']);
             } else {
                 $this->allocations->synchronizeMaterialization($installment);

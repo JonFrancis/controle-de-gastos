@@ -37,12 +37,22 @@ class InstallmentAllocationService
         $occurrence = $occurrences->first(fn (InstallmentOccurrence $candidate): bool => $candidate->allocations->isNotEmpty() && ! $candidate->is_adjusted)
             ?? $occurrences->first(fn (InstallmentOccurrence $candidate): bool => $candidate->allocations->isNotEmpty());
 
-        if ($occurrence === null) {
-            return ['mode' => $installment->allocation_mode ?? 'equal', 'allocations' => []];
-        }
-
         $mode = $installment->allocation_mode ?? 'equal';
         $persistedRule = $installment->allocation_rule;
+
+        if ($occurrence === null) {
+            return [
+                'mode' => $mode,
+                'allocations' => is_array($persistedRule) && $persistedRule !== []
+                    ? $this->editorRows($persistedRule)
+                    : [[
+                        'participantId' => $installment->participant_id,
+                        'categoryId' => $installment->category_id,
+                        'amountCents' => $installment->total_cents,
+                        'percentageBasisPoints' => null,
+                    ]],
+            ];
+        }
 
         return [
             'mode' => $mode,

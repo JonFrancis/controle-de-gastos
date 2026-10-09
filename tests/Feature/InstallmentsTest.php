@@ -9,6 +9,7 @@ use App\Models\InstallmentAllocation;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
+use App\Models\Receipt;
 use App\Models\ReceiptApplication;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -203,6 +204,109 @@ class InstallmentsTest extends TestCase
                 ->where('installment.allocations.0.amountCents', 4000)
                 ->where('installment.allocations.1.participantId', $maria->id)
                 ->where('installment.allocations.1.amountCents', 6000));
+    }
+
+    public function test_legacy_installment_editor_uses_legacy_fields_when_active_rateios_are_missing(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria', 'active' => true]);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $installment = Installment::create([
+            'start_date' => '2026-10-12',
+            'description' => 'Parcelamento legado',
+            'total_cents' => 10000,
+            'installment_count' => 2,
+            'payer_id' => $self->id,
+            'participant_id' => $maria->id,
+            'payment_method_id' => $paymentMethod->id,
+            'category_id' => null,
+        ]);
+
+        $installment->occurrences()->createMany([
+            ['installment_number' => 1, 'purchased_at' => '2026-10-12', 'description' => 'Parcelamento legado', 'amount_cents' => 5000, 'payer_id' => $self->id, 'participant_id' => $maria->id, 'payment_method_id' => $paymentMethod->id],
+            ['installment_number' => 2, 'purchased_at' => '2026-11-12', 'description' => 'Parcelamento legado', 'amount_cents' => 5000, 'payer_id' => $self->id, 'participant_id' => $maria->id, 'payment_method_id' => $paymentMethod->id],
+        ]);
+        $firstOccurrence = $installment->occurrences()->where('installment_number', 1)->firstOrFail();
+
+        $this->get("/installment-occurrences/{$firstOccurrence->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('installment.allocationMode', 'equal')
+                ->has('installment.allocations', 1)
+                ->where('installment.allocations.0.participantId', $maria->id)
+                ->where('installment.allocations.0.amountCents', 10000));
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-11-12',
+            'total' => '100,00',
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'equal',
+            'allocations' => [],
+            'confirmation' => '1',
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-11-12',
+            'total' => '100,00',
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'equal',
+            'allocations' => [['participant_id' => $maria->id, 'amount' => '100,00']],
+            'confirmation' => '1',
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $this->assertSame([5000, 5000], $installment->fresh()->occurrences()->with('allocations')->orderBy('installment_number')->get()->map(fn (InstallmentOccurrence $occurrence): int => (int) $occurrence->allocations->sum('amount_cents'))->all());
+    }
+
+    public function test_null_eu_rateio_keeps_its_identity_and_receipt_application_when_reposted_from_the_editor(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria', 'active' => true]);
+        $category = Category::create(['name' => 'Categoria própria']);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $installment = Installment::create([
+            'start_date' => '2026-10-12',
+            'description' => 'Rateio migrado',
+            'total_cents' => 10000,
+            'installment_count' => 2,
+            'allocation_mode' => 'amount',
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+        ]);
+        $installment->occurrences()->createMany([
+            ['installment_number' => 1, 'purchased_at' => '2026-10-12', 'description' => 'Rateio migrado', 'amount_cents' => 5000, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id],
+            ['installment_number' => 2, 'purchased_at' => '2026-11-12', 'description' => 'Rateio migrado', 'amount_cents' => 5000, 'payer_id' => $self->id, 'payment_method_id' => $paymentMethod->id],
+        ]);
+        $occurrences = $installment->occurrences()->with('allocations')->orderBy('installment_number')->get();
+        $euAllocations = $occurrences->map(fn (InstallmentOccurrence $occurrence): InstallmentAllocation => InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => null, 'category_id' => $category->id, 'amount_cents' => 2500]));
+        $occurrences->each(fn (InstallmentOccurrence $occurrence): InstallmentAllocation => InstallmentAllocation::create(['installment_occurrence_id' => $occurrence->id, 'participant_id' => $maria->id, 'amount_cents' => 2500]));
+        $receipt = Receipt::create(['participant_id' => $self->id, 'received_at' => '2026-10-03', 'amount_cents' => 1000]);
+        $application = ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'installment_allocation', 'source_id' => $euAllocations[0]->id, 'amount_cents' => 1000, 'source' => 'manual']);
+        $firstOccurrence = $occurrences->firstOrFail();
+
+        $this->get("/installment-occurrences/{$firstOccurrence->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page->where('installment.allocations.0.participantId', null));
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-11-12',
+            'total' => '100,00',
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [
+                ['participant_id' => $self->id, 'participant_id_is_null' => true, 'category_id' => $category->id, 'amount' => '50,00'],
+                ['participant_id' => $maria->id, 'amount' => '50,00'],
+            ],
+            'confirmation' => '1',
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('installment_allocations', ['id' => $euAllocations[0]->id, 'participant_id' => null, 'category_id' => $category->id]);
+        $this->assertSame($euAllocations[0]->id, $application->fresh()->source_id);
+        $this->assertSame($application->id, $application->fresh()->id);
+        $this->assertSame(2, InstallmentAllocation::query()->whereNull('participant_id')->whereIn('installment_occurrence_id', $occurrences->pluck('id'))->count());
     }
 
     public function test_amount_rateio_editor_reconstructs_configured_values_from_all_active_occurrences(): void

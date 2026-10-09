@@ -27,3 +27,10 @@ test('describes every changed rateio dimension in the confirmation contract', ()
         'Categorias do Rateio',
     ]);
 });
+
+test('detects amount and percentage swaps by participant instead of as unordered values', () => {
+    const initialRows = [{ participant_id: '1', category_id: '', amount: '60.00', percentage: '60.00' }, { participant_id: '3', category_id: '', amount: '40.00', percentage: '40.00' }];
+    const swappedRows = [{ participant_id: '1', category_id: '', amount: '40.00', percentage: '40.00' }, { participant_id: '3', category_id: '', amount: '60.00', percentage: '60.00' }];
+
+    assert.deepEqual(allocationChangeLabels('amount', swappedRows, 'amount', initialRows), ['valores do Rateio', 'percentuais do Rateio']);
+});

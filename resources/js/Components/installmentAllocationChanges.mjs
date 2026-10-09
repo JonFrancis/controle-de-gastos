@@ -4,10 +4,10 @@ export function allocationChangeLabels(currentMode, currentRows, initialMode, in
     const initialParticipants = initialRows.map((row) => row.participant_id).sort();
     const currentCategories = currentRows.map((row) => `${row.participant_id}:${row.category_id}`).sort();
     const initialCategories = initialRows.map((row) => `${row.participant_id}:${row.category_id}`).sort();
-    const currentAmounts = currentRows.map((row) => row.amount).sort();
-    const initialAmounts = initialRows.map((row) => row.amount).sort();
-    const currentPercentages = currentRows.map((row) => row.percentage).sort();
-    const initialPercentages = initialRows.map((row) => row.percentage).sort();
+    const currentAmounts = currentRows.map((row) => `${row.participant_id}:${row.amount}`).sort();
+    const initialAmounts = initialRows.map((row) => `${row.participant_id}:${row.amount}`).sort();
+    const currentPercentages = currentRows.map((row) => `${row.participant_id}:${row.percentage}`).sort();
+    const initialPercentages = initialRows.map((row) => `${row.participant_id}:${row.percentage}`).sort();
 
     if (currentMode !== initialMode) labels.push('modo do Rateio');
     if (JSON.stringify(currentParticipants) !== JSON.stringify(initialParticipants)) labels.push('Participantes do Rateio');

@@ -21,6 +21,7 @@ export default function InstallmentsEdit({ installment, schedulePreview, partici
     const selfId = participants.find((participant) => participant.is_default)?.id.toString() ?? '';
     const initialAllocationRows = installment.allocations.map((allocation) => ({
         participant_id: allocation.participantId?.toString() ?? selfId,
+        participant_id_is_null: allocation.participantId === null,
         category_id: allocation.categoryId?.toString() ?? '',
         amount: (allocation.amountCents / 100).toFixed(2),
         percentage: allocation.percentageBasisPoints === null ? '' : (allocation.percentageBasisPoints / 100).toFixed(2),

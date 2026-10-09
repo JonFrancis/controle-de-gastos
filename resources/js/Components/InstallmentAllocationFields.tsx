@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { removeAllocationRow } from './installmentAllocationRows.mjs';
 
 export type AllocationOption = { id: number; name: string; is_default?: boolean };
-export type InstallmentAllocationRow = { participant_id: string; category_id: string; amount: string; percentage: string };
+export type InstallmentAllocationRow = { participant_id: string; participant_id_is_null?: boolean; category_id: string; amount: string; percentage: string };
 
 type Props = {
     participants: AllocationOption[];
