@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { removeAllocationRow } from './installmentAllocationRows.mjs';
+import { removeAllocationRow, updateAllocationParticipant } from './installmentAllocationRows.mjs';
 
 export type AllocationOption = { id: number; name: string; is_default?: boolean };
 export type InstallmentAllocationRow = { participant_id: string; participant_id_is_null?: boolean; category_id: string; amount: string; percentage: string };
@@ -20,7 +20,7 @@ const selectClass = 'w-full rounded-xl border border-white/10 bg-slate-800 px-3 
 export default function InstallmentAllocationFields({ participants, categories, mode, rows, onModeChange, onRowsChange, error }: Props) {
     const selfId = participants.find((participant) => participant.is_default)?.id.toString() ?? '';
     const availableParticipantId = useMemo(() => participants.find((participant) => !rows.some((row) => row.participant_id === participant.id.toString()))?.id.toString() ?? selfId, [participants, rows, selfId]);
-    const updateRow = (index: number, key: keyof InstallmentAllocationRow, value: string) => onRowsChange(rows.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row));
+    const updateRow = (index: number, key: keyof InstallmentAllocationRow, value: string) => onRowsChange(rows.map((row, rowIndex) => rowIndex !== index ? row : key === 'participant_id' ? updateAllocationParticipant(row, value, selfId) : { ...row, [key]: value }));
 
     return <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:col-span-2">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">

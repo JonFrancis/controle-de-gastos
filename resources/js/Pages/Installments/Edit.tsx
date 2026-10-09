@@ -2,6 +2,7 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import InstallmentAllocationFields, { InstallmentAllocationRow } from '@/Components/InstallmentAllocationFields';
 import { allocationChangeLabels } from '@/Components/installmentAllocationChanges.mjs';
+import { allocationRowsForEdit, serializeAllocationRule } from './editAllocationContract.mjs';
 
 type Option = { id: number; name: string; is_default?: boolean };
 type PaymentMethod = Option & { type: string; closing_day: number | null };
@@ -19,13 +20,8 @@ const selectClass = 'w-full rounded-xl border border-white/10 bg-slate-800 px-3 
 
 export default function InstallmentsEdit({ installment, schedulePreview, participants, categories, paymentMethods }: Props) {
     const selfId = participants.find((participant) => participant.is_default)?.id.toString() ?? '';
-    const initialAllocationRows = installment.allocations.map((allocation) => ({
-        participant_id: allocation.participantId?.toString() ?? selfId,
-        participant_id_is_null: allocation.participantId === null,
-        category_id: allocation.categoryId?.toString() ?? '',
-        amount: (allocation.amountCents / 100).toFixed(2),
-        percentage: allocation.percentageBasisPoints === null ? '' : (allocation.percentageBasisPoints / 100).toFixed(2),
-    }));
+    const initialAllocationRows = allocationRowsForEdit(installment.allocations, selfId);
+    const initialAllocationData = serializeAllocationRule(installment.allocationMode, initialAllocationRows);
     const form = useForm<FormData>({
         start_date: installment.startDate,
         end_date: installment.endDate,
@@ -36,8 +32,8 @@ export default function InstallmentsEdit({ installment, schedulePreview, partici
         participant_id: installment.participantId?.toString() ?? '',
         payment_method_id: installment.paymentMethodId?.toString() ?? '',
         category_id: installment.categoryId?.toString() ?? '',
-        allocation_mode: installment.allocationMode,
-        allocations: initialAllocationRows,
+        allocation_mode: initialAllocationData.allocation_mode,
+        allocations: initialAllocationData.allocations,
         confirmation: false,
     });
     const count = inclusiveMonthCount(form.data.start_date, form.data.end_date);

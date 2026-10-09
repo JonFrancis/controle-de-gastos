@@ -63,9 +63,10 @@ class InstallmentAllocationService
     }
 
     /** @param list<array{participant_id: int|string|null, category_id?: int|string|null, amount?: int|string|null, percentage?: int|string|null}> $allocations */
-    public function synchronizeRule(Installment $installment, string $mode, array $allocations): void
+    public function synchronizeRule(Installment $installment, string $mode, array $allocations, ?int $previousTotalCents = null): void
     {
-        $rows = $this->ruleRows($installment->total_cents, $mode, $allocations);
+        $effectiveAllocations = $this->scaleAmountAllocations($allocations, $mode, $previousTotalCents, $installment->total_cents);
+        $rows = $this->ruleRows($installment->total_cents, $mode, $effectiveAllocations);
 
         DB::transaction(function () use ($installment, $mode, $rows): void {
             $installment->update(['allocation_mode' => $mode, 'allocation_rule' => $rows]);
@@ -365,6 +366,26 @@ class InstallmentAllocationService
             'amountCents' => (int) ($row['amount_cents'] ?? 0),
             'percentageBasisPoints' => isset($row['percentage_basis_points']) ? (int) $row['percentage_basis_points'] : null,
         ])->values()->all();
+    }
+
+    /** @param list<array{participant_id: int|string|null, category_id?: int|string|null, amount?: int|string|null, percentage?: int|string|null}> $allocations @return list<array{participant_id: int|string|null, category_id?: int|string|null, amount?: int|string|null, percentage?: int|string|null}> */
+    private function scaleAmountAllocations(array $allocations, string $mode, ?int $previousTotalCents, int $totalCents): array
+    {
+        if ($mode !== 'amount' || $previousTotalCents === null || $previousTotalCents === $totalCents) {
+            return $allocations;
+        }
+
+        $amounts = collect($allocations)->map(fn (array $allocation): int => $this->moneyToCents($allocation['amount'] ?? '0'))->all();
+        if ((int) array_sum($amounts) !== $previousTotalCents) {
+            return $allocations;
+        }
+
+        $scaledAmounts = $this->apportion($totalCents, $amounts);
+
+        return collect($allocations)->map(fn (array $allocation, int $index): array => [
+            ...$allocation,
+            'amount' => number_format($scaledAmounts[$index] / 100, 2, '.', ''),
+        ])->all();
     }
 
     private function participantKey(?int $participantId): string

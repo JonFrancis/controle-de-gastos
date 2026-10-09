@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { allocationChangeLabels } from './installmentAllocationChanges.mjs';
-import { removeAllocationRow } from './installmentAllocationRows.mjs';
+import { removeAllocationRow, updateAllocationParticipant } from './installmentAllocationRows.mjs';
+import { allocationRowsForEdit, serializeAllocationRule } from '../Pages/Installments/editAllocationContract.mjs';
 
 test('removes the selected participant row while another row remains', () => {
     const rows = [{ participant_id: '1' }, { participant_id: '2' }, { participant_id: '3' }];
@@ -33,4 +34,26 @@ test('detects amount and percentage swaps by participant instead of as unordered
     const swappedRows = [{ participant_id: '1', category_id: '', amount: '40.00', percentage: '40.00' }, { participant_id: '3', category_id: '', amount: '60.00', percentage: '60.00' }];
 
     assert.deepEqual(allocationChangeLabels('amount', swappedRows, 'amount', initialRows), ['valores do Rateio', 'percentuais do Rateio']);
+});
+
+test('clears the legacy null marker when Eu changes to another participant', () => {
+    const row = { participant_id: '1', participant_id_is_null: true, category_id: '2', amount: '50.00', percentage: '' };
+
+    assert.deepEqual(updateAllocationParticipant(row, '3', '1'), { participant_id: '3', category_id: '2', amount: '50.00', percentage: '' });
+    assert.equal(updateAllocationParticipant(row, '1', '1').participant_id_is_null, true);
+});
+
+test('Edit contract preserves every Rateio mode and serializes participant data', () => {
+    for (const mode of ['equal', 'amount', 'percentage']) {
+        const rows = allocationRowsForEdit([{ participantId: null, categoryId: 2, amountCents: 6000, percentageBasisPoints: mode === 'percentage' ? 6000 : null }], '1');
+
+        assert.equal(serializeAllocationRule(mode, rows).allocation_mode, mode);
+        assert.deepEqual(serializeAllocationRule(mode, rows).allocations[0], {
+            participant_id: '1',
+            participant_id_is_null: true,
+            category_id: '2',
+            amount: '60.00',
+            percentage: mode === 'percentage' ? '60.00' : '',
+        });
+    }
 });

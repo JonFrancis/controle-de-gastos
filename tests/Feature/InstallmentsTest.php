@@ -244,7 +244,7 @@ class InstallmentsTest extends TestCase
             'allocation_mode' => 'equal',
             'allocations' => [],
             'confirmation' => '1',
-        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+        ])->assertSessionHasErrors('allocations');
 
         $this->patch("/installments/{$installment->id}/schedule", [
             'start_date' => '2026-10-12',
@@ -358,6 +358,54 @@ class InstallmentsTest extends TestCase
 
         $this->assertSame(6000, $updatedOccurrences->flatMap(fn (InstallmentOccurrence $occurrence): array => $occurrence->allocations->where('participant_id', $maria->id)->pluck('amount_cents')->all())->sum());
         $this->assertSame(4000, $updatedOccurrences->flatMap(fn (InstallmentOccurrence $occurrence): array => $occurrence->allocations->where('participant_id', $joana->id)->pluck('amount_cents')->all())->sum());
+    }
+
+    public function test_amount_rateio_scales_old_lines_when_the_installment_total_changes(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria', 'active' => true]);
+        $joana = Participant::create(['name' => 'Joana', 'active' => true]);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+
+        $this->post('/installments', [
+            'start_date' => '2026-10-12',
+            'description' => 'Compra rateada',
+            'total' => '100,00',
+            'installment_count' => 3,
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [['participant_id' => $maria->id, 'amount' => '60,00'], ['participant_id' => $joana->id, 'amount' => '40,00']],
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+
+        $this->from('/installments')->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-12-12',
+            'total' => '120,00',
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [['participant_id' => $maria->id, 'amount' => '61,00'], ['participant_id' => $joana->id, 'amount' => '40,00']],
+            'confirmation' => '1',
+        ])->assertSessionHasErrors('allocations');
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-12-12',
+            'total' => '120,00',
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+            'allocation_mode' => 'amount',
+            'allocations' => [['participant_id' => $maria->id, 'amount' => '60,00'], ['participant_id' => $joana->id, 'amount' => '40,00']],
+            'confirmation' => '1',
+        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+
+        $occurrences = $installment->fresh()->occurrences()->whereNull('archived_at')->with('allocations')->orderBy('installment_number')->get();
+
+        $this->assertSame([4000, 4000, 4000], $occurrences->map(fn (InstallmentOccurrence $occurrence): int => (int) $occurrence->allocations->sum('amount_cents'))->all());
+        $this->assertSame([[2400, 1600], [2400, 1600], [2400, 1600]], $occurrences->map(fn (InstallmentOccurrence $occurrence): array => $occurrence->allocations->sortBy('participant_id')->pluck('amount_cents')->all())->all());
     }
 
     public function test_resubmitting_rateio_after_an_occurrence_adjustment_uses_the_persisted_rule(): void
