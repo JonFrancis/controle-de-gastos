@@ -44,12 +44,18 @@ class UpdateInstallmentScheduleRequest extends FormRequest
     {
         $data = ['total' => is_string($this->total) ? str_replace(',', '.', $this->total) : $this->total];
 
-        if ($this->has('allocations')) {
-            $data['allocations'] = collect($this->input('allocations', []))->map(fn (array $allocation): array => [
-                ...$allocation,
-                'amount' => is_string($allocation['amount'] ?? null) ? str_replace(',', '.', $allocation['amount']) : ($allocation['amount'] ?? null),
-                'percentage' => is_string($allocation['percentage'] ?? null) ? str_replace(',', '.', $allocation['percentage']) : ($allocation['percentage'] ?? null),
-            ])->all();
+        if ($this->has('allocations') && is_array($this->input('allocations'))) {
+            $data['allocations'] = collect($this->input('allocations'))->map(function (mixed $allocation): mixed {
+                if (! is_array($allocation)) {
+                    return $allocation;
+                }
+
+                return [
+                    ...$allocation,
+                    'amount' => is_string($allocation['amount'] ?? null) ? str_replace(',', '.', $allocation['amount']) : ($allocation['amount'] ?? null),
+                    'percentage' => is_string($allocation['percentage'] ?? null) ? str_replace(',', '.', $allocation['percentage']) : ($allocation['percentage'] ?? null),
+                ];
+            })->all();
         }
 
         $this->merge($data);
