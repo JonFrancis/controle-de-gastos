@@ -85,7 +85,7 @@ class InstallmentService
         $categoryId = $participantId === null || (int) $participantId === (int) $selfId ? $categoryId : null;
         $financialScheduleChanged = $totalCents !== (int) $installment->total_cents || $count !== (int) $installment->installment_count;
 
-        return DB::transaction(function () use ($installment, $startDate, $count, $baseCents, $remainder, $totalCents, $description, $cardName, $payerId, $participantId, $paymentMethodId, $categoryId, $financialScheduleChanged): Installment {
+        return DB::transaction(function () use ($installment, $data, $startDate, $count, $baseCents, $remainder, $totalCents, $description, $cardName, $payerId, $participantId, $paymentMethodId, $categoryId, $financialScheduleChanged): Installment {
             $installment->update([
                 'start_date' => $startDate->toDateString(),
                 'description' => $description,
@@ -131,7 +131,11 @@ class InstallmentService
                 ->whereNull('archived_at')
                 ->update(['archived_at' => now()]);
 
-            $this->allocations->synchronizeMaterialization($installment);
+            if (array_key_exists('allocations', $data)) {
+                $this->allocations->synchronizeRule($installment, $data['allocation_mode'] ?? $installment->allocation_mode ?? 'equal', $data['allocations']);
+            } else {
+                $this->allocations->synchronizeMaterialization($installment);
+            }
 
             return $installment->fresh();
         });

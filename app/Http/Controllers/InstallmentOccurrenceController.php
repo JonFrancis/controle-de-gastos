@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\InstallmentOccurrence;
 use App\Services\AuditService;
 use App\Services\BalanceService;
+use App\Services\InstallmentAllocationService;
 use App\Services\InstallmentCatalogService;
 use App\Services\InstallmentService;
 use Carbon\CarbonImmutable;
@@ -16,10 +17,11 @@ use Inertia\Response;
 
 class InstallmentOccurrenceController extends Controller
 {
-    public function edit(InstallmentOccurrence $installmentOccurrence, InstallmentCatalogService $catalogs, InstallmentService $service): Response
+    public function edit(InstallmentOccurrence $installmentOccurrence, InstallmentCatalogService $catalogs, InstallmentService $service, InstallmentAllocationService $allocations): Response
     {
         if ((int) $installmentOccurrence->installment_number === 1) {
             $installment = $installmentOccurrence->load('installment')->installment;
+            $allocationRule = $allocations->editorRule($installment);
 
             return Inertia::render('Installments/Edit', [
                 'installment' => [
@@ -34,6 +36,8 @@ class InstallmentOccurrenceController extends Controller
                     'participantId' => $installment->participant_id,
                     'paymentMethodId' => $installment->payment_method_id,
                     'categoryId' => $installment->category_id,
+                    'allocationMode' => $allocationRule['mode'],
+                    'allocations' => $allocationRule['allocations'],
                     'occurrences' => $installment->occurrences()->orderBy('installment_number')->get()->map(fn ($occurrence): array => [
                         'id' => $occurrence->id,
                         'number' => $occurrence->installment_number,
@@ -53,13 +57,20 @@ class InstallmentOccurrenceController extends Controller
         ]);
     }
 
-    public function update(UpdateInstallmentOccurrenceRequest $request, InstallmentOccurrence $installmentOccurrence, BalanceService $balanceService, AuditService $audit): RedirectResponse
+    public function update(UpdateInstallmentOccurrenceRequest $request, InstallmentOccurrence $installmentOccurrence, InstallmentAllocationService $allocations, BalanceService $balanceService, AuditService $audit): RedirectResponse
     {
         $oldValues = $installmentOccurrence->getAttributes();
+        $oldAllocations = $installmentOccurrence->allocations()->get()->map(fn ($allocation): array => $allocation->getAttributes())->all();
         $amount = (int) round(((float) $request->validated('amount')) * 100);
         $installmentOccurrence->update(['amount_cents' => $amount, 'is_adjusted' => true]);
+        $allocations->redistributeOccurrence($installmentOccurrence);
         $balanceService->reconcileAll();
-        $audit->record(AuditLog::ACTION_UPDATE, $installmentOccurrence, oldValues: $oldValues, newValues: $installmentOccurrence->fresh()->getAttributes());
+        $audit->record(AuditLog::ACTION_UPDATE, $installmentOccurrence, oldValues: $oldValues, newValues: $installmentOccurrence->fresh()->getAttributes(), metadata: [
+            'type' => 'occurrence_adjustment',
+            'old_allocations' => $oldAllocations,
+            'new_allocations' => $installmentOccurrence->allocations()->get()->map(fn ($allocation): array => $allocation->getAttributes())->all(),
+            'balances_reconciled' => true,
+        ]);
 
         return to_route('installments.index')->with('success', 'Parcela ajustada com sucesso.');
     }
