@@ -236,6 +236,98 @@ class BalancesTest extends TestCase
             );
     }
 
+    public function test_receipt_application_edit_is_scoped_to_the_selected_billing_month(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $this->purchase('2026-09-06', 5000, $self, [[$maria, 5000]]);
+        $this->purchase('2026-10-06', 7000, $self, [[$maria, 7000]]);
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-09-30', 'amount_cents' => 5000]);
+
+        $this->get("/receipts/{$receipt->id}/edit?month=2026-10")
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Balances/ReceiptApplications')
+                ->where('selectedMonth', '2026-10')
+                ->has('debts', 1)
+                ->where('debts.0.description', 'Compra 2026-09-06')
+            );
+    }
+
+    public function test_manual_receipt_application_reduces_the_selected_invoice_item_and_preserves_the_month(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $allocation = $this->purchase('2026-09-06', 5000, $self, [[$maria, 5000]])->allocations()->firstOrFail();
+        $this->purchase('2026-10-06', 7000, $self, [[$maria, 7000]]);
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-09-30', 'amount_cents' => 5000]);
+
+        $this->put("/receipts/{$receipt->id}/applications?month=2026-10", [
+            'applications' => [[
+                'source_type' => 'purchase_allocation',
+                'source_id' => $allocation->id,
+                'amount' => '20,00',
+            ]],
+        ])->assertRedirect('/balances?month=2026-10')->assertSessionHasNoErrors();
+
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.receivableCents', 3000)
+            ->where('participants.0.receivableItems.0.amount_cents', 5000)
+            ->where('participants.0.receivableItems.0.applied_cents', 2000)
+            ->where('participants.0.receivableItems.0.outstanding_cents', 3000)
+            ->where('receipts.0.appliedCents', 2000)
+            ->where('receipts.0.creditCents', 3000)
+        );
+    }
+
+    public function test_historical_participant_credit_remains_visible_in_a_later_billing_period(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-09-30', 'amount_cents' => 3000]);
+        $this->purchase('2026-10-06', 7000, $self, [[$maria, 7000]]);
+
+        $this->get('/balances?month=2026-11')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.name', 'Maria')
+            ->where('participants.0.creditCents', 3000)
+            ->where('participants.0.receivableCents', 7000)
+        );
+    }
+
+    public function test_receipt_reduces_a_recurrence_occurrence_in_its_invoice_period(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $card = PaymentMethod::query()->where('type', PaymentMethod::TYPE_CREDIT)->firstOrFail();
+        $recurrence = Recurrence::create([
+            'start_date' => '2026-09-01',
+            'day_of_month' => 7,
+            'description' => 'Recorrência cobrada',
+            'amount_cents' => 4000,
+            'payer_id' => $self->id,
+            'participant_id' => $maria->id,
+            'payment_method_id' => $card->id,
+            'active' => true,
+        ]);
+        $occurrence = $recurrence->occurrences()->create([
+            'purchased_at' => '2026-09-07',
+            'description' => 'Ocorrência cobrada',
+            'amount_cents' => 4000,
+            'payer_id' => $self->id,
+            'participant_id' => $maria->id,
+            'payment_method_id' => $card->id,
+        ]);
+
+        $this->post('/receipts', [
+            'participant_id' => $maria->id,
+            'received_at' => '2026-09-30',
+            'amount' => '20,00',
+        ])->assertRedirect('/balances');
+
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.receivableCents', 2000)
+            ->where('participants.0.receivableItems.0.source_type', 'recurrence_occurrence')
+            ->where('participants.0.receivableItems.0.source_id', $occurrence->id)
+            ->where('participants.0.receivableItems.0.applied_cents', 2000)
+            ->where('participants.0.receivableItems.0.outstanding_cents', 2000)
+        );
+    }
+
     public function test_pending_movements_without_payment_method_are_excluded_from_balances(): void
     {
         [$self, $maria] = $this->catalogs();
