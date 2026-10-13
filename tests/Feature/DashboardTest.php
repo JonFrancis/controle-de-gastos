@@ -42,6 +42,15 @@ class DashboardTest extends TestCase
             );
     }
 
+    public function test_dashboard_preserves_the_selected_month_in_the_balances_navigation_url(): void
+    {
+        $this->get('/?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-10')
+                ->where('balancesUrl', route('balances', ['month' => '2026-10'], false))
+            );
+    }
+
     public function test_dashboard_defaults_to_due_month_invoices_and_excludes_non_credit_movements(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();

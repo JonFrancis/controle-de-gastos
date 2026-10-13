@@ -3,12 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\Category;
+use App\Models\Installment;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\Purchase;
 use App\Models\PurchaseAllocation;
 use App\Models\Receipt;
 use App\Models\ReceiptApplication;
+use App\Models\Recurrence;
 use App\Services\BalanceService;
 use Carbon\Carbon;
 use Illuminate\Database\Events\QueryExecuted;
@@ -109,6 +111,109 @@ class BalancesTest extends TestCase
             );
     }
 
+    public function test_balances_classify_card_purchases_by_invoice_due_month_and_exclude_non_invoice_methods(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $card = PaymentMethod::query()->where('type', PaymentMethod::TYPE_CREDIT)->firstOrFail();
+        $pix = PaymentMethod::create(['name' => 'Pix avulso', 'type' => PaymentMethod::TYPE_PIX]);
+        $this->purchase('2026-09-06', 5000, $self, [[$maria, 5000]], $card->id);
+        $this->purchase('2026-10-06', 7000, $self, [[$maria, 7000]], $card->id);
+        $this->purchase('2026-10-01', 9000, $self, [[$maria, 9000]], $pix->id);
+
+        $this->get('/balances?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.paidForOthersCents', 5000)
+                ->where('participants.0.receivableCents', 5000)
+                ->has('participants.0.receivableItems', 1)
+                ->where('participants.0.receivableItems.0.description', 'Compra 2026-09-06')
+            );
+
+        $this->get('/balances?month=2026-11')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.paidForOthersCents', 7000)
+                ->where('participants.0.receivableCents', 7000)
+                ->has('participants.0.receivableItems', 1)
+                ->where('participants.0.receivableItems.0.description', 'Compra 2026-10-06')
+            );
+    }
+
+    public function test_balances_classify_versioned_card_settings_using_the_purchase_date(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $card = PaymentMethod::query()->where('type', PaymentMethod::TYPE_CREDIT)->firstOrFail();
+        $card->latestInvoiceSetting()->update(['effective_from' => '2026-01-01']);
+        $card->invoiceSettings()->create([
+            'closing_day' => 20,
+            'due_day' => 5,
+            'effective_from' => '2026-10-11',
+        ]);
+        $this->purchase('2026-10-04', 1000, $self, [[$maria, 1000]], $card->id);
+        $this->purchase('2026-10-15', 2000, $self, [[$maria, 2000]], $card->id);
+
+        $this->get('/balances?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.paidForOthersCents', 1000)
+                ->where('participants.0.receivableCents', 1000)
+                ->where('participants.0.receivableItems.0.description', 'Compra 2026-10-04')
+            );
+
+        $this->get('/balances?month=2026-11')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.paidForOthersCents', 2000)
+                ->where('participants.0.receivableCents', 2000)
+                ->where('participants.0.receivableItems.0.description', 'Compra 2026-10-15')
+            );
+    }
+
+    public function test_balances_classify_installment_and_recurrence_occurrences_by_invoice_due_month(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $card = PaymentMethod::query()->where('type', PaymentMethod::TYPE_CREDIT)->firstOrFail();
+        $installment = Installment::create([
+            'start_date' => '2026-09-06',
+            'description' => 'Parcelamento da Maria',
+            'total_cents' => 3000,
+            'installment_count' => 1,
+            'payer_id' => $self->id,
+            'participant_id' => $maria->id,
+            'payment_method_id' => $card->id,
+        ]);
+        $installment->occurrences()->create([
+            'installment_number' => 1,
+            'purchased_at' => '2026-09-06',
+            'description' => 'Parcela da Maria',
+            'amount_cents' => 3000,
+            'payer_id' => $self->id,
+            'participant_id' => $maria->id,
+            'payment_method_id' => $card->id,
+        ]);
+        $recurrence = Recurrence::create([
+            'start_date' => '2026-09-01',
+            'day_of_month' => 7,
+            'description' => 'Recorrência da Maria',
+            'amount_cents' => 4000,
+            'payer_id' => $self->id,
+            'participant_id' => $maria->id,
+            'payment_method_id' => $card->id,
+            'active' => true,
+        ]);
+        $recurrence->occurrences()->create([
+            'purchased_at' => '2026-09-07',
+            'description' => 'Ocorrência da Maria',
+            'amount_cents' => 4000,
+            'payer_id' => $self->id,
+            'participant_id' => $maria->id,
+            'payment_method_id' => $card->id,
+        ]);
+
+        $this->get('/balances?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.paidForOthersCents', 7000)
+                ->where('participants.0.receivableCents', 7000)
+                ->has('participants.0.receivableItems', 2)
+            );
+    }
+
     public function test_dashboard_keeps_historical_receipt_applications_when_loading_the_selected_month(): void
     {
         [$self, $maria] = $this->catalogs();
@@ -190,7 +295,8 @@ class BalancesTest extends TestCase
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria']);
-        PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        PaymentMethod::create(['name' => 'Cartão de cobrança', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
+        PaymentMethod::query()->where('type', PaymentMethod::TYPE_CREDIT)->firstOrFail()->latestInvoiceSetting()->update(['due_day' => 10]);
         Category::create(['name' => 'Casa']);
 
         return [$self, $maria];

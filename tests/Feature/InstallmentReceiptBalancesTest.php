@@ -25,7 +25,7 @@ class InstallmentReceiptBalancesTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true]);
         $joana = Participant::create(['name' => 'Joana', 'active' => true]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX, 'active' => true]);
+        $paymentMethod = $this->createCard();
 
         $this->post('/installments', [
             'start_date' => '2026-10-01',
@@ -66,7 +66,7 @@ class InstallmentReceiptBalancesTest extends TestCase
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX, 'active' => true]);
+        $paymentMethod = $this->createCard();
 
         $this->post('/installments', [
             'start_date' => '2026-10-01',
@@ -106,7 +106,7 @@ class InstallmentReceiptBalancesTest extends TestCase
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX, 'active' => true]);
+        $paymentMethod = $this->createCard();
 
         $this->post('/installments', [
             'start_date' => '2026-10-01',
@@ -172,7 +172,7 @@ class InstallmentReceiptBalancesTest extends TestCase
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX, 'active' => true]);
+        $paymentMethod = $this->createCard();
 
         $this->post('/installments', [
             'start_date' => '2026-10-01',
@@ -204,7 +204,7 @@ class InstallmentReceiptBalancesTest extends TestCase
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX, 'active' => true]);
+        $paymentMethod = $this->createCard();
         $installment = Installment::create([
             'start_date' => '2026-10-01',
             'description' => 'Parcelamento legado',
@@ -310,7 +310,7 @@ class InstallmentReceiptBalancesTest extends TestCase
             ->exists());
         $this->get('/balances?month=2026-11')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.name', 'Joana')
-            ->where('participants.0.receivableCents', 3200)
+            ->where('participants.0.receivableCents', 1600)
             ->where('participants.1.name', 'Maria')
             ->where('participants.1.receivableCents', 1800));
     }
@@ -517,8 +517,16 @@ class InstallmentReceiptBalancesTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true]);
         $joana = Participant::create(['name' => 'Joana', 'active' => true]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX, 'active' => true]);
+        $paymentMethod = $this->createCard();
 
         return [$self, $maria, $joana, $paymentMethod];
+    }
+
+    private function createCard(): PaymentMethod
+    {
+        $paymentMethod = PaymentMethod::create(['name' => 'Cartão', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5, 'active' => true]);
+        $paymentMethod->latestInvoiceSetting()->update(['due_day' => 10]);
+
+        return $paymentMethod;
     }
 }

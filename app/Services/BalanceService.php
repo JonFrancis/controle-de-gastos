@@ -8,6 +8,7 @@ use App\Models\Purchase;
 use App\Models\Receipt;
 use App\Models\ReceiptApplication;
 use App\Models\RecurrenceOccurrence;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -18,6 +19,12 @@ use Illuminate\Validation\ValidationException;
 
 class BalanceService
 {
+    public function __construct(
+        private readonly InvoiceCycleService $invoiceCycleService,
+        private readonly PaymentMethodInvoiceSettingService $invoiceSettings,
+        private readonly RecurrenceService $recurrenceService,
+    ) {}
+
     public function reconcileParticipant(int $participantId): void
     {
         DB::transaction(function () use ($participantId): void {
@@ -152,6 +159,22 @@ class BalanceService
         $selfId = $this->selfId();
         $rows = $this->expenseRows($until, $since);
 
+        return $this->summaryFromRows($rows, $selfId);
+    }
+
+    /** @return array{ownConsumptionCents: int, paidForOthersCents: int, owedToOthersCents: int} */
+    public function summaryForBillingMonth(CarbonInterface $month): array
+    {
+        $selfId = $this->selfId();
+
+        return $this->summaryFromRows($this->expenseRowsForBillingMonth($month), $selfId);
+    }
+
+    /** @param Collection<int, array<string, mixed>> $rows
+     * @return array{ownConsumptionCents: int, paidForOthersCents: int, owedToOthersCents: int}
+     */
+    private function summaryFromRows(Collection $rows, int $selfId): array
+    {
         return [
             'ownConsumptionCents' => (int) $rows->filter(fn (array $row): bool => $row['participant_id'] === $selfId)->sum('amount_cents'),
             'paidForOthersCents' => (int) $rows->filter(fn (array $row): bool => $row['payer_id'] === $selfId && $row['participant_id'] !== null && $row['participant_id'] !== $selfId)->sum('amount_cents'),
@@ -164,6 +187,29 @@ class BalanceService
     {
         $selfId = $this->selfId();
         $rows = $this->expenseRows($until, $since);
+
+        return $this->participantBalancesFromRows($rows, $until, $since, $selfId);
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function participantBalancesForBillingMonth(CarbonInterface $month): array
+    {
+        $billingMonth = CarbonImmutable::instance($month);
+        $selfId = $this->selfId();
+
+        return $this->participantBalancesFromRows(
+            $this->expenseRowsForBillingMonth($billingMonth),
+            $billingMonth->endOfMonth(),
+            null,
+            $selfId,
+        );
+    }
+
+    /** @param Collection<int, array<string, mixed>> $rows
+     * @return list<array<string, mixed>>
+     */
+    private function participantBalancesFromRows(Collection $rows, CarbonInterface $until, ?CarbonInterface $since, int $selfId): array
+    {
         $applications = $this->applicationsUntil($until);
         $receiptBalances = $this->receiptBalancesUntil($until);
         $receiptMovements = $this->receiptMovements($until, $since);
@@ -221,12 +267,16 @@ class BalanceService
     }
 
     /** @return Collection<int, array<string, mixed>> */
-    private function expenseRows(?CarbonInterface $until = null, ?CarbonInterface $since = null): Collection
+    private function expenseRows(?CarbonInterface $until = null, ?CarbonInterface $since = null, ?string $invoiceMonth = null): Collection
     {
         $selfId = $this->selfId();
         $rows = collect();
-        $purchases = Purchase::query()->active()->whereNotNull('payment_method_id')->with('allocations')->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get();
+        $purchases = Purchase::query()->active()->whereNotNull('payment_method_id')->with(['paymentMethod:id,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at', 'allocations'])->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get();
         foreach ($purchases as $purchase) {
+            if ($invoiceMonth !== null && ! $this->belongsToInvoice($purchase, $invoiceMonth)) {
+                continue;
+            }
+
             if ($purchase->allocations->isEmpty()) {
                 $rows->push($this->row('purchase', $purchase->id, $purchase->purchased_at, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->description));
 
@@ -236,7 +286,11 @@ class BalanceService
                 $rows->push($this->row('purchase_allocation', $allocation->id, $purchase->purchased_at, $allocation->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $purchase->description));
             }
         }
-        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->with('allocations')->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
+        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->with(['paymentMethod:id,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at', 'allocations'])->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
+            if ($invoiceMonth !== null && ! $this->belongsToInvoice($occurrence, $invoiceMonth)) {
+                continue;
+            }
+
             if ($occurrence->allocations->isEmpty()) {
                 $rows->push($this->row('installment_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description));
 
@@ -247,11 +301,32 @@ class BalanceService
                 $rows->push($this->row('installment_allocation', $allocation->id, $occurrence->purchased_at, $allocation->amount_cents, $occurrence->payer_id ?? $selfId, $allocation->participant_id ?? $occurrence->participant_id ?? $selfId, $occurrence->description));
             }
         }
-        foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
+        foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->with(['paymentMethod:id,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at'])->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
+            if ($invoiceMonth !== null && ! $this->belongsToInvoice($occurrence, $invoiceMonth)) {
+                continue;
+            }
+
             $rows->push($this->row('recurrence_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description));
         }
 
         return $rows;
+    }
+
+    /** @return Collection<int, array<string, mixed>> */
+    private function expenseRowsForBillingMonth(CarbonInterface $month): Collection
+    {
+        $range = $this->invoiceCycleService->sourceRangeForInvoiceMonth($month);
+        $this->recurrenceService->ensureOccurrencesForRange($range['start'], $range['end']);
+
+        return $this->expenseRows($range['end'], $range['start'], CarbonImmutable::instance($month)->format('Y-m'));
+    }
+
+    private function belongsToInvoice(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item, string $selectedMonth): bool
+    {
+        $details = $this->invoiceSettings->detailsFor($item->paymentMethod, $item->purchased_at);
+
+        return $details !== null
+            && ($details['dueDate'] ?? $details['closingDate'])->format('Y-m') === $selectedMonth;
     }
 
     /** @return Collection<string, int> */

@@ -14,11 +14,12 @@ class BalanceController extends Controller
     {
         $selectedMonth = $this->validMonth($request->query('month'));
         $until = Carbon::createFromFormat('!Y-m', $selectedMonth)->endOfMonth();
+        $month = Carbon::createFromFormat('!Y-m', $selectedMonth);
 
         return Inertia::render('Balances/Index', [
             'selectedMonth' => $selectedMonth,
-            'summary' => $service->summary($until),
-            'participants' => $service->participantBalances($until),
+            'summary' => $service->summaryForBillingMonth($month),
+            'participants' => $service->participantBalancesForBillingMonth($month),
             'receipts' => $service->receipts($until),
         ]);
     }
