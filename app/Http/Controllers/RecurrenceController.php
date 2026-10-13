@@ -13,6 +13,7 @@ use App\Services\AuditService;
 use App\Services\BalanceService;
 use App\Services\RecurrenceService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -30,6 +31,7 @@ class RecurrenceController extends Controller
                 'id' => $recurrence->id,
                 'startDate' => $recurrence->start_date->toDateString(),
                 'endDate' => $recurrence->end_date?->toDateString(),
+                'dueDate' => $recurrence->due_date?->toDateString(),
                 'dayOfMonth' => $recurrence->day_of_month,
                 'description' => $recurrence->description,
                 'cardName' => $recurrence->card_name,
@@ -42,6 +44,7 @@ class RecurrenceController extends Controller
                 'occurrences' => $recurrence->occurrences->map(fn ($occurrence): array => [
                     'id' => $occurrence->id,
                     'purchasedAt' => $occurrence->purchased_at->toDateString(),
+                    'dueDate' => $occurrence->due_date?->toDateString(),
                     'amountCents' => $occurrence->amount_cents,
                     'isAdjusted' => $occurrence->is_adjusted,
                     'archivedAt' => $occurrence->archived_at?->toIso8601String(),
@@ -71,7 +74,9 @@ class RecurrenceController extends Controller
             'id' => $recurrence->id,
             'description' => $recurrence->description,
             'startDate' => $recurrence->start_date->toDateString(),
+            'dueDate' => $recurrence->due_date?->toDateString(),
             'endDate' => $recurrence->end_date?->toDateString(),
+            'paymentMethodType' => $recurrence->paymentMethod?->type,
             'active' => $recurrence->active,
         ]]);
     }
@@ -80,7 +85,7 @@ class RecurrenceController extends Controller
     {
         $oldValues = $recurrence->getAttributes();
         $data = $request->validated();
-        $recurrence->update(['end_date' => $data['end_date'] ?? null, 'active' => $data['active']]);
+        $recurrence->update(['due_date' => array_key_exists('due_date', $data) ? ($data['due_date'] ?? null) : $recurrence->due_date, 'end_date' => $data['end_date'] ?? null, 'active' => $data['active']]);
         $this->synchronizeFutureOccurrences($recurrence, $service);
         $balanceService->reconcileAll();
         $audit->record(AuditLog::ACTION_UPDATE, $recurrence, oldValues: $oldValues, newValues: $recurrence->fresh()->getAttributes());
@@ -116,7 +121,7 @@ class RecurrenceController extends Controller
         return to_route('recurrences.index')->with('success', 'Recorrência desativada.');
     }
 
-    /** @return array<string, mixed> */
+    /** @return array{participants: Collection<int, Participant>, categories: Collection<int, Category>, paymentMethods: Collection<int, PaymentMethod>} */
     private function catalogs(): array
     {
         return [

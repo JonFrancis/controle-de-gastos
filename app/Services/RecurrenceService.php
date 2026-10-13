@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Participant;
+use App\Models\PaymentMethod;
 use App\Models\Recurrence;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 class RecurrenceService
 {
     /**
-     * @param  array{start_date: string, end_date?: string|null, day_of_month: int|string, description: string, card_name?: string|null, amount: int|float|string, payer_id?: int|string|null, participant_id?: int|string|null, payment_method_id: int|string, category_id?: int|string|null}  $data
+     * @param  array{start_date: string, due_date?: string|null, end_date?: string|null, day_of_month: int|string, description: string, card_name?: string|null, amount: int|float|string, payer_id?: int|string|null, participant_id?: int|string|null, payment_method_id: int|string, category_id?: int|string|null}  $data
      */
     public function create(array $data): Recurrence
     {
@@ -19,10 +20,13 @@ class RecurrenceService
         $participantId = $data['participant_id'] ?? null;
         $selfId = Participant::query()->where('is_default', true)->value('id');
         $categoryId = $participantId === null || (int) $participantId === (int) $selfId ? ($data['category_id'] ?? null) : null;
+        $paymentMethod = PaymentMethod::query()->find($data['payment_method_id']);
+        $dueDate = $paymentMethod?->type === PaymentMethod::TYPE_LOAN ? ($data['due_date'] ?? null) : null;
 
-        return DB::transaction(function () use ($data, $amountCents, $participantId, $categoryId): Recurrence {
+        return DB::transaction(function () use ($data, $amountCents, $participantId, $categoryId, $dueDate): Recurrence {
             $recurrence = Recurrence::create([
                 'start_date' => $data['start_date'],
+                'due_date' => $dueDate,
                 'end_date' => $data['end_date'] ?? null,
                 'day_of_month' => $data['day_of_month'],
                 'description' => $data['description'],
@@ -45,6 +49,7 @@ class RecurrenceService
     public function ensureOccurrencesForRange(CarbonInterface $from, CarbonInterface $to): void
     {
         Recurrence::query()->active()
+            ->with('paymentMethod:id,type')
             ->whereDate('start_date', '<=', $to->toDateString())
             ->where(fn ($query) => $query->whereNull('end_date')->orWhereDate('end_date', '>=', $from->toDateString()))
             ->get()
@@ -57,6 +62,10 @@ class RecurrenceService
         $lastMonth = CarbonImmutable::instance($to)->startOfMonth();
         $startDate = CarbonImmutable::instance($recurrence->start_date);
         $endDate = $recurrence->end_date ? CarbonImmutable::instance($recurrence->end_date) : null;
+        $paymentMethod = $recurrence->paymentMethod;
+        $baseDueDate = $paymentMethod?->type === PaymentMethod::TYPE_LOAN && $recurrence->due_date !== null
+            ? CarbonImmutable::instance($recurrence->due_date)
+            : null;
 
         while ($cursor->lessThanOrEqualTo($lastMonth)) {
             $date = $cursor->setDay(min($recurrence->day_of_month, $cursor->daysInMonth));
@@ -67,6 +76,7 @@ class RecurrenceService
                 if (! $alreadyExists) {
                     $recurrence->occurrences()->create([
                         'purchased_at' => $date->toDateString(),
+                        'due_date' => $baseDueDate?->addMonthsNoOverflow($startDate->startOfMonth()->diffInMonths($date->startOfMonth()))->toDateString(),
                         'description' => $recurrence->description,
                         'card_name' => $recurrence->card_name,
                         'amount_cents' => $recurrence->amount_cents,

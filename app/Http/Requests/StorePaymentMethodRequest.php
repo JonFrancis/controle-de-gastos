@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Models\PaymentMethod;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StorePaymentMethodRequest extends FormRequest
 {
@@ -31,7 +32,7 @@ class StorePaymentMethodRequest extends FormRequest
         ];
     }
 
-    public function withValidator($validator): void
+    public function withValidator(Validator $validator): void
     {
         $validator->sometimes('closing_day', ['required'], fn () => $this->input('type') === PaymentMethod::TYPE_CREDIT);
         $validator->sometimes('due_day', ['required'], fn () => $this->input('type') === PaymentMethod::TYPE_CREDIT);

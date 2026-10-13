@@ -28,6 +28,33 @@ class PurchasesTest extends TestCase
         $this->assertDatabaseHas('purchases', ['description' => 'Mercado', 'card_name' => 'SUPERMERCADO TESTE', 'amount_cents' => 12345, 'archived_at' => null]);
     }
 
+    public function test_loan_purchase_requires_and_persists_its_registered_due_date(): void
+    {
+        $payer = Participant::query()->where('is_default', true)->firstOrFail();
+        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN]);
+
+        $this->post('/purchases', [
+            'purchased_at' => '2026-09-12',
+            'description' => 'Empréstimo para Maria',
+            'amount' => '123,45',
+            'payer_id' => $payer->id,
+            'payment_method_id' => $loan->id,
+        ])->assertSessionHasErrors('due_date');
+
+        $this->post('/purchases', [
+            'purchased_at' => '2026-09-12',
+            'description' => 'Empréstimo para Maria',
+            'amount' => '123,45',
+            'payer_id' => $payer->id,
+            'payment_method_id' => $loan->id,
+            'due_date' => '2026-10-20',
+        ])->assertRedirect();
+
+        $purchase = Purchase::query()->where('description', 'Empréstimo para Maria')->firstOrFail();
+        $this->assertSame(12345, $purchase->amount_cents);
+        $this->assertSame('2026-10-20', $purchase->due_date->toDateString());
+    }
+
     public function test_purchases_page_filters_active_purchases_by_month_and_total(): void
     {
         [$payer, $participant, $method, $category] = $this->catalogs();

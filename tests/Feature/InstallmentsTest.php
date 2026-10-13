@@ -57,6 +57,117 @@ class InstallmentsTest extends TestCase
         $this->assertSame(['2026-10-12', '2026-11-12', '2026-12-12'], InstallmentOccurrence::query()->where('installment_id', $installment->id)->orderBy('installment_number')->pluck('purchased_at')->map(fn ($date) => $date->toDateString())->all());
     }
 
+    public function test_loan_installment_generates_occurrences_with_registered_due_dates(): void
+    {
+        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN]);
+
+        $this->post('/installments', [
+            'start_date' => '2026-09-12',
+            'description' => 'Empréstimo parcelado',
+            'total' => '90,00',
+            'installment_count' => 3,
+            'payer_id' => null,
+            'participant_id' => null,
+            'payment_method_id' => $loan->id,
+            'due_date' => '2026-10-20',
+        ])->assertRedirect('/installments');
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+
+        $this->assertSame('2026-10-20', $installment->due_date->toDateString());
+        $this->assertSame(['2026-10-20', '2026-11-20', '2026-12-20'], $installment->occurrences()->orderBy('installment_number')->pluck('due_date')->map(fn ($date) => $date->toDateString())->all());
+
+        $occurrence = $installment->occurrences()->where('installment_number', 2)->firstOrFail();
+        $this->patch("/installment-occurrences/{$occurrence->id}", ['amount' => '31,00', 'due_date' => '2026-11-25'])->assertRedirect('/installments');
+        $this->assertSame('2026-11-25', $occurrence->fresh()->due_date->toDateString());
+    }
+
+    public function test_legacy_loan_installment_occurrence_exposes_and_persists_a_missing_due_date(): void
+    {
+        $loan = PaymentMethod::create(['name' => 'Empréstimo legado', 'type' => PaymentMethod::TYPE_LOAN]);
+        $this->post('/installments', [
+            'start_date' => '2026-10-12',
+            'description' => 'Empréstimo legado',
+            'total' => '60,00',
+            'installment_count' => 2,
+            'payment_method_id' => $loan->id,
+            'due_date' => '2026-10-20',
+        ])->assertRedirect('/installments');
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $occurrence = $installment->occurrences()->where('installment_number', 2)->firstOrFail();
+        $occurrence->update(['due_date' => null]);
+
+        $this->get("/installment-occurrences/{$occurrence->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Installments/OccurrenceForm')
+                ->where('occurrence.payment_method_type', PaymentMethod::TYPE_LOAN)
+                ->where('occurrence.due_date', null));
+
+        $this->patch("/installment-occurrences/{$occurrence->id}", [
+            'amount' => '31,00',
+            'due_date' => '2026-12-20',
+            'payment_method_type' => PaymentMethod::TYPE_LOAN,
+        ])->assertRedirect('/installments');
+
+        $this->assertSame(3100, $occurrence->fresh()->amount_cents);
+        $this->assertSame('2026-12-20', $occurrence->fresh()->due_date->toDateString());
+    }
+
+    public function test_installment_preview_classifies_loan_occurrences_by_their_due_month(): void
+    {
+        $loan = PaymentMethod::create(['name' => 'Empréstimo do preview', 'type' => PaymentMethod::TYPE_LOAN]);
+
+        $this->post('/installments', [
+            'start_date' => '2026-09-12',
+            'end_date' => '2026-10-12',
+            'description' => 'Empréstimo no preview',
+            'total' => '60,00',
+            'installment_count' => 2,
+            'payment_method_id' => $loan->id,
+            'due_date' => '2026-10-20',
+        ])->assertRedirect('/installments');
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $occurrence = $installment->occurrences()->where('installment_number', 1)->firstOrFail();
+
+        $this->get("/installment-occurrences/{$occurrence->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('installment.dueDate', '2026-10-20')
+                ->where('schedulePreview.installmentValues.0.dueDate', '2026-10-20')
+                ->where('paymentMethods', fn ($methods): bool => $methods->contains(fn (array $method): bool => $method['id'] === $loan->id && $method['type'] === PaymentMethod::TYPE_LOAN))
+                ->where('schedulePreview.invoiceImpacts.0.label', 'Empréstimo do preview · vencimento em 10/2026')
+                ->where('schedulePreview.invoiceImpacts.1.label', 'Empréstimo do preview · vencimento em 11/2026'));
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-09-12',
+            'end_date' => '2026-10-12',
+            'description' => 'Empréstimo no preview',
+            'total' => '60,00',
+            'installment_count' => 2,
+            'payment_method_id' => $loan->id,
+            'due_date' => '2026-10-21',
+            'confirmation' => true,
+        ])->assertRedirect('/installments');
+
+        $this->assertSame('2026-10-21', $installment->fresh()->due_date->toDateString());
+    }
+
+    public function test_billable_creation_catalogs_expose_the_loan_type(): void
+    {
+        $loan = PaymentMethod::create(['name' => 'Empréstimo catalogado', 'type' => PaymentMethod::TYPE_LOAN]);
+
+        foreach ([
+            ['/purchases/create/simple', 'Purchases/Form'],
+            ['/installments/create', 'Installments/Create'],
+            ['/recurrences/create', 'Recurrences/Create'],
+        ] as [$uri, $component]) {
+            $this->get($uri)
+                ->assertInertia(fn (Assert $page) => $page
+                    ->component($component)
+                    ->where('paymentMethods', fn ($methods): bool => $methods->contains(fn (array $method): bool => $method['id'] === $loan->id && $method['type'] === PaymentMethod::TYPE_LOAN)));
+        }
+    }
+
     public function test_installments_listing_exposes_rateio_participants_and_own_category(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
@@ -464,7 +575,7 @@ class InstallmentsTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true]);
         $joana = Participant::create(['name' => 'Joana', 'active' => true]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $paymentMethod = PaymentMethod::create(['name' => 'Cartão', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
 
         $this->post('/installments', [
             'start_date' => '2026-10-12',
@@ -562,7 +673,7 @@ class InstallmentsTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true]);
         $joana = Participant::create(['name' => 'Joana', 'active' => true]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $paymentMethod = PaymentMethod::create(['name' => 'Cartão', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
 
         $this->post('/installments', [
             'start_date' => '2026-10-12',
@@ -833,7 +944,8 @@ class InstallmentsTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true, 'is_default' => false]);
         $carlos = Participant::create(['name' => 'Carlos', 'active' => true, 'is_default' => false]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $paymentMethod = PaymentMethod::create(['name' => 'Cartão', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 20]);
+        $paymentMethod->latestInvoiceSetting()->update(['due_day' => 25]);
 
         $this->post('/installments', [
             'start_date' => '2026-10-12',

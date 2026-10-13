@@ -42,6 +42,55 @@ class DashboardTest extends TestCase
             );
     }
 
+    public function test_dashboard_preserves_the_selected_month_in_the_balances_navigation_url(): void
+    {
+        $this->get('/?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-10')
+                ->where('balancesUrl', route('balances', ['month' => '2026-10'], false))
+            );
+    }
+
+    public function test_dashboard_calendar_applies_receipts_to_non_billable_debts(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $purchase = Purchase::create([
+            'purchased_at' => '2026-10-03',
+            'description' => 'Compra paga por Maria',
+            'amount_cents' => 4000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $pix->id,
+        ]);
+        $allocation = PurchaseAllocation::create([
+            'purchase_id' => $purchase->id,
+            'participant_id' => $maria->id,
+            'amount_cents' => 4000,
+        ]);
+
+        $this->post('/receipts', [
+            'participant_id' => $maria->id,
+            'received_at' => '2026-10-04',
+            'amount' => '40,00',
+        ])->assertRedirect('/balances');
+
+        $this->assertDatabaseHas('receipt_applications', [
+            'purchase_allocation_id' => $allocation->id,
+            'amount_cents' => 4000,
+            'source' => 'automatic',
+        ]);
+
+        $this->get('/?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('personChart.balances.0.name', 'Maria')
+                ->where('personChart.balances.0.amountCents', 0)
+                ->where('personChart.balances.0.netCents', 0)
+                ->where('personChart.balances.0.creditCents', 0)
+                ->where('personChart.balances.0.status', 'settled')
+            );
+    }
+
     public function test_dashboard_defaults_to_due_month_invoices_and_excludes_non_credit_movements(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
@@ -353,7 +402,7 @@ class DashboardTest extends TestCase
             'payment_method_id' => $pix->id,
         ]);
         PurchaseAllocation::create(['purchase_id' => $sharedPurchase->id, 'participant_id' => $self->id, 'amount_cents' => 2000]);
-        $mariaDebt = PurchaseAllocation::create(['purchase_id' => $sharedPurchase->id, 'participant_id' => $maria->id, 'amount_cents' => 6000]);
+        PurchaseAllocation::create(['purchase_id' => $sharedPurchase->id, 'participant_id' => $maria->id, 'amount_cents' => 6000]);
 
         $payablePurchase = Purchase::create([
             'purchased_at' => '2026-10-06',
@@ -379,12 +428,6 @@ class DashboardTest extends TestCase
                 ->where('personChart.balances.0.amountCents', 2000)
                 ->where('personChart.balances.0.netCents', 2000)
                 ->where('personChart.balances.0.creditCents', 0));
-
-        $this->assertDatabaseHas('receipt_applications', [
-            'purchase_allocation_id' => $mariaDebt->id,
-            'amount_cents' => 3000,
-            'source' => 'automatic',
-        ]);
         $this->assertModelExists($payablePurchase);
     }
 
@@ -443,12 +486,6 @@ class DashboardTest extends TestCase
                 ->where('personChart.balances.0.netCents', 0)
                 ->where('personChart.balances.0.creditCents', 0)
                 ->where('personChart.balances.0.status', 'settled'));
-
-        $this->assertDatabaseHas('receipt_applications', [
-            'purchase_allocation_id' => $mariaDebt->id,
-            'amount_cents' => 6000,
-            'source' => 'automatic',
-        ]);
     }
 
     public function test_dashboard_balance_chart_changes_with_month_and_hides_historical_debt(): void
@@ -489,18 +526,13 @@ class DashboardTest extends TestCase
             'payer_id' => $self->id,
             'payment_method_id' => $pix->id,
         ]);
-        $allocation = PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $maria->id, 'amount_cents' => 5000]);
+        PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $maria->id, 'amount_cents' => 5000]);
 
         $this->post(route('receipts.store'), [
             'participant_id' => $maria->id,
             'received_at' => '2026-09-21',
             'amount' => '50,00',
         ])->assertRedirect(route('balances'));
-
-        $this->assertDatabaseHas('receipt_applications', [
-            'purchase_allocation_id' => $allocation->id,
-            'amount_cents' => 5000,
-        ]);
 
         $this->get(route('dashboard', ['month' => '2026-10', 'view' => 'calendar']))
             ->assertInertia(fn (Assert $page) => $page->where('personChart.balances', []));

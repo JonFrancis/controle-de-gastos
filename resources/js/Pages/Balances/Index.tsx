@@ -1,7 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 
 type Summary = { ownConsumptionCents: number; paidForOthersCents: number; owedToOthersCents: number };
-type Item = { key: string; description: string; purchased_at: string; amount_cents: number; applied_cents: number; outstanding_cents: number };
+type Item = { key: string; source_type: string; source_id: number; description: string; purchased_at: string; due_date: string | null; amount_cents: number; applied_cents: number; outstanding_cents: number; payment_method_type: string | null };
 type ParticipantBalance = { id: number; name: string; receivableCents: number; payableCents: number; netCents: number; creditCents: number; receivableItems: Item[]; payableItems: Item[] };
 type Receipt = { id: number; participant: string; receivedAt: string; amountCents: number; appliedCents: number; creditCents: number; note: string | null; manual: boolean };
 
@@ -58,7 +58,7 @@ export default function Balances({ selectedMonth, summary, participants, receipt
                         </div>
                         <div className="mt-5 flex flex-col gap-3">
                             {receipts.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Nenhum recebimento registrado.</p>}
-                            {receipts.map((receipt) => <div key={receipt.id} className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-slate-200">{receipt.participant} · {formatDate(receipt.receivedAt)}</p><p className="mt-1 text-xs text-slate-500">{receipt.note ?? 'Sem observação'} · aplicado {formatMoney(receipt.appliedCents)}{receipt.creditCents > 0 ? ` · crédito ${formatMoney(receipt.creditCents)}` : ''}</p></div><Link href={`/receipts/${receipt.id}/edit`} className="text-xs font-semibold text-emerald-300">Ajustar aplicação</Link></div>)}
+                            {receipts.map((receipt) => <div key={receipt.id} className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-slate-200">{receipt.participant} · {formatDate(receipt.receivedAt)}</p><p className="mt-1 text-xs text-slate-500">{receipt.note ?? 'Sem observação'} · aplicado {formatMoney(receipt.appliedCents)}{receipt.creditCents > 0 ? ` · crédito ${formatMoney(receipt.creditCents)}` : ''}</p></div><Link href={`/receipts/${receipt.id}/edit?month=${selectedMonth}`} className="text-xs font-semibold text-emerald-300">Ajustar aplicação</Link></div>)}
                         </div>
                     </section>
                 </div>
@@ -72,7 +72,7 @@ function ParticipantCard({ participant }: { participant: ParticipantBalance }) {
 }
 
 function DetailList({ title, items }: { title: string; items: Item[] }) {
-    return <div><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</p><div className="mt-2 flex flex-col gap-2">{items.length === 0 && <p className="text-xs text-slate-600">Nenhum item</p>}{items.map((item) => <div key={item.key} className="rounded-xl border border-white/5 bg-slate-950/30 p-3"><p className="text-xs text-slate-300">{item.description}</p><p className="mt-1 text-[11px] text-slate-500">{formatDate(item.purchased_at)} · bruto {formatMoney(item.amount_cents)}</p><p className="mt-1 text-[11px] text-emerald-300">Aplicado {formatMoney(item.applied_cents)} · restante {formatMoney(item.outstanding_cents)}</p></div>)}</div></div>;
+    return <div><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</p><div className="mt-2 flex flex-col gap-2">{items.length === 0 && <p className="text-xs text-slate-600">Nenhum item</p>}{items.map((item) => <div key={item.key} className="rounded-xl border border-white/5 bg-slate-950/30 p-3"><p className="text-xs text-slate-300">{item.description}</p><p className="mt-1 text-[11px] text-slate-500">Compra {formatDate(item.purchased_at)}{item.due_date ? ` · vencimento ${formatDate(item.due_date)}` : ''} · bruto {formatMoney(item.amount_cents)}</p><p className="mt-1 text-[11px] text-emerald-300">Aplicado {formatMoney(item.applied_cents)} · restante {formatMoney(item.outstanding_cents)}</p></div>)}</div></div>;
 }
 
 function Metric({ label, cents }: { label: string; cents: number }) { return <div className="rounded-xl border border-white/5 bg-slate-950/40 p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 font-semibold text-slate-200">{formatMoney(cents)}</p></div>; }

@@ -42,6 +42,32 @@ class CatalogsTest extends TestCase
         $this->assertDatabaseHas('payment_methods', ['name' => 'Cartão principal', 'type' => 'credit', 'closing_day' => 8, 'active' => true]);
     }
 
+    public function test_loan_is_available_as_a_payment_method_type_without_card_settings(): void
+    {
+        $this->post('/payment-methods', [
+            'name' => 'Empréstimo familiar',
+            'type' => PaymentMethod::TYPE_LOAN,
+        ])->assertRedirect('/settings/catalogs');
+
+        $loan = PaymentMethod::query()->where('name', 'Empréstimo familiar')->firstOrFail();
+
+        $this->assertSame(PaymentMethod::TYPE_LOAN, $loan->type);
+        $this->assertNull($loan->closing_day);
+        $this->assertDatabaseCount('payment_method_invoice_settings', 0);
+        $this->get('/settings/catalogs')->assertInertia(fn (Assert $page) => $page
+            ->where('paymentMethodTypes', fn ($types): bool => $types->contains(PaymentMethod::TYPE_LOAN))
+            ->where('paymentMethods.0.type', PaymentMethod::TYPE_LOAN)
+            ->where('paymentMethods.0.invoice_settings', []));
+
+        $this->patch("/payment-methods/{$loan->id}", [
+            'name' => 'Empréstimo familiar',
+            'type' => PaymentMethod::TYPE_LOAN,
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseHas('payment_methods', ['id' => $loan->id, 'type' => PaymentMethod::TYPE_LOAN]);
+    }
+
     public function test_catalogs_can_be_updated_without_deleting_history(): void
     {
         $participant = Participant::create(['name' => 'Maria']);

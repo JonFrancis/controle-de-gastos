@@ -15,6 +15,7 @@ use App\Services\PurchaseListingService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -113,6 +114,9 @@ class PurchaseController extends Controller
     private function data(array $data, bool $creating = false): array
     {
         $data['amount_cents'] = (int) round(((float) $data['amount']) * 100);
+        $data['due_date'] = PaymentMethod::query()->whereKey($data['payment_method_id'])->value('type') === PaymentMethod::TYPE_LOAN
+            ? ($data['due_date'] ?? null)
+            : null;
         unset($data['amount']);
 
         if ($creating) {
@@ -133,12 +137,13 @@ class PurchaseController extends Controller
         $audit->record($action, $purchase, $oldValues, $purchase->fresh()->getAttributes());
     }
 
+    /** @return array{participants: Collection<int, Participant>, categories: Collection<int, Category>, paymentMethods: Collection<int, PaymentMethod>} */
     private function catalogs(): array
     {
         return [
             'participants' => Participant::query()->where('active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']),
             'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
-            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
+            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type']),
         ];
     }
 

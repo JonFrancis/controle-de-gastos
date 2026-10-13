@@ -20,9 +20,11 @@ class PaymentMethod extends Model
 
     public const TYPE_OTHER = 'other';
 
+    public const TYPE_LOAN = 'loan';
+
     public static function types(): array
     {
-        return [self::TYPE_CREDIT, self::TYPE_DEBIT, self::TYPE_PIX, self::TYPE_CASH, self::TYPE_OTHER];
+        return [self::TYPE_CREDIT, self::TYPE_DEBIT, self::TYPE_PIX, self::TYPE_CASH, self::TYPE_OTHER, self::TYPE_LOAN];
     }
 
     protected static function booted(): void

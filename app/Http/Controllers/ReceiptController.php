@@ -7,11 +7,14 @@ use App\Http\Requests\UpdateReceiptApplicationsRequest;
 use App\Models\AuditLog;
 use App\Models\Participant;
 use App\Models\Receipt;
+use App\Models\ReceiptApplication;
 use App\Services\AuditService;
 use App\Services\BalanceService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -25,13 +28,36 @@ class ReceiptController extends Controller
         ]);
     }
 
-    public function edit(Receipt $receipt, BalanceService $service): Response
+    public function edit(Request $request, Receipt $receipt, BalanceService $service): Response
     {
+        $selectedMonth = $this->validMonth($request->query('month'));
         $receipt->load(['participant', 'applications']);
         $applied = $receipt->applications->keyBy(fn ($application): string => $application->source_type.':'.$application->source_id);
-        $debts = $service->debtItems()->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id)->map(fn (array $debt): array => [...$debt, 'applied_cents' => $applied->get($debt['key'])?->amount_cents ?? 0])->values();
+        $billingMonth = Carbon::createFromFormat('!Y-m', $selectedMonth);
+        $billableDebtItems = $service->billableDebtItems();
+        $applicationTotals = ReceiptApplication::query()
+            ->whereNull('superseded_at')
+            ->whereHas('receipt', fn (Builder $query): Builder => $query->whereNull('archived_at'))
+            ->get()
+            ->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)
+            ->map(fn (Collection $applications): int => (int) $applications->sum('amount_cents'));
+        $debts = $service->debtItemsForBillingMonth($billingMonth)
+            ->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id)
+            ->concat($billableDebtItems
+                ->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id
+                    && $applied->has($debt['key']))
+            )
+            ->unique('key')
+            ->sortBy([['purchased_at', 'asc'], ['source_id', 'asc']])
+            ->map(fn (array $debt): array => [
+                ...$debt,
+                'applied_cents' => $applied->get($debt['key'])?->amount_cents ?? 0,
+                'outstanding_cents' => max(0, $debt['amount_cents'] - ($applicationTotals[$debt['key']] ?? 0)),
+            ])
+            ->values();
 
         return Inertia::render('Balances/ReceiptApplications', [
+            'selectedMonth' => $selectedMonth,
             'receipt' => [
                 'id' => $receipt->id,
                 'participant' => ['name' => $receipt->participant->name],
@@ -61,7 +87,7 @@ class ReceiptController extends Controller
         $service->replaceManualApplications($receipt, $applications);
         $audit->record(AuditLog::ACTION_UPDATE, $receipt, oldValues: ['applications' => $oldApplications], newValues: ['applications' => $receipt->fresh()->applications()->get()->toArray()], metadata: ['type' => 'receipt_applications']);
 
-        return to_route('balances')->with('success', 'Aplicações do recebimento ajustadas.');
+        return to_route('balances', array_filter(['month' => $request->query('month')]))->with('success', 'Aplicações do recebimento ajustadas.');
     }
 
     private function moneyToCents(string|int $value): int
