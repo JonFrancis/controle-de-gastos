@@ -3,11 +3,10 @@ import { useEffect } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import InstallmentAllocationFields, { InstallmentAllocationRow } from '@/Components/InstallmentAllocationFields';
 import { allocationChangeLabels } from '@/Components/installmentAllocationChanges.mjs';
-import { suggestLoanDueDate } from '@/Components/loanDueDate.mjs';
 import { allocationRowsForEdit, recalculateAmountRows, serializeAllocationRule } from './editAllocationContract.mjs';
 
 type Option = { id: number; name: string; is_default?: boolean };
-type PaymentMethod = Option & { type: string; closing_day: number | null; loan_due_day: number | null };
+type PaymentMethod = Option & { type: string; closing_day: number | null };
 type Allocation = { participantId: number | null; categoryId: number | null; amountCents: number; percentageBasisPoints: number | null };
 type Occurrence = { id: number; number: number; purchasedAt: string; dueDate: string | null; amountCents: number; isAdjusted: boolean; archivedAt: string | null };
 type Installment = { id: number; startDate: string; dueDate: string | null; endDate: string; totalCents: number; installmentCount: number; description: string; cardName: string | null; payerId: number | null; participantId: number | null; paymentMethodId: number | null; categoryId: number | null; allocationMode: string; allocations: Allocation[]; occurrences: Occurrence[] };
@@ -41,15 +40,6 @@ export default function InstallmentsEdit({ installment, schedulePreview, partici
     });
     const selectedMethod = paymentMethods.find((method) => method.id.toString() === form.data.payment_method_id);
     const isLoan = selectedMethod?.type === 'loan';
-
-    useEffect(() => {
-        if (isLoan && !form.data.due_date) {
-            const suggestedDate = suggestLoanDueDate(form.data.start_date, selectedMethod?.loan_due_day);
-            if (suggestedDate) form.setData('due_date', suggestedDate);
-        } else if (!isLoan && form.data.due_date) {
-            form.setData('due_date', '');
-        }
-    }, [form.data.due_date, form.data.start_date, isLoan, selectedMethod?.loan_due_day]);
 
     const count = inclusiveMonthCount(form.data.start_date, form.data.end_date);
     const totalCents = parseMoney(form.data.total);

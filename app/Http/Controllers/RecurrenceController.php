@@ -13,6 +13,7 @@ use App\Services\AuditService;
 use App\Services\BalanceService;
 use App\Services\RecurrenceService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -76,7 +77,6 @@ class RecurrenceController extends Controller
             'dueDate' => $recurrence->due_date?->toDateString(),
             'endDate' => $recurrence->end_date?->toDateString(),
             'paymentMethodType' => $recurrence->paymentMethod?->type,
-            'loanDueDay' => $recurrence->paymentMethod?->type === PaymentMethod::TYPE_LOAN ? $recurrence->paymentMethod->loan_due_day : null,
             'active' => $recurrence->active,
         ]]);
     }
@@ -121,13 +121,13 @@ class RecurrenceController extends Controller
         return to_route('recurrences.index')->with('success', 'Recorrência desativada.');
     }
 
-    /** @return array<string, mixed> */
+    /** @return array{participants: Collection<int, Participant>, categories: Collection<int, Category>, paymentMethods: Collection<int, PaymentMethod>} */
     private function catalogs(): array
     {
         return [
             'participants' => Participant::query()->where('active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']),
             'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
-            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type', 'closing_day', 'loan_due_day']),
+            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type', 'closing_day']),
         ];
     }
 

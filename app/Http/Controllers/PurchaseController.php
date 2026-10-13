@@ -15,6 +15,7 @@ use App\Services\PurchaseListingService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -136,12 +137,13 @@ class PurchaseController extends Controller
         $audit->record($action, $purchase, $oldValues, $purchase->fresh()->getAttributes());
     }
 
+    /** @return array{participants: Collection<int, Participant>, categories: Collection<int, Category>, paymentMethods: Collection<int, PaymentMethod>} */
     private function catalogs(): array
     {
         return [
             'participants' => Participant::query()->where('active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']),
             'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
-            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type', 'loan_due_day']),
+            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type']),
         ];
     }
 

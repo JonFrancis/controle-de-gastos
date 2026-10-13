@@ -1,7 +1,7 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
-type Debt = { key: string; source_type: string; source_id: number; description: string; purchased_at: string; amount_cents: number; applied_cents: number };
+type Debt = { key: string; source_type: string; source_id: number; purchased_at: string; amount_cents: number; payer_id: number; participant_id: number | null; description: string; payment_method_type: string | null; applied_cents: number; outstanding_cents: number };
 type Props = { selectedMonth: string; receipt: { id: number; participant: { name: string }; received_at: string; amount_cents: number }; debts: Debt[] };
 
 export default function ReceiptApplications({ selectedMonth, receipt, debts }: Props) {

@@ -29,7 +29,6 @@ class UpdatePaymentMethodRequest extends FormRequest
             'type' => ['required', Rule::in(PaymentMethod::types())],
             'closing_day' => ['nullable', 'integer', 'between:1,31'],
             'due_day' => ['nullable', 'integer', 'between:1,31'],
-            'loan_due_day' => ['nullable', 'integer', 'between:1,31'],
             'effective_from' => ['nullable', 'date'],
             'active' => ['required', 'boolean'],
         ];
@@ -39,7 +38,6 @@ class UpdatePaymentMethodRequest extends FormRequest
     {
         $validator->sometimes('closing_day', ['required'], fn () => $this->input('type') === PaymentMethod::TYPE_CREDIT);
         $validator->sometimes('due_day', ['required'], fn () => $this->input('type') === PaymentMethod::TYPE_CREDIT);
-        $validator->sometimes('loan_due_day', ['required'], fn () => $this->input('type') === PaymentMethod::TYPE_LOAN);
         $validator->sometimes('effective_from', ['required'], fn () => $this->input('type') === PaymentMethod::TYPE_CREDIT);
     }
 
@@ -49,7 +47,6 @@ class UpdatePaymentMethodRequest extends FormRequest
             'name.unique' => 'Já existe uma forma de pagamento com este nome.',
             'closing_day.required' => 'Informe o dia de fechamento do cartão de crédito.',
             'due_day.required' => 'Informe o dia de vencimento do cartão de crédito.',
-            'loan_due_day.required' => 'Informe o dia de vencimento do empréstimo.',
             'effective_from.required' => 'Informe a data de vigência da nova configuração.',
         ];
     }

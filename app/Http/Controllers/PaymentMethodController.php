@@ -41,7 +41,6 @@ class PaymentMethodController extends Controller
                 'name' => $data['name'],
                 'type' => $data['type'],
                 'closing_day' => $data['type'] === PaymentMethod::TYPE_CREDIT ? ($data['closing_day'] ?? null) : null,
-                'loan_due_day' => $data['type'] === PaymentMethod::TYPE_LOAN ? ($data['loan_due_day'] ?? null) : null,
                 'active' => true,
             ]);
 
@@ -102,7 +101,6 @@ class PaymentMethodController extends Controller
                 'name' => $data['name'],
                 'type' => $data['type'],
                 'closing_day' => $isCredit ? ($data['closing_day'] ?? null) : null,
-                'loan_due_day' => $data['type'] === PaymentMethod::TYPE_LOAN ? ($data['loan_due_day'] ?? null) : null,
                 'active' => $data['active'],
             ]);
 

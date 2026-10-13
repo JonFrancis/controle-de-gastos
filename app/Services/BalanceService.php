@@ -18,6 +18,54 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * @phpstan-type ExpenseRow array{
+ *     key: string,
+ *     source_type: 'purchase'|'purchase_allocation'|'installment_occurrence'|'installment_allocation'|'recurrence_occurrence',
+ *     source_id: int,
+ *     purchased_at: string,
+ *     amount_cents: int,
+ *     payer_id: int,
+ *     participant_id: int|null,
+ *     description: string,
+ *     payment_method_type: string|null
+ * }
+ * @phpstan-type OutstandingExpenseRow array{
+ *     key: string,
+ *     source_type: 'purchase'|'purchase_allocation'|'installment_occurrence'|'installment_allocation'|'recurrence_occurrence',
+ *     source_id: int,
+ *     purchased_at: string,
+ *     amount_cents: int,
+ *     payer_id: int,
+ *     participant_id: int|null,
+ *     description: string,
+ *     payment_method_type: string|null,
+ *     applied_cents: int,
+ *     outstanding_cents: int
+ * }
+ * @phpstan-type ParticipantBalance array{
+ *     id: int,
+ *     name: string,
+ *     receivableCents: int,
+ *     payableCents: int,
+ *     netCents: int,
+ *     creditCents: int,
+ *     receivableItems: list<OutstandingExpenseRow>,
+ *     payableItems: list<OutstandingExpenseRow>,
+ *     hasMovement: bool
+ * }
+ * @phpstan-type ReceiptRow array{
+ *     id: int,
+ *     participantId: int,
+ *     participant: string|null,
+ *     receivedAt: string,
+ *     amountCents: int,
+ *     appliedCents: int,
+ *     creditCents: int,
+ *     note: string|null,
+ *     manual: bool
+ * }
+ */
 class BalanceService
 {
     public function __construct(
@@ -177,7 +225,7 @@ class BalanceService
         ];
     }
 
-    /** @param Collection<int, array<string, mixed>> $rows
+    /** @param Collection<int, ExpenseRow> $rows
      * @return array{ownConsumptionCents: int, paidForOthersCents: int, owedToOthersCents: int}
      */
     private function summaryFromRows(Collection $rows, int $selfId): array
@@ -189,7 +237,7 @@ class BalanceService
         ];
     }
 
-    /** @return list<array<string, mixed>> */
+    /** @return list<ParticipantBalance> */
     public function participantBalances(CarbonInterface $until, ?CarbonInterface $since = null): array
     {
         $selfId = $this->selfId();
@@ -198,7 +246,7 @@ class BalanceService
         return $this->participantBalancesFromRows($rows, $until, $since, $selfId);
     }
 
-    /** @return list<array<string, mixed>> */
+    /** @return list<ParticipantBalance> */
     public function participantBalancesForBillingMonth(CarbonInterface $month): array
     {
         $billingMonth = CarbonImmutable::instance($month);
@@ -212,8 +260,8 @@ class BalanceService
         );
     }
 
-    /** @param Collection<int, array<string, mixed>> $rows
-     * @return list<array<string, mixed>>
+    /** @param Collection<int, ExpenseRow> $rows
+     * @return list<ParticipantBalance>
      */
     private function participantBalancesFromRows(Collection $rows, CarbonInterface $until, ?CarbonInterface $since, int $selfId): array
     {
@@ -243,7 +291,7 @@ class BalanceService
         })->values()->all();
     }
 
-    /** @return list<array<string, mixed>> */
+    /** @return list<ReceiptRow> */
     public function receipts(CarbonInterface $until): array
     {
         return Receipt::query()->whereNull('archived_at')->whereDate('received_at', '<=', $until)->with(['participant:id,name', 'applications' => function (HasMany $query): void {
@@ -265,7 +313,7 @@ class BalanceService
         })->all();
     }
 
-    /** @return Collection<int, array<string, mixed>> */
+    /** @return Collection<int, ExpenseRow> */
     public function debtItems(): Collection
     {
         $selfId = $this->selfId();
@@ -273,7 +321,7 @@ class BalanceService
         return $this->expenseRows()->filter(fn (array $row): bool => $row['payer_id'] === $selfId && $row['participant_id'] !== null && $row['participant_id'] !== $selfId)->sortBy([['purchased_at', 'asc'], ['source_id', 'asc']])->values();
     }
 
-    /** @return Collection<int, array<string, mixed>> */
+    /** @return Collection<int, ExpenseRow> */
     public function debtItemsForBillingMonth(CarbonInterface $month): Collection
     {
         $selfId = $this->selfId();
@@ -284,12 +332,16 @@ class BalanceService
             ->values();
     }
 
-    /** @return Collection<int, array<string, mixed>> */
+    /** @return Collection<int, ExpenseRow> */
     private function expenseRows(?CarbonInterface $until = null, ?CarbonInterface $since = null, ?string $invoiceMonth = null): Collection
     {
         $selfId = $this->selfId();
         $rows = collect();
-        $purchases = Purchase::query()->active()->whereNotNull('payment_method_id')->with(['paymentMethod:id,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at', 'allocations'])->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get();
+        $dueDateFrom = $invoiceMonth === null ? null : CarbonImmutable::parse($invoiceMonth.'-01')->startOfMonth();
+        $dueDateUntil = $dueDateFrom?->endOfMonth();
+        $purchases = $this->applyExpenseDateBounds(Purchase::query()->active()->whereNotNull('payment_method_id'), $until, $since, $dueDateFrom, $dueDateUntil)
+            ->with(['paymentMethod:id,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at', 'allocations'])
+            ->get();
         foreach ($purchases as $purchase) {
             if ($invoiceMonth !== null && ! $this->belongsToInvoice($purchase, $invoiceMonth)) {
                 continue;
@@ -304,7 +356,9 @@ class BalanceService
                 $rows->push($this->row('purchase_allocation', $allocation->id, $purchase->purchased_at, $allocation->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $purchase->description, $purchase->paymentMethod?->type));
             }
         }
-        foreach (InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->with(['paymentMethod:id,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at', 'allocations'])->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
+        foreach ($this->applyExpenseDateBounds(InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id'), $until, $since, $dueDateFrom, $dueDateUntil)
+            ->with(['paymentMethod:id,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at', 'allocations'])
+            ->get() as $occurrence) {
             if ($invoiceMonth !== null && ! $this->belongsToInvoice($occurrence, $invoiceMonth)) {
                 continue;
             }
@@ -319,7 +373,9 @@ class BalanceService
                 $rows->push($this->row('installment_allocation', $allocation->id, $occurrence->purchased_at, $allocation->amount_cents, $occurrence->payer_id ?? $selfId, $allocation->participant_id ?? $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type));
             }
         }
-        foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->with(['paymentMethod:id,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at'])->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
+        foreach ($this->applyExpenseDateBounds(RecurrenceOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id'), $until, $since, $dueDateFrom, $dueDateUntil)
+            ->with(['paymentMethod:id,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at'])
+            ->get() as $occurrence) {
             if ($invoiceMonth !== null && ! $this->belongsToInvoice($occurrence, $invoiceMonth)) {
                 continue;
             }
@@ -330,7 +386,7 @@ class BalanceService
         return $rows;
     }
 
-    /** @return Collection<int, array<string, mixed>> */
+    /** @return Collection<int, ExpenseRow> */
     private function expenseRowsForBillingMonth(CarbonInterface $month): Collection
     {
         $billingMonth = CarbonImmutable::instance($month);
@@ -343,6 +399,24 @@ class BalanceService
         $sourceUntil = $billingMonth->addMonthsNoOverflow(2)->endOfMonth();
 
         return $this->expenseRows($sourceUntil, $sourceFrom, $billingMonth->format('Y-m'));
+    }
+
+    private function applyExpenseDateBounds(Builder $query, ?CarbonInterface $until, ?CarbonInterface $since, ?CarbonInterface $dueDateFrom, ?CarbonInterface $dueDateUntil): Builder
+    {
+        if ($since === null && $until === null && $dueDateFrom === null) {
+            return $query;
+        }
+
+        return $query->where(function (Builder $query) use ($until, $since, $dueDateFrom, $dueDateUntil): void {
+            $query->where(function (Builder $query) use ($until, $since): void {
+                $query->when($since !== null, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))
+                    ->when($until !== null, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until));
+            });
+
+            if ($dueDateFrom !== null && $dueDateUntil !== null) {
+                $query->orWhereBetween('due_date', [$dueDateFrom->toDateString(), $dueDateUntil->toDateString()]);
+            }
+        });
     }
 
     private function belongsToInvoice(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item, string $selectedMonth): bool
@@ -399,25 +473,25 @@ class BalanceService
             ->pluck('receipt_count', 'participant_id');
     }
 
-    /** @param array<string, mixed> $row */
+    /** @param ExpenseRow $row @return OutstandingExpenseRow */
     private function itemWithOutstanding(array $row, Collection $applications): array
     {
         return [...$row, 'applied_cents' => $applications[$row['key']] ?? 0, 'outstanding_cents' => max(0, $row['amount_cents'] - ($applications[$row['key']] ?? 0))];
     }
 
-    /** @param Collection<int, array<string, mixed>> $rows */
+    /** @param Collection<int, ExpenseRow> $rows */
     private function sumOutstanding(Collection $rows, Collection $applications): int
     {
         return (int) $rows->sum(fn (array $row): int => max(0, $row['amount_cents'] - ($applications[$row['key']] ?? 0)));
     }
 
-    /** @return array<string, mixed> */
+    /** @return ExpenseRow */
     private function row(string $sourceType, int $sourceId, CarbonInterface $date, int $amountCents, int $payerId, ?int $participantId, string $description, ?string $paymentMethodType): array
     {
         return ['key' => $sourceType.':'.$sourceId, 'source_type' => $sourceType, 'source_id' => $sourceId, 'purchased_at' => $date->toDateString(), 'amount_cents' => $amountCents, 'payer_id' => $payerId, 'participant_id' => $participantId, 'description' => $description, 'payment_method_type' => $paymentMethodType];
     }
 
-    /** @param array<string, mixed> $debt */
+    /** @param ExpenseRow $debt */
     private function createApplication(int $receiptId, array $debt, int $amountCents, string $source): void
     {
         ReceiptApplication::create(['receipt_id' => $receiptId, 'source_type' => $debt['source_type'], 'source_id' => $debt['source_id'], 'purchase_allocation_id' => $debt['source_type'] === 'purchase_allocation' ? $debt['source_id'] : null, 'amount_cents' => $amountCents, 'source' => $source]);

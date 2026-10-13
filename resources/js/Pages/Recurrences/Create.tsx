@@ -1,9 +1,8 @@
 import { Head, Link, useForm } from '@inertiajs/react';
-import { FormEvent, ReactNode, useEffect } from 'react';
-import { suggestLoanDueDate } from '@/Components/loanDueDate.mjs';
+import { FormEvent, ReactNode } from 'react';
 
 type Option = { id: number; name: string; is_default?: boolean };
-type PaymentMethod = Option & { type: string; closing_day: number | null; loan_due_day: number | null };
+type PaymentMethod = Option & { type: string; closing_day: number | null };
 type Props = { participants: Option[]; categories: Option[]; paymentMethods: PaymentMethod[] };
 const inputClass = 'w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-300';
 const selectClass = 'w-full rounded-xl border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-emerald-300 [&>option]:bg-slate-800 [&>option]:text-white';
@@ -13,14 +12,6 @@ export default function RecurrencesCreate({ participants, categories, paymentMet
     const form = useForm({ start_date: new Date().toISOString().slice(0, 10), due_date: '', end_date: '', day_of_month: String(new Date().getDate()), description: '', card_name: '', amount: '', payer_id: '', participant_id: '', payment_method_id: '', category_id: '' });
     const selectedMethod = paymentMethods.find((method) => method.id.toString() === form.data.payment_method_id);
     const isLoan = selectedMethod?.type === 'loan';
-    useEffect(() => {
-        if (isLoan && !form.data.due_date) {
-            const suggestedDate = suggestLoanDueDate(form.data.start_date, selectedMethod?.loan_due_day);
-            if (suggestedDate) form.setData('due_date', suggestedDate);
-        } else if (!isLoan && form.data.due_date) {
-            form.setData('due_date', '');
-        }
-    }, [form.data.due_date, form.data.start_date, isLoan, selectedMethod?.loan_due_day]);
     const isOwn = form.data.participant_id === '' || form.data.participant_id === selfId;
     const submit = (event: FormEvent) => { event.preventDefault(); form.post('/recurrences'); };
 

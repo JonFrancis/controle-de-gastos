@@ -274,6 +274,61 @@ class BalancesTest extends TestCase
             );
     }
 
+    public function test_balances_include_old_loan_purchases_and_occurrences_by_selected_due_month(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $loan = PaymentMethod::create(['name' => 'Empréstimo histórico', 'type' => PaymentMethod::TYPE_LOAN]);
+
+        $this->purchase('2025-01-06', 5000, $self, [[$maria, 5000]], $loan->id)->update(['due_date' => '2026-10-20']);
+
+        $installment = Installment::create([
+            'start_date' => '2025-01-06',
+            'due_date' => '2026-10-20',
+            'description' => 'Parcela histórica do empréstimo',
+            'total_cents' => 3000,
+            'installment_count' => 1,
+            'payer_id' => $self->id,
+            'payment_method_id' => $loan->id,
+        ]);
+        $installment->occurrences()->create([
+            'installment_number' => 1,
+            'purchased_at' => '2025-01-06',
+            'due_date' => '2026-10-20',
+            'description' => 'Parcela histórica do empréstimo',
+            'amount_cents' => 3000,
+            'payer_id' => $self->id,
+            'participant_id' => $maria->id,
+            'payment_method_id' => $loan->id,
+        ]);
+
+        $recurrence = Recurrence::create([
+            'start_date' => '2025-01-01',
+            'due_date' => '2026-10-20',
+            'day_of_month' => 6,
+            'description' => 'Recorrência histórica do empréstimo',
+            'amount_cents' => 2000,
+            'payer_id' => $self->id,
+            'participant_id' => $maria->id,
+            'payment_method_id' => $loan->id,
+            'active' => false,
+        ]);
+        $recurrence->occurrences()->create([
+            'purchased_at' => '2025-01-06',
+            'due_date' => '2026-10-20',
+            'description' => 'Recorrência histórica do empréstimo',
+            'amount_cents' => 2000,
+            'payer_id' => $self->id,
+            'participant_id' => $maria->id,
+            'payment_method_id' => $loan->id,
+        ]);
+
+        $this->get('/balances?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.paidForOthersCents', 10000)
+                ->where('participants.0.receivableCents', 10000)
+                ->has('participants.0.receivableItems', 3));
+    }
+
     public function test_balances_classify_loan_installment_and_recurrence_occurrences_by_registered_due_month(): void
     {
         [$self, $maria] = $this->catalogs();

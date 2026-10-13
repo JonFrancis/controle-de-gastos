@@ -59,7 +59,7 @@ class InstallmentsTest extends TestCase
 
     public function test_loan_installment_generates_occurrences_with_registered_due_dates(): void
     {
-        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN, 'loan_due_day' => 20]);
+        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN]);
 
         $this->post('/installments', [
             'start_date' => '2026-09-12',
@@ -84,7 +84,7 @@ class InstallmentsTest extends TestCase
 
     public function test_installment_preview_classifies_loan_occurrences_by_their_due_month(): void
     {
-        $loan = PaymentMethod::create(['name' => 'Empréstimo do preview', 'type' => PaymentMethod::TYPE_LOAN, 'loan_due_day' => 20]);
+        $loan = PaymentMethod::create(['name' => 'Empréstimo do preview', 'type' => PaymentMethod::TYPE_LOAN]);
 
         $this->post('/installments', [
             'start_date' => '2026-09-12',
@@ -103,7 +103,7 @@ class InstallmentsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('installment.dueDate', '2026-10-20')
                 ->where('schedulePreview.installmentValues.0.dueDate', '2026-10-20')
-                ->where('paymentMethods', fn ($methods): bool => $methods->contains(fn (array $method): bool => $method['id'] === $loan->id && $method['loan_due_day'] === 20))
+                ->where('paymentMethods', fn ($methods): bool => $methods->contains(fn (array $method): bool => $method['id'] === $loan->id && $method['type'] === PaymentMethod::TYPE_LOAN))
                 ->where('schedulePreview.invoiceImpacts.0.label', 'Empréstimo do preview · vencimento em 10/2026')
                 ->where('schedulePreview.invoiceImpacts.1.label', 'Empréstimo do preview · vencimento em 11/2026'));
 
@@ -121,9 +121,9 @@ class InstallmentsTest extends TestCase
         $this->assertSame('2026-10-21', $installment->fresh()->due_date->toDateString());
     }
 
-    public function test_billable_creation_catalogs_expose_the_loan_due_day(): void
+    public function test_billable_creation_catalogs_expose_the_loan_type(): void
     {
-        $loan = PaymentMethod::create(['name' => 'Empréstimo catalogado', 'type' => PaymentMethod::TYPE_LOAN, 'loan_due_day' => 20]);
+        $loan = PaymentMethod::create(['name' => 'Empréstimo catalogado', 'type' => PaymentMethod::TYPE_LOAN]);
 
         foreach ([
             ['/purchases/create/simple', 'Purchases/Form'],
@@ -133,7 +133,7 @@ class InstallmentsTest extends TestCase
             $this->get($uri)
                 ->assertInertia(fn (Assert $page) => $page
                     ->component($component)
-                    ->where('paymentMethods', fn ($methods): bool => $methods->contains(fn (array $method): bool => $method['id'] === $loan->id && $method['loan_due_day'] === 20)));
+                    ->where('paymentMethods', fn ($methods): bool => $methods->contains(fn (array $method): bool => $method['id'] === $loan->id && $method['type'] === PaymentMethod::TYPE_LOAN)));
         }
     }
 

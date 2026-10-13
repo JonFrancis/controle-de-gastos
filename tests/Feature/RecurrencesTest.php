@@ -54,7 +54,7 @@ class RecurrencesTest extends TestCase
 
     public function test_loan_recurrence_generates_occurrences_with_registered_due_dates(): void
     {
-        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN, 'loan_due_day' => 20]);
+        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN]);
 
         $this->post('/recurrences', [
             'start_date' => '2026-09-12',
@@ -74,7 +74,7 @@ class RecurrencesTest extends TestCase
         $this->get("/recurrences/{$recurrence->id}/edit")
             ->assertInertia(fn (Assert $page) => $page
                 ->where('recurrence.dueDate', '2026-10-20')
-                ->where('recurrence.loanDueDay', 20));
+                ->where('recurrence.paymentMethodType', PaymentMethod::TYPE_LOAN));
 
         $this->patch("/recurrences/{$recurrence->id}", [
             'start_date' => '2026-09-12',

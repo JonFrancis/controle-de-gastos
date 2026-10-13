@@ -1,7 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 
 type Summary = { ownConsumptionCents: number; paidForOthersCents: number; owedToOthersCents: number };
-type Item = { key: string; description: string; purchased_at: string; amount_cents: number; applied_cents: number; outstanding_cents: number };
+type Item = { key: string; source_type: string; source_id: number; description: string; purchased_at: string; amount_cents: number; applied_cents: number; outstanding_cents: number; payment_method_type: string | null };
 type ParticipantBalance = { id: number; name: string; receivableCents: number; payableCents: number; netCents: number; creditCents: number; receivableItems: Item[]; payableItems: Item[] };
 type Receipt = { id: number; participant: string; receivedAt: string; amountCents: number; appliedCents: number; creditCents: number; note: string | null; manual: boolean };
 

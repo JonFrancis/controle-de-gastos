@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'type', 'closing_day', 'loan_due_day', 'active'])]
+#[Fillable(['name', 'type', 'closing_day', 'active'])]
 class PaymentMethod extends Model
 {
     public const TYPE_CREDIT = 'credit';
@@ -53,6 +53,6 @@ class PaymentMethod extends Model
 
     protected function casts(): array
     {
-        return ['closing_day' => 'integer', 'loan_due_day' => 'integer', 'active' => 'boolean'];
+        return ['closing_day' => 'integer', 'active' => 'boolean'];
     }
 }
