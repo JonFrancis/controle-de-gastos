@@ -833,7 +833,8 @@ class InstallmentsTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true, 'is_default' => false]);
         $carlos = Participant::create(['name' => 'Carlos', 'active' => true, 'is_default' => false]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $paymentMethod = PaymentMethod::create(['name' => 'Cartão', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 20]);
+        $paymentMethod->latestInvoiceSetting()->update(['due_day' => 25]);
 
         $this->post('/installments', [
             'start_date' => '2026-10-12',

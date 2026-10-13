@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 type Props = {
     selectedMonth: string;
+    balancesUrl: string;
     view: 'calendar' | 'invoice';
     pendingReview: number;
     pendingReviewUrl: string | null;
@@ -29,21 +30,21 @@ type PersonChartItem = { id: number; name: string; amountCents: number; netCents
 type PersonChartData = { expenses: PersonChartItem[]; balances: PersonChartItem[] };
 type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStart: string; periodEnd: string; closingDate: string; dueDate: string | null; totalCents: number; purchases: { id: number }[]; detailsUrl: string };
 
-const navigation = (selectedMonth: string) => [
+const navigation = (selectedMonth: string, balancesUrl: string) => [
     ['Faturas', `/purchases?month=${selectedMonth}&view=invoice`],
     ['Movimentações', `/purchases?month=${selectedMonth}&view=calendar`],
     ['Visão geral', `/?month=${selectedMonth}&view=calendar`],
     ['Compras', `/purchases?month=${selectedMonth}&view=invoice`],
     ['Parcelamentos', '/installments'],
     ['Recorrentes', '/recurrences'],
-    ['Saldos', '/balances'],
+    ['Saldos', balancesUrl],
     ['Análise', '/analysis'],
     ['Exportações', '/exports'],
     ['Pessoas', '#pessoas'],
     ['Configurações', '/settings/catalogs'],
 ];
 
-export default function Dashboard({ selectedMonth, view, pendingReview, pendingReviewUrl, invoiceListUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
+export default function Dashboard({ selectedMonth, balancesUrl, view, pendingReview, pendingReviewUrl, invoiceListUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
     return (
         <>
             <Head title={view === 'invoice' ? 'Faturas' : 'Visão geral'} />
@@ -57,7 +58,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
                         </div>
                     </div>
                     <nav className="mt-10 space-y-2">
-                        {navigation(selectedMonth).map(([label, href], index) => (
+                        {navigation(selectedMonth, balancesUrl).map(([label, href], index) => (
                             <Link
                                 key={label}
                                 href={href}
