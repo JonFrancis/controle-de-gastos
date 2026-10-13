@@ -1,4 +1,6 @@
 <laravel-boost-guidelines>
+Project workflow rules, including the mandatory build/restart/runtime-version verification before manual evaluation, are defined in `AGENTS.md` and must also be followed.
+
 === foundation rules ===
 
 # Laravel Boost Guidelines
