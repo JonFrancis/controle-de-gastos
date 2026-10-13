@@ -325,6 +325,10 @@ class InstallmentService
             return 'Sem forma de pagamento';
         }
 
+        if ($occurrence->paymentMethod->type === PaymentMethod::TYPE_LOAN) {
+            return $occurrence->paymentMethod->name.' · vencimento em '.($occurrence->due_date?->format('m/Y') ?? 'não informado');
+        }
+
         $details = $this->invoiceSettings->detailsFor($occurrence->paymentMethod, $occurrence->purchased_at);
 
         if ($details === null) {

@@ -82,6 +82,28 @@ class InstallmentsTest extends TestCase
         $this->assertSame('2026-11-25', $occurrence->fresh()->due_date->toDateString());
     }
 
+    public function test_installment_preview_classifies_loan_occurrences_by_their_due_month(): void
+    {
+        $loan = PaymentMethod::create(['name' => 'Empréstimo do preview', 'type' => PaymentMethod::TYPE_LOAN]);
+
+        $this->post('/installments', [
+            'start_date' => '2026-09-12',
+            'description' => 'Empréstimo no preview',
+            'total' => '60,00',
+            'installment_count' => 2,
+            'payment_method_id' => $loan->id,
+            'due_date' => '2026-10-20',
+        ])->assertRedirect('/installments');
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $occurrence = $installment->occurrences()->where('installment_number', 1)->firstOrFail();
+
+        $this->get("/installment-occurrences/{$occurrence->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('schedulePreview.invoiceImpacts.0.label', 'Empréstimo do preview · vencimento em 10/2026')
+                ->where('schedulePreview.invoiceImpacts.1.label', 'Empréstimo do preview · vencimento em 11/2026'));
+    }
+
     public function test_installments_listing_exposes_rateio_participants_and_own_category(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();

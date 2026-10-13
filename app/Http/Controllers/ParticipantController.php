@@ -24,7 +24,7 @@ class ParticipantController extends Controller
         return Inertia::render('Settings/Catalogs', [
             'participants' => Participant::query()->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'active', 'is_default']),
             'categories' => Category::query()->orderBy('name')->get(['id', 'name', 'active']),
-            'paymentMethods' => PaymentMethod::query()->with(['latestInvoiceSetting', 'invoiceSettings'])->orderBy('name')->get(['id', 'name', 'type', 'closing_day', 'active'])->map(function (PaymentMethod $paymentMethod) use ($invoiceSettings): array {
+            'paymentMethods' => PaymentMethod::query()->with(['latestInvoiceSetting', 'invoiceSettings'])->orderBy('name')->get(['id', 'name', 'type', 'closing_day', 'loan_due_day', 'active'])->map(function (PaymentMethod $paymentMethod) use ($invoiceSettings): array {
                 $latestSetting = $paymentMethod->latestInvoiceSetting;
                 $isCredit = $paymentMethod->type === PaymentMethod::TYPE_CREDIT;
 
@@ -34,6 +34,7 @@ class ParticipantController extends Controller
                     'type' => $paymentMethod->type,
                     'closing_day' => $isCredit ? ($latestSetting?->closing_day ?? $paymentMethod->closing_day) : null,
                     'due_day' => $isCredit ? $latestSetting?->due_day : null,
+                    'loan_due_day' => $paymentMethod->type === PaymentMethod::TYPE_LOAN ? $paymentMethod->loan_due_day : null,
                     'effective_from' => $isCredit ? $latestSetting?->effective_from?->toDateString() : null,
                     'suggested_effective_from' => $isCredit && ($latestSetting?->closing_day ?? $paymentMethod->closing_day) !== null
                         ? $invoiceSettings->nextSafeEffectiveFrom($paymentMethod)->toDateString()

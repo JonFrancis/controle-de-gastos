@@ -47,17 +47,43 @@ class CatalogsTest extends TestCase
         $this->post('/payment-methods', [
             'name' => 'Empréstimo familiar',
             'type' => PaymentMethod::TYPE_LOAN,
+            'loan_due_day' => 20,
         ])->assertRedirect('/settings/catalogs');
 
         $loan = PaymentMethod::query()->where('name', 'Empréstimo familiar')->firstOrFail();
 
         $this->assertSame(PaymentMethod::TYPE_LOAN, $loan->type);
         $this->assertNull($loan->closing_day);
+        $this->assertSame(20, $loan->loan_due_day);
         $this->assertDatabaseCount('payment_method_invoice_settings', 0);
         $this->get('/settings/catalogs')->assertInertia(fn (Assert $page) => $page
             ->where('paymentMethodTypes', fn ($types): bool => $types->contains(PaymentMethod::TYPE_LOAN))
             ->where('paymentMethods.0.type', PaymentMethod::TYPE_LOAN)
+            ->where('paymentMethods.0.loan_due_day', 20)
             ->where('paymentMethods.0.invoice_settings', []));
+
+        $this->patch("/payment-methods/{$loan->id}", [
+            'name' => 'Empréstimo familiar',
+            'type' => PaymentMethod::TYPE_LOAN,
+            'loan_due_day' => 25,
+            'active' => true,
+        ])->assertRedirect('/settings/catalogs');
+
+        $this->assertDatabaseHas('payment_methods', ['id' => $loan->id, 'loan_due_day' => 25]);
+    }
+
+    public function test_loan_catalog_requires_a_valid_due_day(): void
+    {
+        $this->from('/settings/catalogs')->post('/payment-methods', [
+            'name' => 'Empréstimo sem vencimento',
+            'type' => PaymentMethod::TYPE_LOAN,
+        ])->assertRedirect('/settings/catalogs')->assertSessionHasErrors('loan_due_day');
+
+        $this->from('/settings/catalogs')->post('/payment-methods', [
+            'name' => 'Empréstimo inválido',
+            'type' => PaymentMethod::TYPE_LOAN,
+            'loan_due_day' => 32,
+        ])->assertRedirect('/settings/catalogs')->assertSessionHasErrors('loan_due_day');
     }
 
     public function test_catalogs_can_be_updated_without_deleting_history(): void

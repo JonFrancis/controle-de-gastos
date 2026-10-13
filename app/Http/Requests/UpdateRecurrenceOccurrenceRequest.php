@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\PaymentMethod;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class UpdateRecurrenceOccurrenceRequest extends FormRequest
 {
@@ -25,9 +26,9 @@ class UpdateRecurrenceOccurrenceRequest extends FormRequest
         $this->merge(['amount' => is_string($this->amount) ? str_replace(',', '.', $this->amount) : $this->amount]);
     }
 
-    public function withValidator($validator): void
+    public function withValidator(Validator $validator): void
     {
-        $validator->after(function ($validator): void {
+        $validator->after(function (Validator $validator): void {
             $occurrence = $this->route('recurrenceOccurrence');
             if ($occurrence?->paymentMethod?->type === PaymentMethod::TYPE_LOAN && blank($this->input('due_date'))) {
                 $validator->errors()->add('due_date', 'Informe a data de vencimento do empréstimo.');

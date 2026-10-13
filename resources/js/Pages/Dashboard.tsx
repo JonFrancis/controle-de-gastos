@@ -103,7 +103,7 @@ export default function Dashboard({ selectedMonth, balancesUrl, view, pendingRev
 
                             <PaymentMethodChart rows={charts.paymentMethodTotals} />
 
-                            <ParticipantChart chart={personChart} />
+                            <ParticipantChart chart={personChart} balancesUrl={balancesUrl} />
                         </>}
 
                         {pendingReview > 0 && pendingReviewUrl && <div className="mt-6 flex flex-col justify-between gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100 sm:flex-row sm:items-center"><span>{pendingReview} item(ns) aguardando revisão.</span><Link href={pendingReviewUrl} className="font-semibold text-amber-200 hover:text-white">Revisar agora →</Link></div>}
@@ -141,7 +141,7 @@ function PaymentMethodChart({ rows }: { rows: ChartRow[] }) {
     return <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6"><div><h2 className="font-semibold text-white">Gastos por forma de pagamento</h2><p className="mt-1 text-sm text-slate-400">Todos os lançamentos válidos do mês selecionado</p></div>{rows.length === 0 ? <p className="mt-6 rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Ainda não há lançamentos válidos neste mês.</p> : <div className="mt-6 space-y-4">{rows.map((row) => <div key={row.name}><div className="mb-2 flex items-center justify-between gap-3 text-sm"><span className="truncate text-slate-300">{row.name}</span><strong className="shrink-0 text-emerald-300">{formatMoney(row.amountCents)}</strong></div><div className="h-3 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full bg-gradient-to-r from-violet-400 to-fuchsia-300" style={{ width: `${(row.amountCents / maximum) * 100}%` }} /></div></div>)}</div>}</section>;
 }
 
-function ParticipantChart({ chart }: { chart: PersonChartData }) {
+function ParticipantChart({ chart, balancesUrl }: { chart: PersonChartData; balancesUrl: string }) {
     const [mode, setMode] = useState<'expenses' | 'balances'>('expenses');
     const items = mode === 'expenses' ? chart.expenses : chart.balances;
     const maximum = Math.max(...items.map((item) => Math.abs(item.amountCents)), 1);
@@ -150,7 +150,7 @@ function ParticipantChart({ chart }: { chart: PersonChartData }) {
     return <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6" id="pessoas">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
             <div><h2 className="font-semibold text-white">Gastos e saldos por pessoa</h2><p className="mt-1 text-sm text-slate-400">Alterne entre o valor atribuído e o saldo líquido após recebimentos.</p></div>
-            <Link href="/balances" className="text-sm font-semibold text-emerald-300">Ver detalhes →</Link>
+            <Link href={balancesUrl} className="text-sm font-semibold text-emerald-300">Ver detalhes →</Link>
         </div>
         <div className="mt-5 inline-flex rounded-xl border border-white/10 bg-white/5 p-1" role="tablist" aria-label="Visualização por pessoa">
             <button type="button" role="tab" aria-selected={mode === 'expenses'} onClick={() => setMode('expenses')} className={`rounded-lg px-3 py-2 text-sm ${mode === 'expenses' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300'}`}>Gastos</button>

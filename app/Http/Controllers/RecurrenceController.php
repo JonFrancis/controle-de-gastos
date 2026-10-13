@@ -85,7 +85,6 @@ class RecurrenceController extends Controller
         $oldValues = $recurrence->getAttributes();
         $data = $request->validated();
         $recurrence->update(['due_date' => array_key_exists('due_date', $data) ? ($data['due_date'] ?? null) : $recurrence->due_date, 'end_date' => $data['end_date'] ?? null, 'active' => $data['active']]);
-        $service->synchronizeFutureDueDates($recurrence->fresh());
         $this->synchronizeFutureOccurrences($recurrence, $service);
         $balanceService->reconcileAll();
         $audit->record(AuditLog::ACTION_UPDATE, $recurrence, oldValues: $oldValues, newValues: $recurrence->fresh()->getAttributes());

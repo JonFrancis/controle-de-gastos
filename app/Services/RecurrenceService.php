@@ -56,24 +56,6 @@ class RecurrenceService
             ->each(fn (Recurrence $recurrence) => $this->ensureOccurrences($recurrence, $from, $to));
     }
 
-    public function synchronizeFutureDueDates(Recurrence $recurrence): void
-    {
-        if ($recurrence->paymentMethod?->type !== PaymentMethod::TYPE_LOAN || $recurrence->due_date === null) {
-            return;
-        }
-
-        $startDate = CarbonImmutable::instance($recurrence->start_date);
-        $baseDueDate = CarbonImmutable::instance($recurrence->due_date);
-        $recurrence->occurrences()
-            ->whereNull('archived_at')
-            ->whereDate('purchased_at', '>=', now()->toDateString())
-            ->get()
-            ->each(function ($occurrence) use ($startDate, $baseDueDate): void {
-                $months = $startDate->startOfMonth()->diffInMonths($occurrence->purchased_at->startOfMonth());
-                $occurrence->update(['due_date' => $baseDueDate->addMonthsNoOverflow($months)->toDateString()]);
-            });
-    }
-
     private function ensureOccurrences(Recurrence $recurrence, CarbonInterface $from, CarbonInterface $to): void
     {
         $cursor = CarbonImmutable::instance($from)->startOfMonth();
