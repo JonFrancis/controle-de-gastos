@@ -245,7 +245,7 @@ class BalanceService
         $selfId = $this->selfId();
         $rows = $this->expenseRows($until, $since);
 
-        return $this->participantBalancesFromRows($rows, $until, $since, $selfId, $this->billableDebtItems()->pluck('key')->flip());
+        return $this->participantBalancesFromRows($rows, $until, $since, $selfId, $this->debtItems()->pluck('key')->flip());
     }
 
     /** @return list<ParticipantBalance> */
@@ -297,13 +297,13 @@ class BalanceService
     /** @return list<ReceiptRow> */
     public function receipts(CarbonInterface $until): array
     {
-        $billableDebtKeys = $this->billableDebtItems()->pluck('key')->flip();
+        $debtKeys = $this->debtItems()->pluck('key')->flip();
 
         return Receipt::query()->whereNull('archived_at')->whereDate('received_at', '<=', $until)->with(['participant:id,name', 'applications' => function (HasMany $query): void {
             $query->whereNull('superseded_at');
-        }])->orderByDesc('received_at')->orderByDesc('id')->get()->map(function (Receipt $receipt) use ($billableDebtKeys): array {
+        }])->orderByDesc('received_at')->orderByDesc('id')->get()->map(function (Receipt $receipt) use ($debtKeys): array {
             $appliedCents = (int) $receipt->applications
-                ->filter(fn (ReceiptApplication $application): bool => $billableDebtKeys->has($application->source_type.':'.$application->source_id))
+                ->filter(fn (ReceiptApplication $application): bool => $debtKeys->has($application->source_type.':'.$application->source_id))
                 ->sum('amount_cents');
 
             return [
@@ -463,28 +463,28 @@ class BalanceService
     }
 
     /** @return Collection<string, int> */
-    private function applicationsUntil(CarbonInterface $until, ?Collection $billableDebtKeys = null): Collection
+    private function applicationsUntil(CarbonInterface $until, ?Collection $debtKeys = null): Collection
     {
         $query = ReceiptApplication::query()
             ->whereNull('superseded_at')
             ->whereHas('receipt', fn (Builder $query): Builder => $query->whereNull('archived_at')->whereDate('received_at', '<=', $until));
 
-        if ($billableDebtKeys !== null) {
-            $this->whereApplicationKeys($query, $billableDebtKeys);
+        if ($debtKeys !== null) {
+            $this->whereApplicationKeys($query, $debtKeys);
         }
 
         return $query->get()->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)->map(fn (Collection $rows): int => (int) $rows->sum('amount_cents'));
     }
 
     /** @return Collection<int, object> */
-    private function receiptBalancesUntil(CarbonInterface $until, Collection $billableDebtKeys): Collection
+    private function receiptBalancesUntil(CarbonInterface $until, Collection $debtKeys): Collection
     {
         $applicationTotals = ReceiptApplication::query()
             ->whereNull('superseded_at')
             ->select('receipt_id')
             ->selectRaw('SUM(amount_cents) as applied_amount_cents')
             ->groupBy('receipt_id');
-        $this->whereApplicationKeys($applicationTotals, $billableDebtKeys);
+        $this->whereApplicationKeys($applicationTotals, $debtKeys);
 
         return Receipt::query()
             ->leftJoinSub($applicationTotals, 'receipt_application_totals', fn (JoinClause $join): JoinClause => $join->on('receipts.id', '=', 'receipt_application_totals.receipt_id'))

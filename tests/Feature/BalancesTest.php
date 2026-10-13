@@ -425,9 +425,10 @@ class BalancesTest extends TestCase
 
         $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 0)
+            ->has('participants.0.receivableItems', 0)
             ->where('participants.0.creditCents', 4000)
-            ->where('receipts.0.appliedCents', 0)
-            ->where('receipts.0.creditCents', 4000));
+            ->where('receipts.0.appliedCents', 4000)
+            ->where('receipts.0.creditCents', 0));
     }
 
     public function test_receipt_reconciliation_handles_non_billable_items_but_invoice_adjustments_reject_them(): void
