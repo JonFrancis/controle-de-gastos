@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
+use App\Models\PaymentMethod;
 use App\Models\Purchase;
 use App\Models\Receipt;
 use App\Models\ReceiptApplication;
@@ -20,7 +21,6 @@ use Illuminate\Validation\ValidationException;
 class BalanceService
 {
     public function __construct(
-        private readonly InvoiceCycleService $invoiceCycleService,
         private readonly PaymentMethodInvoiceSettingService $invoiceSettings,
         private readonly RecurrenceService $recurrenceService,
     ) {}
@@ -326,14 +326,21 @@ class BalanceService
     /** @return Collection<int, array<string, mixed>> */
     private function expenseRowsForBillingMonth(CarbonInterface $month): Collection
     {
-        $range = $this->invoiceCycleService->sourceRangeForInvoiceMonth($month);
-        $this->recurrenceService->ensureOccurrencesForRange($range['start'], $range['end']);
+        $billingMonth = CarbonImmutable::instance($month);
+        $this->recurrenceService->ensureOccurrencesForRange(
+            $billingMonth->subMonthsNoOverflow(2)->startOfMonth(),
+            $billingMonth->addMonthsNoOverflow(2)->endOfMonth(),
+        );
 
-        return $this->expenseRows($range['end'], $range['start'], CarbonImmutable::instance($month)->format('Y-m'));
+        return $this->expenseRows(null, null, $billingMonth->format('Y-m'));
     }
 
     private function belongsToInvoice(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item, string $selectedMonth): bool
     {
+        if ($item->paymentMethod?->type === PaymentMethod::TYPE_LOAN) {
+            return $item->due_date?->format('Y-m') === $selectedMonth;
+        }
+
         $details = $this->invoiceSettings->detailsFor($item->paymentMethod, $item->purchased_at);
 
         return $details !== null

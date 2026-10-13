@@ -15,7 +15,7 @@ type Props = { participants: CatalogItem[]; categories: CatalogItem[]; paymentMe
 type CatalogFormData = { name: string; active: boolean };
 type PaymentMethodFormData = { name: string; type: string; closing_day: string; due_day: string; effective_from: string; active: boolean };
 
-const typeLabels: Record<string, string> = { credit: 'Crédito', debit: 'Débito', pix: 'Pix', cash: 'Dinheiro', other: 'Outro' };
+const typeLabels: Record<string, string> = { credit: 'Crédito', debit: 'Débito', pix: 'Pix', cash: 'Dinheiro', other: 'Outro', loan: 'Empréstimo' };
 const inputClass = 'w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-300';
 const compactInputClass = 'rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-300';
 const selectClass = 'rounded-xl border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-emerald-300 [&>option]:bg-slate-800 [&>option]:text-white';

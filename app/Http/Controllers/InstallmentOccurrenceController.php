@@ -28,6 +28,7 @@ class InstallmentOccurrenceController extends Controller
                 'installment' => [
                     'id' => $installment->id,
                     'startDate' => $installment->start_date->toDateString(),
+                    'dueDate' => $installment->due_date?->toDateString(),
                     'endDate' => CarbonImmutable::instance($installment->start_date)->addMonthsNoOverflow($installment->installment_count - 1)->toDateString(),
                     'totalCents' => $installment->total_cents,
                     'installmentCount' => $installment->installment_count,
@@ -43,6 +44,7 @@ class InstallmentOccurrenceController extends Controller
                         'id' => $occurrence->id,
                         'number' => $occurrence->installment_number,
                         'purchasedAt' => $occurrence->purchased_at->toDateString(),
+                        'dueDate' => $occurrence->due_date?->toDateString(),
                         'amountCents' => $occurrence->amount_cents,
                         'isAdjusted' => $occurrence->is_adjusted,
                         'archivedAt' => $occurrence->archived_at?->toIso8601String(),
@@ -63,7 +65,7 @@ class InstallmentOccurrenceController extends Controller
         $oldValues = $installmentOccurrence->getAttributes();
         $oldAllocations = $installmentOccurrence->allocations()->get()->map(fn (InstallmentAllocation $allocation): array => $allocation->getAttributes())->all();
         $amount = (int) round(((float) $request->validated('amount')) * 100);
-        $installmentOccurrence->update(['amount_cents' => $amount, 'is_adjusted' => true]);
+        $installmentOccurrence->update(['amount_cents' => $amount, 'due_date' => $request->validated('due_date') ?? $installmentOccurrence->due_date?->toDateString(), 'is_adjusted' => true]);
         $allocations->redistributeOccurrence($installmentOccurrence);
         $balanceService->reconcileAll();
         $audit->record(AuditLog::ACTION_UPDATE, $installmentOccurrence, oldValues: $oldValues, newValues: $installmentOccurrence->fresh()->getAttributes(), metadata: [
