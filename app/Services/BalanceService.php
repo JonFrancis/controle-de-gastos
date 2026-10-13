@@ -24,6 +24,7 @@ use Illuminate\Validation\ValidationException;
  *     source_type: 'purchase'|'purchase_allocation'|'installment_occurrence'|'installment_allocation'|'recurrence_occurrence',
  *     source_id: int,
  *     purchased_at: string,
+ *     due_date: string|null,
  *     amount_cents: int,
  *     payer_id: int,
  *     participant_id: int|null,
@@ -35,6 +36,7 @@ use Illuminate\Validation\ValidationException;
  *     source_type: 'purchase'|'purchase_allocation'|'installment_occurrence'|'installment_allocation'|'recurrence_occurrence',
  *     source_id: int,
  *     purchased_at: string,
+ *     due_date: string|null,
  *     amount_cents: int,
  *     payer_id: int,
  *     participant_id: int|null,
@@ -265,8 +267,9 @@ class BalanceService
      */
     private function participantBalancesFromRows(Collection $rows, CarbonInterface $until, ?CarbonInterface $since, int $selfId): array
     {
-        $applications = $this->applicationsUntil($until);
-        $receiptBalances = $this->receiptBalancesUntil($until);
+        $billableDebtKeys = $this->debtItems()->pluck('key')->flip();
+        $applications = $this->applicationsUntil($until, $billableDebtKeys);
+        $receiptBalances = $this->receiptBalancesUntil($until, $billableDebtKeys);
         $receiptMovements = $this->receiptMovements($until, $since);
 
         return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($rows, $applications, $receiptBalances, $receiptMovements, $selfId): array {
@@ -294,10 +297,14 @@ class BalanceService
     /** @return list<ReceiptRow> */
     public function receipts(CarbonInterface $until): array
     {
+        $billableDebtKeys = $this->debtItems()->pluck('key')->flip();
+
         return Receipt::query()->whereNull('archived_at')->whereDate('received_at', '<=', $until)->with(['participant:id,name', 'applications' => function (HasMany $query): void {
             $query->whereNull('superseded_at');
-        }])->orderByDesc('received_at')->orderByDesc('id')->get()->map(function (Receipt $receipt): array {
-            $appliedCents = (int) $receipt->applications->filter(fn (ReceiptApplication $application): bool => $application->superseded_at === null)->sum('amount_cents');
+        }])->orderByDesc('received_at')->orderByDesc('id')->get()->map(function (Receipt $receipt) use ($billableDebtKeys): array {
+            $appliedCents = (int) $receipt->applications
+                ->filter(fn (ReceiptApplication $application): bool => $billableDebtKeys->has($application->source_type.':'.$application->source_id))
+                ->sum('amount_cents');
 
             return [
                 'id' => $receipt->id,
@@ -318,7 +325,10 @@ class BalanceService
     {
         $selfId = $this->selfId();
 
-        return $this->expenseRows()->filter(fn (array $row): bool => $row['payer_id'] === $selfId && $row['participant_id'] !== null && $row['participant_id'] !== $selfId)->sortBy([['purchased_at', 'asc'], ['source_id', 'asc']])->values();
+        return $this->expenseRows()
+            ->filter(fn (array $row): bool => $this->isBillableDebt($row) && $row['payer_id'] === $selfId && $row['participant_id'] !== null && $row['participant_id'] !== $selfId)
+            ->sortBy([['purchased_at', 'asc'], ['source_id', 'asc']])
+            ->values();
     }
 
     /** @return Collection<int, ExpenseRow> */
@@ -327,7 +337,7 @@ class BalanceService
         $selfId = $this->selfId();
 
         return $this->expenseRowsForBillingMonth($month)
-            ->filter(fn (array $row): bool => $row['payer_id'] === $selfId && $row['participant_id'] !== null && $row['participant_id'] !== $selfId)
+            ->filter(fn (array $row): bool => $this->isBillableDebt($row) && $row['payer_id'] === $selfId && $row['participant_id'] !== null && $row['participant_id'] !== $selfId)
             ->sortBy([['purchased_at', 'asc'], ['source_id', 'asc']])
             ->values();
     }
@@ -348,12 +358,12 @@ class BalanceService
             }
 
             if ($purchase->allocations->isEmpty()) {
-                $rows->push($this->row('purchase', $purchase->id, $purchase->purchased_at, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->description, $purchase->paymentMethod?->type));
+                $rows->push($this->row('purchase', $purchase->id, $purchase->purchased_at, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->description, $purchase->paymentMethod?->type, $this->loanDueDate($purchase)));
 
                 continue;
             }
             foreach ($purchase->allocations as $allocation) {
-                $rows->push($this->row('purchase_allocation', $allocation->id, $purchase->purchased_at, $allocation->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $purchase->description, $purchase->paymentMethod?->type));
+                $rows->push($this->row('purchase_allocation', $allocation->id, $purchase->purchased_at, $allocation->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $purchase->description, $purchase->paymentMethod?->type, $this->loanDueDate($purchase)));
             }
         }
         foreach ($this->applyExpenseDateBounds(InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id'), $until, $since, $dueDateFrom, $dueDateUntil)
@@ -364,13 +374,13 @@ class BalanceService
             }
 
             if ($occurrence->allocations->isEmpty()) {
-                $rows->push($this->row('installment_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type));
+                $rows->push($this->row('installment_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type, $this->loanDueDate($occurrence)));
 
                 continue;
             }
 
             foreach ($occurrence->allocations as $allocation) {
-                $rows->push($this->row('installment_allocation', $allocation->id, $occurrence->purchased_at, $allocation->amount_cents, $occurrence->payer_id ?? $selfId, $allocation->participant_id ?? $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type));
+                $rows->push($this->row('installment_allocation', $allocation->id, $occurrence->purchased_at, $allocation->amount_cents, $occurrence->payer_id ?? $selfId, $allocation->participant_id ?? $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type, $this->loanDueDate($occurrence)));
             }
         }
         foreach ($this->applyExpenseDateBounds(RecurrenceOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id'), $until, $since, $dueDateFrom, $dueDateUntil)
@@ -380,7 +390,7 @@ class BalanceService
                 continue;
             }
 
-            $rows->push($this->row('recurrence_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type));
+            $rows->push($this->row('recurrence_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type, $this->loanDueDate($occurrence)));
         }
 
         return $rows;
@@ -432,19 +442,28 @@ class BalanceService
     }
 
     /** @return Collection<string, int> */
-    private function applicationsUntil(CarbonInterface $until): Collection
+    private function applicationsUntil(CarbonInterface $until, ?Collection $billableDebtKeys = null): Collection
     {
-        return ReceiptApplication::query()->whereNull('superseded_at')->whereHas('receipt', fn (Builder $query): Builder => $query->whereNull('archived_at')->whereDate('received_at', '<=', $until))->get()->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)->map(fn (Collection $rows): int => (int) $rows->sum('amount_cents'));
+        $query = ReceiptApplication::query()
+            ->whereNull('superseded_at')
+            ->whereHas('receipt', fn (Builder $query): Builder => $query->whereNull('archived_at')->whereDate('received_at', '<=', $until));
+
+        if ($billableDebtKeys !== null) {
+            $this->whereApplicationKeys($query, $billableDebtKeys);
+        }
+
+        return $query->get()->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)->map(fn (Collection $rows): int => (int) $rows->sum('amount_cents'));
     }
 
     /** @return Collection<int, object> */
-    private function receiptBalancesUntil(CarbonInterface $until): Collection
+    private function receiptBalancesUntil(CarbonInterface $until, Collection $billableDebtKeys): Collection
     {
         $applicationTotals = ReceiptApplication::query()
             ->whereNull('superseded_at')
             ->select('receipt_id')
             ->selectRaw('SUM(amount_cents) as applied_amount_cents')
             ->groupBy('receipt_id');
+        $this->whereApplicationKeys($applicationTotals, $billableDebtKeys);
 
         return Receipt::query()
             ->leftJoinSub($applicationTotals, 'receipt_application_totals', fn (JoinClause $join): JoinClause => $join->on('receipts.id', '=', 'receipt_application_totals.receipt_id'))
@@ -457,6 +476,23 @@ class BalanceService
             ->groupBy('receipts.participant_id')
             ->get()
             ->keyBy('participant_id');
+    }
+
+    private function whereApplicationKeys(Builder $query, Collection $debtKeys): void
+    {
+        if ($debtKeys->isEmpty()) {
+            $query->whereKey(0);
+
+            return;
+        }
+
+        $keysBySourceType = $debtKeys->keys()->groupBy(fn (string $key): string => explode(':', $key, 2)[0]);
+        $query->where(function (Builder $query) use ($keysBySourceType): void {
+            foreach ($keysBySourceType as $sourceType => $keys) {
+                $sourceIds = $keys->map(fn (string $key): int => (int) explode(':', $key, 2)[1])->values();
+                $query->orWhere(fn (Builder $query): Builder => $query->where('source_type', $sourceType)->whereIn('source_id', $sourceIds));
+            }
+        });
     }
 
     /** @return Collection<int, int> */
@@ -486,9 +522,19 @@ class BalanceService
     }
 
     /** @return ExpenseRow */
-    private function row(string $sourceType, int $sourceId, CarbonInterface $date, int $amountCents, int $payerId, ?int $participantId, string $description, ?string $paymentMethodType): array
+    private function row(string $sourceType, int $sourceId, CarbonInterface $date, int $amountCents, int $payerId, ?int $participantId, string $description, ?string $paymentMethodType, ?CarbonInterface $dueDate): array
     {
-        return ['key' => $sourceType.':'.$sourceId, 'source_type' => $sourceType, 'source_id' => $sourceId, 'purchased_at' => $date->toDateString(), 'amount_cents' => $amountCents, 'payer_id' => $payerId, 'participant_id' => $participantId, 'description' => $description, 'payment_method_type' => $paymentMethodType];
+        return ['key' => $sourceType.':'.$sourceId, 'source_type' => $sourceType, 'source_id' => $sourceId, 'purchased_at' => $date->toDateString(), 'due_date' => $dueDate?->toDateString(), 'amount_cents' => $amountCents, 'payer_id' => $payerId, 'participant_id' => $participantId, 'description' => $description, 'payment_method_type' => $paymentMethodType];
+    }
+
+    private function isBillableDebt(array $row): bool
+    {
+        return in_array($row['payment_method_type'], [PaymentMethod::TYPE_CREDIT, PaymentMethod::TYPE_LOAN], true);
+    }
+
+    private function loanDueDate(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item): ?CarbonInterface
+    {
+        return $item->paymentMethod?->type === PaymentMethod::TYPE_LOAN ? $item->due_date : null;
     }
 
     /** @param ExpenseRow $debt */

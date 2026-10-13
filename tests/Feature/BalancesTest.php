@@ -422,6 +422,52 @@ class BalancesTest extends TestCase
 
         $this->get("/receipts/{$receipt->id}/edit?month=2026-10")
             ->assertInertia(fn (Assert $page) => $page->has('debts', 0));
+
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.receivableCents', 0)
+            ->where('participants.0.creditCents', 4000)
+            ->where('receipts.0.appliedCents', 0)
+            ->where('receipts.0.creditCents', 4000));
+    }
+
+    public function test_receipts_do_not_reconcile_or_manually_apply_non_billable_items(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $allocations = collect([PaymentMethod::TYPE_PIX, PaymentMethod::TYPE_DEBIT, PaymentMethod::TYPE_CASH, PaymentMethod::TYPE_OTHER])->map(function (string $type, int $index) use ($self, $maria): PurchaseAllocation {
+            $method = PaymentMethod::create(['name' => 'Forma '.$type, 'type' => $type]);
+
+            return $this->purchase('2026-10-0'.($index + 1), 1000, $self, [[$maria, 1000]], $method->id)->allocations()->firstOrFail();
+        });
+
+        $this->post('/receipts', ['participant_id' => $maria->id, 'received_at' => '2026-10-10', 'amount' => '40,00'])
+            ->assertRedirect('/balances');
+
+        $receipt = Receipt::query()->firstOrFail();
+        $this->assertSame(0, ReceiptApplication::query()->where('receipt_id', $receipt->id)->whereNull('superseded_at')->count());
+
+        $this->from("/receipts/{$receipt->id}/edit")->put("/receipts/{$receipt->id}/applications", [
+            'applications' => [[
+                'source_type' => 'purchase_allocation',
+                'source_id' => $allocations->first()->id,
+                'amount' => '10,00',
+            ]],
+        ])->assertRedirect("/receipts/{$receipt->id}/edit")->assertSessionHasErrors('applications');
+
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.receivableCents', 0)
+            ->where('participants.0.creditCents', 4000));
+    }
+
+    public function test_balance_details_include_loan_due_date_without_replacing_purchase_date(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $loan = PaymentMethod::create(['name' => 'Empréstimo detalhado', 'type' => PaymentMethod::TYPE_LOAN]);
+        $purchase = $this->purchase('2025-01-06', 5000, $self, [[$maria, 5000]], $loan->id);
+        $purchase->update(['due_date' => '2026-10-20']);
+
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.receivableItems.0.purchased_at', '2025-01-06')
+            ->where('participants.0.receivableItems.0.due_date', '2026-10-20'));
     }
 
     public function test_manual_receipt_application_reduces_the_selected_invoice_item_and_preserves_the_month(): void

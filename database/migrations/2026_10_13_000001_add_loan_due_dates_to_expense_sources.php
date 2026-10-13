@@ -31,10 +31,24 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('recurrence_occurrences', fn (Blueprint $table): Blueprint => $table->dropColumn('due_date'));
-        Schema::table('recurrences', fn (Blueprint $table): Blueprint => $table->dropColumn('due_date'));
-        Schema::table('installment_occurrences', fn (Blueprint $table): Blueprint => $table->dropColumn('due_date'));
-        Schema::table('installments', fn (Blueprint $table): Blueprint => $table->dropColumn('due_date'));
-        Schema::table('purchases', fn (Blueprint $table): Blueprint => $table->dropColumn('due_date'));
+        Schema::table('recurrence_occurrences', function (Blueprint $table): void {
+            $table->dropColumn('due_date');
+        });
+
+        Schema::table('recurrences', function (Blueprint $table): void {
+            $table->dropColumn('due_date');
+        });
+
+        Schema::table('installment_occurrences', function (Blueprint $table): void {
+            $table->dropColumn('due_date');
+        });
+
+        Schema::table('installments', function (Blueprint $table): void {
+            $table->dropColumn('due_date');
+        });
+
+        Schema::table('purchases', function (Blueprint $table): void {
+            $table->dropColumn('due_date');
+        });
     }
 };

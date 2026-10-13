@@ -544,7 +544,7 @@ class InstallmentsTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true]);
         $joana = Participant::create(['name' => 'Joana', 'active' => true]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $paymentMethod = PaymentMethod::create(['name' => 'Cartão', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
 
         $this->post('/installments', [
             'start_date' => '2026-10-12',
@@ -642,7 +642,7 @@ class InstallmentsTest extends TestCase
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $maria = Participant::create(['name' => 'Maria', 'active' => true]);
         $joana = Participant::create(['name' => 'Joana', 'active' => true]);
-        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $paymentMethod = PaymentMethod::create(['name' => 'Cartão', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
 
         $this->post('/installments', [
             'start_date' => '2026-10-12',
