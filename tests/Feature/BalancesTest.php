@@ -426,7 +426,7 @@ class BalancesTest extends TestCase
         $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 0)
             ->has('participants.0.receivableItems', 0)
-            ->where('participants.0.creditCents', 4000)
+            ->where('participants.0.creditCents', 0)
             ->where('receipts.0.appliedCents', 4000)
             ->where('receipts.0.creditCents', 0));
     }
@@ -456,7 +456,66 @@ class BalancesTest extends TestCase
 
         $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 0)
-            ->where('participants.0.creditCents', 4000));
+            ->where('participants.0.creditCents', 0)
+            ->where('receipts.0.appliedCents', 4000)
+            ->where('receipts.0.creditCents', 0));
+    }
+
+    public function test_non_billable_receipt_application_is_hidden_from_billing_and_survives_billing_adjustment(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $pix = PaymentMethod::create(['name' => 'Pix geral', 'type' => PaymentMethod::TYPE_PIX]);
+        $card = PaymentMethod::query()->where('type', PaymentMethod::TYPE_CREDIT)->firstOrFail();
+        $generalAllocation = $this->purchase('2026-09-01', 2000, $self, [[$maria, 2000]], $pix->id)->allocations()->firstOrFail();
+        $billableAllocation = $this->purchase('2026-09-06', 4000, $self, [[$maria, 4000]], $card->id)->allocations()->firstOrFail();
+
+        $this->post('/receipts', ['participant_id' => $maria->id, 'received_at' => '2026-10-10', 'amount' => '60,00'])
+            ->assertRedirect('/balances');
+
+        $receipt = Receipt::query()->firstOrFail();
+        $billableApplication = ReceiptApplication::query()
+            ->where('receipt_id', $receipt->id)
+            ->where('source_id', $billableAllocation->id)
+            ->whereNull('superseded_at')
+            ->firstOrFail();
+
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->has('participants.0.receivableItems', 1)
+            ->where('participants.0.receivableItems.0.source_id', $billableAllocation->id)
+            ->where('participants.0.creditCents', 0)
+            ->where('receipts.0.appliedCents', 6000)
+            ->where('receipts.0.creditCents', 0));
+
+        $this->put("/receipts/{$receipt->id}/applications?month=2026-10", [
+            'applications' => [[
+                'source_type' => 'purchase_allocation',
+                'source_id' => $billableAllocation->id,
+                'amount' => '30,00',
+            ]],
+        ])->assertRedirect('/balances?month=2026-10')->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('receipt_applications', [
+            'receipt_id' => $receipt->id,
+            'source_id' => $generalAllocation->id,
+            'amount_cents' => 2000,
+            'source' => 'automatic',
+            'superseded_at' => null,
+        ]);
+        $this->assertNotNull($billableApplication->fresh()->superseded_at);
+        $this->assertDatabaseHas('receipt_applications', [
+            'receipt_id' => $receipt->id,
+            'source_id' => $billableAllocation->id,
+            'amount_cents' => 3000,
+            'source' => 'manual',
+            'superseded_at' => null,
+        ]);
+        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.receivableCents', 1000)
+            ->has('participants.0.receivableItems', 1)
+            ->where('participants.0.receivableItems.0.source_id', $billableAllocation->id)
+            ->where('participants.0.creditCents', 1000)
+            ->where('receipts.0.appliedCents', 5000)
+            ->where('receipts.0.creditCents', 1000));
     }
 
     public function test_receipt_application_contract_materializes_outstanding_cents(): void

@@ -75,9 +75,10 @@ class BalanceService
         private readonly RecurrenceService $recurrenceService,
     ) {}
 
-    public function reconcileParticipant(int $participantId): void
+    /** @param list<int> $preservedApplicationIds */
+    public function reconcileParticipant(int $participantId, array $preservedApplicationIds = []): void
     {
-        DB::transaction(function () use ($participantId): void {
+        DB::transaction(function () use ($participantId, $preservedApplicationIds): void {
             $debts = $this->debtItems()->filter(fn (array $debt): bool => $debt['participant_id'] === $participantId)->values();
             $debtsByKey = $debts->keyBy('key');
             $validDebtKeys = $debts->pluck('key')->flip();
@@ -85,7 +86,8 @@ class BalanceService
                 ->whereHas('receipt', fn (Builder $query): Builder => $query->where('participant_id', $participantId))
                 ->whereNull('superseded_at')
                 ->get()
-                ->filter(fn (ReceiptApplication $application): bool => $application->source === 'automatic' || ! $validDebtKeys->has($application->source_type.':'.$application->source_id));
+                ->filter(fn (ReceiptApplication $application): bool => ! in_array((int) $application->id, $preservedApplicationIds, true)
+                    && ($application->source === 'automatic' || ! $validDebtKeys->has($application->source_type.':'.$application->source_id)));
 
             if ($applicationsToReconcile->isNotEmpty()) {
                 $applicationsToReconcile->toQuery()->update(['superseded_at' => now()]);
@@ -173,6 +175,7 @@ class BalanceService
     public function replaceManualApplications(Receipt $receipt, array $applications): void
     {
         $debts = $this->billableDebtItems()->keyBy('key');
+        $activeApplications = $receipt->applications()->get();
         $total = 0;
         $keys = [];
 
@@ -188,19 +191,31 @@ class BalanceService
             $total += $application['amount_cents'];
         }
 
-        if ($total > $receipt->amount_cents) {
+        $nonBillableApplied = (int) $activeApplications
+            ->reject(fn (ReceiptApplication $application): bool => $debts->has($application->source_type.':'.$application->source_id))
+            ->sum('amount_cents');
+        $preservedApplicationIds = $activeApplications
+            ->reject(fn (ReceiptApplication $application): bool => $debts->has($application->source_type.':'.$application->source_id))
+            ->pluck('id')
+            ->map(fn (int|string $id): int => (int) $id)
+            ->all();
+
+        if ($nonBillableApplied + $total > $receipt->amount_cents) {
             throw ValidationException::withMessages(['applications' => 'A soma das aplicações não pode superar o valor recebido.']);
         }
 
-        DB::transaction(function () use ($receipt, $applications, $debts): void {
-            $receipt->applications()->update(['superseded_at' => now()]);
+        $billableApplications = $activeApplications
+            ->filter(fn (ReceiptApplication $application): bool => $debts->has($application->source_type.':'.$application->source_id));
+
+        DB::transaction(function () use ($receipt, $applications, $debts, $billableApplications): void {
+            $billableApplications->each(fn (ReceiptApplication $application): bool => $application->update(['superseded_at' => now()]));
             $receipt->update(['is_manually_adjusted' => true]);
             foreach ($applications as $application) {
                 $this->createApplication($receipt->id, $debts->get($application['source_type'].':'.$application['source_id']), $application['amount_cents'], 'manual');
             }
         });
 
-        $this->reconcileParticipant($receipt->participant_id);
+        $this->reconcileParticipant($receipt->participant_id, $preservedApplicationIds);
     }
 
     /** @return array{ownConsumptionCents: int, paidForOthersCents: int, owedToOthersCents: int} */
@@ -269,7 +284,7 @@ class BalanceService
     private function participantBalancesFromRows(Collection $rows, CarbonInterface $until, ?CarbonInterface $since, int $selfId, Collection $debtKeys): array
     {
         $applications = $this->applicationsUntil($until, $debtKeys);
-        $receiptBalances = $this->receiptBalancesUntil($until, $debtKeys);
+        $receiptBalances = $this->receiptBalancesUntil($until);
         $receiptMovements = $this->receiptMovements($until, $since);
 
         return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($rows, $applications, $receiptBalances, $receiptMovements, $selfId): array {
@@ -297,14 +312,10 @@ class BalanceService
     /** @return list<ReceiptRow> */
     public function receipts(CarbonInterface $until): array
     {
-        $debtKeys = $this->debtItems()->pluck('key')->flip();
-
         return Receipt::query()->whereNull('archived_at')->whereDate('received_at', '<=', $until)->with(['participant:id,name', 'applications' => function (HasMany $query): void {
             $query->whereNull('superseded_at');
-        }])->orderByDesc('received_at')->orderByDesc('id')->get()->map(function (Receipt $receipt) use ($debtKeys): array {
-            $appliedCents = (int) $receipt->applications
-                ->filter(fn (ReceiptApplication $application): bool => $debtKeys->has($application->source_type.':'.$application->source_id))
-                ->sum('amount_cents');
+        }])->orderByDesc('received_at')->orderByDesc('id')->get()->map(function (Receipt $receipt): array {
+            $appliedCents = (int) $receipt->applications->sum('amount_cents');
 
             return [
                 'id' => $receipt->id,
@@ -477,14 +488,13 @@ class BalanceService
     }
 
     /** @return Collection<int, object> */
-    private function receiptBalancesUntil(CarbonInterface $until, Collection $debtKeys): Collection
+    private function receiptBalancesUntil(CarbonInterface $until): Collection
     {
         $applicationTotals = ReceiptApplication::query()
             ->whereNull('superseded_at')
             ->select('receipt_id')
             ->selectRaw('SUM(amount_cents) as applied_amount_cents')
             ->groupBy('receipt_id');
-        $this->whereApplicationKeys($applicationTotals, $debtKeys);
 
         return Receipt::query()
             ->leftJoinSub($applicationTotals, 'receipt_application_totals', fn (JoinClause $join): JoinClause => $join->on('receipts.id', '=', 'receipt_application_totals.receipt_id'))
