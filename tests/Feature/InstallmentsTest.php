@@ -57,6 +57,31 @@ class InstallmentsTest extends TestCase
         $this->assertSame(['2026-10-12', '2026-11-12', '2026-12-12'], InstallmentOccurrence::query()->where('installment_id', $installment->id)->orderBy('installment_number')->pluck('purchased_at')->map(fn ($date) => $date->toDateString())->all());
     }
 
+    public function test_loan_installment_generates_occurrences_with_registered_due_dates(): void
+    {
+        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN]);
+
+        $this->post('/installments', [
+            'start_date' => '2026-09-12',
+            'description' => 'Empréstimo parcelado',
+            'total' => '90,00',
+            'installment_count' => 3,
+            'payer_id' => null,
+            'participant_id' => null,
+            'payment_method_id' => $loan->id,
+            'due_date' => '2026-10-20',
+        ])->assertRedirect('/installments');
+
+        $installment = Installment::query()->latest('id')->firstOrFail();
+
+        $this->assertSame('2026-10-20', $installment->due_date->toDateString());
+        $this->assertSame(['2026-10-20', '2026-11-20', '2026-12-20'], $installment->occurrences()->orderBy('installment_number')->pluck('due_date')->map(fn ($date) => $date->toDateString())->all());
+
+        $occurrence = $installment->occurrences()->where('installment_number', 2)->firstOrFail();
+        $this->patch("/installment-occurrences/{$occurrence->id}", ['amount' => '31,00', 'due_date' => '2026-11-25'])->assertRedirect('/installments');
+        $this->assertSame('2026-11-25', $occurrence->fresh()->due_date->toDateString());
+    }
+
     public function test_installments_listing_exposes_rateio_participants_and_own_category(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();

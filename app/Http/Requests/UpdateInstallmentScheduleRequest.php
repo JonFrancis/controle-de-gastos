@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\PaymentMethod;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -21,6 +22,7 @@ class UpdateInstallmentScheduleRequest extends FormRequest
     {
         return [
             'start_date' => ['required', 'date'],
+            'due_date' => ['nullable', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'description' => ['sometimes', 'required', 'string', 'max:160'],
             'card_name' => ['sometimes', 'nullable', 'string', 'max:160'],
@@ -68,6 +70,13 @@ class UpdateInstallmentScheduleRequest extends FormRequest
 
     public function withValidator(Validator $validator): void
     {
+        $validator->after(function (Validator $validator): void {
+            $installment = $this->route('installment');
+            $methodId = $this->input('payment_method_id', $installment?->payment_method_id);
+            if (PaymentMethod::query()->whereKey($methodId)->value('type') === PaymentMethod::TYPE_LOAN && blank($this->input('due_date')) && blank($installment?->due_date)) {
+                $validator->errors()->add('due_date', 'Informe a data de vencimento do empréstimo.');
+            }
+        });
         $validator->after(function (Validator $validator): void {
             if ($validator->errors()->hasAny(['start_date', 'end_date'])) {
                 return;

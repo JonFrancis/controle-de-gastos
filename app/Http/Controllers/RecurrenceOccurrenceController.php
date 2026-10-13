@@ -24,7 +24,7 @@ class RecurrenceOccurrenceController extends Controller
     {
         $oldValues = $recurrenceOccurrence->getAttributes();
         $amount = (int) round(((float) $request->validated('amount')) * 100);
-        $recurrenceOccurrence->update(['amount_cents' => $amount, 'is_adjusted' => true]);
+        $recurrenceOccurrence->update(['amount_cents' => $amount, 'due_date' => $request->validated('due_date') ?? $recurrenceOccurrence->due_date?->toDateString(), 'is_adjusted' => true]);
         $balanceService->reconcileAll();
         $audit->record(AuditLog::ACTION_UPDATE, $recurrenceOccurrence, oldValues: $oldValues, newValues: $recurrenceOccurrence->fresh()->getAttributes());
 

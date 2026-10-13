@@ -6,6 +6,7 @@ use App\Models\Installment;
 use App\Models\InstallmentAllocation;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
+use App\Models\PaymentMethod;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -25,10 +26,13 @@ class InstallmentService
         $selfId = Participant::query()->where('is_default', true)->value('id');
         $participantId = $data['participant_id'] ?? null;
         $categoryId = $participantId === null || (int) $participantId === (int) $selfId ? ($data['category_id'] ?? null) : null;
+        $paymentMethod = PaymentMethod::query()->find($data['payment_method_id']);
+        $loanDueDate = $paymentMethod?->type === PaymentMethod::TYPE_LOAN ? CarbonImmutable::parse($data['due_date']) : null;
 
-        return DB::transaction(function () use ($data, $totalCents, $count, $participantId, $categoryId): Installment {
+        return DB::transaction(function () use ($data, $totalCents, $count, $participantId, $categoryId, $loanDueDate): Installment {
             $installment = Installment::create([
                 'start_date' => $data['start_date'],
+                'due_date' => $loanDueDate?->toDateString(),
                 'description' => $data['description'],
                 'card_name' => $data['card_name'] ?? null,
                 'total_cents' => $totalCents,
@@ -43,10 +47,11 @@ class InstallmentService
             $remainder = $totalCents % $count;
             $startDate = CarbonImmutable::parse($data['start_date']);
 
-            $installment->occurrences()->createMany(collect(range(1, $count))->map(function (int $number) use ($installment, $baseCents, $remainder, $startDate, $data, $participantId, $categoryId): array {
+            $installment->occurrences()->createMany(collect(range(1, $count))->map(function (int $number) use ($installment, $baseCents, $remainder, $startDate, $data, $participantId, $categoryId, $loanDueDate): array {
                 return [
                     'installment_number' => $number,
                     'purchased_at' => $startDate->addMonthsNoOverflow($number - 1)->toDateString(),
+                    'due_date' => $loanDueDate?->addMonthsNoOverflow($number - 1)->toDateString(),
                     'description' => $data['description'],
                     'card_name' => $data['card_name'] ?? null,
                     'amount_cents' => $number === $installment->installment_count ? $baseCents + $remainder : $baseCents,
@@ -80,15 +85,20 @@ class InstallmentService
         $payerId = array_key_exists('payer_id', $data) ? $data['payer_id'] : $installment->payer_id;
         $participantId = array_key_exists('participant_id', $data) ? $data['participant_id'] : $installment->participant_id;
         $paymentMethodId = $data['payment_method_id'] ?? $installment->payment_method_id;
+        $paymentMethod = PaymentMethod::query()->find($paymentMethodId);
+        $loanDueDate = $paymentMethod?->type === PaymentMethod::TYPE_LOAN
+            ? CarbonImmutable::parse($data['due_date'] ?? $installment->due_date)
+            : null;
         $categoryId = array_key_exists('category_id', $data) ? $data['category_id'] : $installment->category_id;
         $selfId = Participant::query()->where('is_default', true)->value('id');
         $categoryId = $participantId === null || (int) $participantId === (int) $selfId ? $categoryId : null;
         $financialScheduleChanged = $totalCents !== (int) $installment->total_cents || $count !== (int) $installment->installment_count;
         $previousTotalCents = (int) $installment->total_cents;
 
-        return DB::transaction(function () use ($installment, $data, $startDate, $count, $baseCents, $remainder, $totalCents, $description, $cardName, $payerId, $participantId, $paymentMethodId, $categoryId, $financialScheduleChanged, $previousTotalCents): Installment {
+        return DB::transaction(function () use ($installment, $data, $startDate, $count, $baseCents, $remainder, $totalCents, $description, $cardName, $payerId, $participantId, $paymentMethodId, $categoryId, $financialScheduleChanged, $previousTotalCents, $loanDueDate): Installment {
             $installment->update([
                 'start_date' => $startDate->toDateString(),
+                'due_date' => $loanDueDate?->toDateString(),
                 'description' => $description,
                 'card_name' => $cardName,
                 'total_cents' => $totalCents,
@@ -107,6 +117,7 @@ class InstallmentService
                 $attributes = [
                     'installment_number' => $number,
                     'purchased_at' => $startDate->addMonthsNoOverflow($number - 1)->toDateString(),
+                    'due_date' => $loanDueDate?->addMonthsNoOverflow($number - 1)->toDateString(),
                     'amount_cents' => $preserveAmount ? $existingOccurrence->amount_cents : ($number === $count ? $baseCents + $remainder : $baseCents),
                     'description' => $description,
                     'card_name' => $cardName,
@@ -154,7 +165,7 @@ class InstallmentService
         $newOccurrences = $this->occurrenceSnapshots($updated);
         $newAllocations = $this->allocationSnapshots($updated);
         $newValues = $updated->getAttributes();
-        $ruleFields = ['start_date', 'description', 'card_name', 'total_cents', 'installment_count', 'payer_id', 'participant_id', 'payment_method_id', 'category_id', 'allocation_mode', 'allocation_rule'];
+        $ruleFields = ['start_date', 'due_date', 'description', 'card_name', 'total_cents', 'installment_count', 'payer_id', 'participant_id', 'payment_method_id', 'category_id', 'allocation_mode', 'allocation_rule'];
         $oldRule = array_intersect_key($oldValues, array_flip($ruleFields));
         $oldRule['allocation_mode'] = $oldAllocationMode;
         $oldRule['allocation_rule'] = $oldAllocationRule;
@@ -176,12 +187,14 @@ class InstallmentService
                 'occurrence_number' => $occurrence['installment_number'],
                 'before' => $oldOccurrence === null ? null : [
                     'purchased_at' => $oldOccurrence['purchased_at'],
+                    'due_date' => $oldOccurrence['due_date'],
                     'amount_cents' => $oldOccurrence['amount_cents'],
                     'payment_method_id' => $oldOccurrence['payment_method_id'],
                     'archived_at' => $oldOccurrence['archived_at'],
                 ],
                 'after' => [
                     'purchased_at' => $occurrence['purchased_at'],
+                    'due_date' => $occurrence['due_date'],
                     'amount_cents' => $occurrence['amount_cents'],
                     'payment_method_id' => $occurrence['payment_method_id'],
                     'archived_at' => $occurrence['archived_at'],
@@ -237,6 +250,7 @@ class InstallmentService
             'installmentValues' => $occurrences->map(fn (InstallmentOccurrence $occurrence): array => [
                 'number' => $occurrence->installment_number,
                 'date' => $occurrence->purchased_at->toDateString(),
+                'dueDate' => $occurrence->due_date?->toDateString(),
                 'amountCents' => $occurrence->amount_cents,
             ])->values()->all(),
             'invoiceImpacts' => $invoiceImpacts,

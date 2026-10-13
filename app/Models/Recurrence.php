@@ -8,12 +8,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['start_date', 'end_date', 'day_of_month', 'description', 'card_name', 'amount_cents', 'payer_id', 'participant_id', 'payment_method_id', 'category_id', 'active', 'archived_at'])]
+#[Fillable(['start_date', 'due_date', 'end_date', 'day_of_month', 'description', 'card_name', 'amount_cents', 'payer_id', 'participant_id', 'payment_method_id', 'category_id', 'active', 'archived_at'])]
 class Recurrence extends Model
 {
     protected function casts(): array
     {
-        return ['start_date' => 'date', 'end_date' => 'date', 'day_of_month' => 'integer', 'amount_cents' => 'integer', 'active' => 'boolean', 'archived_at' => 'datetime'];
+        return ['start_date' => 'date', 'due_date' => 'date', 'end_date' => 'date', 'day_of_month' => 'integer', 'amount_cents' => 'integer', 'active' => 'boolean', 'archived_at' => 'datetime'];
     }
 
     public function scopeActive(Builder $query): Builder
