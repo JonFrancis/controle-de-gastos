@@ -25,13 +25,24 @@ class ReceiptController extends Controller
         ]);
     }
 
-    public function edit(Receipt $receipt, BalanceService $service): Response
+    public function edit(Request $request, Receipt $receipt, BalanceService $service): Response
     {
+        $selectedMonth = $this->validMonth($request->query('month'));
         $receipt->load(['participant', 'applications']);
         $applied = $receipt->applications->keyBy(fn ($application): string => $application->source_type.':'.$application->source_id);
-        $debts = $service->debtItems()->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id)->map(fn (array $debt): array => [...$debt, 'applied_cents' => $applied->get($debt['key'])?->amount_cents ?? 0])->values();
+        $billingMonth = Carbon::createFromFormat('!Y-m', $selectedMonth);
+        $debts = $service->debtItemsForBillingMonth($billingMonth)
+            ->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id)
+            ->concat($service->debtItems()
+                ->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id && $applied->has($debt['key']))
+            )
+            ->unique('key')
+            ->sortBy([['purchased_at', 'asc'], ['source_id', 'asc']])
+            ->map(fn (array $debt): array => [...$debt, 'applied_cents' => $applied->get($debt['key'])?->amount_cents ?? 0])
+            ->values();
 
         return Inertia::render('Balances/ReceiptApplications', [
+            'selectedMonth' => $selectedMonth,
             'receipt' => [
                 'id' => $receipt->id,
                 'participant' => ['name' => $receipt->participant->name],
@@ -61,7 +72,7 @@ class ReceiptController extends Controller
         $service->replaceManualApplications($receipt, $applications);
         $audit->record(AuditLog::ACTION_UPDATE, $receipt, oldValues: ['applications' => $oldApplications], newValues: ['applications' => $receipt->fresh()->applications()->get()->toArray()], metadata: ['type' => 'receipt_applications']);
 
-        return to_route('balances')->with('success', 'Aplicações do recebimento ajustadas.');
+        return to_route('balances', array_filter(['month' => $request->query('month')]))->with('success', 'Aplicações do recebimento ajustadas.');
     }
 
     private function moneyToCents(string|int $value): int
