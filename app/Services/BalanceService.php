@@ -358,12 +358,12 @@ class BalanceService
             }
 
             if ($purchase->allocations->isEmpty()) {
-                $rows->push($this->row('purchase', $purchase->id, $purchase->purchased_at, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->description, $purchase->paymentMethod?->type, $this->loanDueDate($purchase)));
+                $rows->push($this->row('purchase', $purchase->id, $purchase->purchased_at, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->description, $purchase->paymentMethod?->type, $this->dueDate($purchase)));
 
                 continue;
             }
             foreach ($purchase->allocations as $allocation) {
-                $rows->push($this->row('purchase_allocation', $allocation->id, $purchase->purchased_at, $allocation->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $purchase->description, $purchase->paymentMethod?->type, $this->loanDueDate($purchase)));
+                $rows->push($this->row('purchase_allocation', $allocation->id, $purchase->purchased_at, $allocation->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $purchase->description, $purchase->paymentMethod?->type, $this->dueDate($purchase)));
             }
         }
         foreach ($this->applyExpenseDateBounds(InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id'), $until, $since, $dueDateFrom, $dueDateUntil)
@@ -374,13 +374,13 @@ class BalanceService
             }
 
             if ($occurrence->allocations->isEmpty()) {
-                $rows->push($this->row('installment_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type, $this->loanDueDate($occurrence)));
+                $rows->push($this->row('installment_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type, $this->dueDate($occurrence)));
 
                 continue;
             }
 
             foreach ($occurrence->allocations as $allocation) {
-                $rows->push($this->row('installment_allocation', $allocation->id, $occurrence->purchased_at, $allocation->amount_cents, $occurrence->payer_id ?? $selfId, $allocation->participant_id ?? $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type, $this->loanDueDate($occurrence)));
+                $rows->push($this->row('installment_allocation', $allocation->id, $occurrence->purchased_at, $allocation->amount_cents, $occurrence->payer_id ?? $selfId, $allocation->participant_id ?? $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type, $this->dueDate($occurrence)));
             }
         }
         foreach ($this->applyExpenseDateBounds(RecurrenceOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id'), $until, $since, $dueDateFrom, $dueDateUntil)
@@ -390,7 +390,7 @@ class BalanceService
                 continue;
             }
 
-            $rows->push($this->row('recurrence_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type, $this->loanDueDate($occurrence)));
+            $rows->push($this->row('recurrence_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type, $this->dueDate($occurrence)));
         }
 
         return $rows;
@@ -532,9 +532,19 @@ class BalanceService
         return in_array($row['payment_method_type'], [PaymentMethod::TYPE_CREDIT, PaymentMethod::TYPE_LOAN], true);
     }
 
-    private function loanDueDate(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item): ?CarbonInterface
+    private function dueDate(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item): ?CarbonInterface
     {
-        return $item->paymentMethod?->type === PaymentMethod::TYPE_LOAN ? $item->due_date : null;
+        if ($item->paymentMethod?->type === PaymentMethod::TYPE_LOAN) {
+            return $item->due_date;
+        }
+
+        if ($item->paymentMethod?->type !== PaymentMethod::TYPE_CREDIT) {
+            return null;
+        }
+
+        $details = $this->invoiceSettings->detailsFor($item->paymentMethod, $item->purchased_at);
+
+        return $details === null ? null : ($details['dueDate'] ?? $details['closingDate']);
     }
 
     /** @param ExpenseRow $debt */

@@ -35,14 +35,17 @@ class InvoiceBillingRegressionTest extends TestCase
                 ->where('participants.0.receivableCents', 12000)
                 ->has('participants.0.receivableItems', 2)
                 ->where('participants.0.receivableItems.0.description', 'Fatura de outubro do primeiro cartão')
-                ->where('participants.0.receivableItems.1.description', 'Fatura de outubro do segundo cartão'));
+                ->where('participants.0.receivableItems.0.due_date', '2026-10-10')
+                ->where('participants.0.receivableItems.1.description', 'Fatura de outubro do segundo cartão')
+                ->where('participants.0.receivableItems.1.due_date', '2026-10-05'));
 
         $this->get('/balances?month=2026-11')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 11000)
                 ->where('participants.0.receivableCents', 11000)
                 ->has('participants.0.receivableItems', 1)
-                ->where('participants.0.receivableItems.0.description', 'Fatura de novembro do segundo cartão'));
+                ->where('participants.0.receivableItems.0.description', 'Fatura de novembro do segundo cartão')
+                ->where('participants.0.receivableItems.0.due_date', '2026-11-05'));
     }
 
     public function test_balances_cover_manual_installment_and_recurrence_sources_for_cards_and_loans(): void

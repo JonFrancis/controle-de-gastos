@@ -29,6 +29,9 @@ return new class extends Migration
         });
     }
 
+    /**
+     * Rolling back this migration drops populated due_date columns and destroys their values.
+     */
     public function down(): void
     {
         Schema::table('recurrence_occurrences', function (Blueprint $table): void {

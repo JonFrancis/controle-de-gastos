@@ -458,16 +458,20 @@ class BalancesTest extends TestCase
             ->where('participants.0.creditCents', 4000));
     }
 
-    public function test_balance_details_include_loan_due_date_without_replacing_purchase_date(): void
+    public function test_balance_details_include_card_fallback_and_loan_due_dates_without_replacing_purchase_dates(): void
     {
         [$self, $maria] = $this->catalogs();
         $loan = PaymentMethod::create(['name' => 'Empréstimo detalhado', 'type' => PaymentMethod::TYPE_LOAN]);
+        $card = PaymentMethod::create(['name' => 'Cartão detalhado', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
         $purchase = $this->purchase('2025-01-06', 5000, $self, [[$maria, 5000]], $loan->id);
         $purchase->update(['due_date' => '2026-10-20']);
+        $this->purchase('2026-09-06', 4000, $self, [[$maria, 4000]], $card->id);
 
         $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableItems.0.purchased_at', '2025-01-06')
-            ->where('participants.0.receivableItems.0.due_date', '2026-10-20'));
+            ->where('participants.0.receivableItems.0.due_date', '2026-10-20')
+            ->where('participants.0.receivableItems.1.purchased_at', '2026-09-06')
+            ->where('participants.0.receivableItems.1.due_date', '2026-10-05'));
     }
 
     public function test_manual_receipt_application_reduces_the_selected_invoice_item_and_preserves_the_month(): void
