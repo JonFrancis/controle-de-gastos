@@ -15,7 +15,7 @@ class InstallmentCatalogService
         return [
             'participants' => Participant::query()->where('active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']),
             'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
-            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type', 'closing_day']),
+            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type', 'closing_day', 'loan_due_day']),
         ];
     }
 }

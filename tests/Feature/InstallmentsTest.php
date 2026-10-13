@@ -59,7 +59,7 @@ class InstallmentsTest extends TestCase
 
     public function test_loan_installment_generates_occurrences_with_registered_due_dates(): void
     {
-        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN]);
+        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN, 'loan_due_day' => 20]);
 
         $this->post('/installments', [
             'start_date' => '2026-09-12',
@@ -84,10 +84,11 @@ class InstallmentsTest extends TestCase
 
     public function test_installment_preview_classifies_loan_occurrences_by_their_due_month(): void
     {
-        $loan = PaymentMethod::create(['name' => 'Empréstimo do preview', 'type' => PaymentMethod::TYPE_LOAN]);
+        $loan = PaymentMethod::create(['name' => 'Empréstimo do preview', 'type' => PaymentMethod::TYPE_LOAN, 'loan_due_day' => 20]);
 
         $this->post('/installments', [
             'start_date' => '2026-09-12',
+            'end_date' => '2026-10-12',
             'description' => 'Empréstimo no preview',
             'total' => '60,00',
             'installment_count' => 2,
@@ -100,8 +101,40 @@ class InstallmentsTest extends TestCase
 
         $this->get("/installment-occurrences/{$occurrence->id}/edit")
             ->assertInertia(fn (Assert $page) => $page
+                ->where('installment.dueDate', '2026-10-20')
+                ->where('schedulePreview.installmentValues.0.dueDate', '2026-10-20')
+                ->where('paymentMethods', fn ($methods): bool => $methods->contains(fn (array $method): bool => $method['id'] === $loan->id && $method['loan_due_day'] === 20))
                 ->where('schedulePreview.invoiceImpacts.0.label', 'Empréstimo do preview · vencimento em 10/2026')
                 ->where('schedulePreview.invoiceImpacts.1.label', 'Empréstimo do preview · vencimento em 11/2026'));
+
+        $this->patch("/installments/{$installment->id}/schedule", [
+            'start_date' => '2026-09-12',
+            'end_date' => '2026-10-12',
+            'description' => 'Empréstimo no preview',
+            'total' => '60,00',
+            'installment_count' => 2,
+            'payment_method_id' => $loan->id,
+            'due_date' => '2026-10-21',
+            'confirmation' => true,
+        ])->assertRedirect('/installments');
+
+        $this->assertSame('2026-10-21', $installment->fresh()->due_date->toDateString());
+    }
+
+    public function test_billable_creation_catalogs_expose_the_loan_due_day(): void
+    {
+        $loan = PaymentMethod::create(['name' => 'Empréstimo catalogado', 'type' => PaymentMethod::TYPE_LOAN, 'loan_due_day' => 20]);
+
+        foreach ([
+            ['/purchases/create/simple', 'Purchases/Form'],
+            ['/installments/create', 'Installments/Create'],
+            ['/recurrences/create', 'Recurrences/Create'],
+        ] as [$uri, $component]) {
+            $this->get($uri)
+                ->assertInertia(fn (Assert $page) => $page
+                    ->component($component)
+                    ->where('paymentMethods', fn ($methods): bool => $methods->contains(fn (array $method): bool => $method['id'] === $loan->id && $method['loan_due_day'] === 20)));
+        }
     }
 
     public function test_installments_listing_exposes_rateio_participants_and_own_category(): void

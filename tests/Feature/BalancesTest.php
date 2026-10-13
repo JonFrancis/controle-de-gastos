@@ -111,6 +111,24 @@ class BalancesTest extends TestCase
             );
     }
 
+    public function test_billing_summary_uses_outstanding_amounts_after_historical_applications(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $card = PaymentMethod::query()->where('type', PaymentMethod::TYPE_CREDIT)->firstOrFail();
+        $receivable = $this->purchase('2026-09-06', 5000, $self, [[$maria, 5000]], $card->id)->allocations()->firstOrFail();
+        $payable = $this->purchase('2026-09-06', 4000, $maria, [[$self, 4000]], $card->id)->allocations()->firstOrFail();
+        $mariaReceipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-09-30', 'amount_cents' => 2000]);
+        $selfReceipt = Receipt::create(['participant_id' => $self->id, 'received_at' => '2026-09-30', 'amount_cents' => 1000]);
+        ReceiptApplication::create(['receipt_id' => $mariaReceipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $receivable->id, 'purchase_allocation_id' => $receivable->id, 'amount_cents' => 2000, 'source' => 'manual']);
+        ReceiptApplication::create(['receipt_id' => $selfReceipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $payable->id, 'purchase_allocation_id' => $payable->id, 'amount_cents' => 1000, 'source' => 'manual']);
+
+        $this->get('/balances?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.ownConsumptionCents', 4000)
+                ->where('summary.paidForOthersCents', 3000)
+                ->where('summary.owedToOthersCents', 3000));
+    }
+
     public function test_balances_classify_card_purchases_by_invoice_due_month_and_exclude_non_invoice_methods(): void
     {
         [$self, $maria] = $this->catalogs();
@@ -327,6 +345,28 @@ class BalancesTest extends TestCase
                 ->has('debts', 1)
                 ->where('debts.0.description', 'Compra 2026-09-06')
             );
+    }
+
+    public function test_receipt_application_edit_excludes_non_billable_items_even_when_they_are_already_applied(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $allocations = collect([PaymentMethod::TYPE_PIX, PaymentMethod::TYPE_DEBIT, PaymentMethod::TYPE_CASH, PaymentMethod::TYPE_OTHER])->map(function (string $type, int $index) use ($self, $maria): PurchaseAllocation {
+            $method = PaymentMethod::create(['name' => 'Forma '.$type, 'type' => $type]);
+
+            return $this->purchase('2026-10-0'.($index + 1), 1000, $self, [[$maria, 1000]], $method->id)->allocations()->firstOrFail();
+        });
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-10', 'amount_cents' => 4000]);
+        $allocations->each(fn (PurchaseAllocation $allocation) => ReceiptApplication::create([
+            'receipt_id' => $receipt->id,
+            'source_type' => 'purchase_allocation',
+            'source_id' => $allocation->id,
+            'purchase_allocation_id' => $allocation->id,
+            'amount_cents' => 1000,
+            'source' => 'manual',
+        ]));
+
+        $this->get("/receipts/{$receipt->id}/edit?month=2026-10")
+            ->assertInertia(fn (Assert $page) => $page->has('debts', 0));
     }
 
     public function test_manual_receipt_application_reduces_the_selected_invoice_item_and_preserves_the_month(): void

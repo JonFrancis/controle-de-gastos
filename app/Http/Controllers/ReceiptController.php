@@ -6,6 +6,7 @@ use App\Http\Requests\StoreReceiptRequest;
 use App\Http\Requests\UpdateReceiptApplicationsRequest;
 use App\Models\AuditLog;
 use App\Models\Participant;
+use App\Models\PaymentMethod;
 use App\Models\Receipt;
 use App\Services\AuditService;
 use App\Services\BalanceService;
@@ -34,7 +35,9 @@ class ReceiptController extends Controller
         $debts = $service->debtItemsForBillingMonth($billingMonth)
             ->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id)
             ->concat($service->debtItems()
-                ->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id && $applied->has($debt['key']))
+                ->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id
+                    && $applied->has($debt['key'])
+                    && in_array($debt['payment_method_type'], [PaymentMethod::TYPE_CREDIT, PaymentMethod::TYPE_LOAN], true))
             )
             ->unique('key')
             ->sortBy([['purchased_at', 'asc'], ['source_id', 'asc']])

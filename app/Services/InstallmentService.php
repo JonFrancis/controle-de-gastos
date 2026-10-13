@@ -227,7 +227,7 @@ class InstallmentService
         ];
     }
 
-    /** @return array{oldStartDate: string, oldEndDate: string, oldInstallmentCount: int, oldTotalCents: int, installmentValues: list<array{number: int, date: string, amountCents: int}>, invoiceImpacts: list<array{label: string, installmentNumbers: list<int>, totalCents: int}>} */
+    /** @return array{oldStartDate: string, oldEndDate: string, oldInstallmentCount: int, oldTotalCents: int, installmentValues: list<array{number: int, date: string, dueDate: string|null, amountCents: int}>, invoiceImpacts: list<array{label: string, installmentNumbers: list<int>, totalCents: int}>} */
     public function schedulePreview(Installment $installment): array
     {
         $occurrences = $installment->occurrences()
@@ -273,6 +273,7 @@ class InstallmentService
      *     installment_id: int,
      *     installment_number: int,
      *     purchased_at: string,
+     *     due_date: string|null,
      *     description: string,
      *     card_name: string|null,
      *     amount_cents: int,

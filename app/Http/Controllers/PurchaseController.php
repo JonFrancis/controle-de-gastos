@@ -141,7 +141,7 @@ class PurchaseController extends Controller
         return [
             'participants' => Participant::query()->where('active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'is_default']),
             'categories' => Category::query()->where('active', true)->orderBy('name')->get(['id', 'name']),
-            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type']),
+            'paymentMethods' => PaymentMethod::query()->where('active', true)->orderBy('name')->get(['id', 'name', 'type', 'loan_due_day']),
         ];
     }
 

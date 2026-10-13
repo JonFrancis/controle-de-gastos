@@ -73,7 +73,7 @@ class UpdateInstallmentScheduleRequest extends FormRequest
         $validator->after(function (Validator $validator): void {
             $installment = $this->route('installment');
             $methodId = $this->input('payment_method_id', $installment?->payment_method_id);
-            if (PaymentMethod::query()->whereKey($methodId)->value('type') === PaymentMethod::TYPE_LOAN && blank($this->input('due_date')) && blank($installment?->due_date)) {
+            if (PaymentMethod::query()->whereKey($methodId)->value('type') === PaymentMethod::TYPE_LOAN && blank($this->input('due_date'))) {
                 $validator->errors()->add('due_date', 'Informe a data de vencimento do empréstimo.');
             }
         });

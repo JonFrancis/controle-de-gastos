@@ -54,7 +54,7 @@ class RecurrencesTest extends TestCase
 
     public function test_loan_recurrence_generates_occurrences_with_registered_due_dates(): void
     {
-        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN]);
+        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN, 'loan_due_day' => 20]);
 
         $this->post('/recurrences', [
             'start_date' => '2026-09-12',
@@ -70,6 +70,24 @@ class RecurrencesTest extends TestCase
 
         $this->assertSame('2026-10-20', $recurrence->due_date->toDateString());
         $this->assertSame(['2026-10-20', '2026-11-20', '2026-12-20'], $recurrence->occurrences()->orderBy('purchased_at')->pluck('due_date')->map(fn ($date) => $date->toDateString())->all());
+
+        $this->get("/recurrences/{$recurrence->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('recurrence.dueDate', '2026-10-20')
+                ->where('recurrence.loanDueDay', 20));
+
+        $this->patch("/recurrences/{$recurrence->id}", [
+            'start_date' => '2026-09-12',
+            'end_date' => '2026-11-12',
+            'day_of_month' => 12,
+            'description' => 'Empréstimo mensal',
+            'amount' => '30,00',
+            'payment_method_id' => $loan->id,
+            'due_date' => '2026-10-21',
+            'active' => true,
+        ])->assertRedirect('/recurrences');
+
+        $this->assertSame('2026-10-21', $recurrence->fresh()->due_date->toDateString());
 
         $occurrence = $recurrence->occurrences()->whereDate('purchased_at', '2026-10-12')->firstOrFail();
         $this->patch("/recurrence-occurrences/{$occurrence->id}", ['amount' => '31,00', 'due_date' => '2026-11-25'])->assertRedirect('/recurrences');

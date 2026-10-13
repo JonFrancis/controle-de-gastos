@@ -165,9 +165,16 @@ class BalanceService
     /** @return array{ownConsumptionCents: int, paidForOthersCents: int, owedToOthersCents: int} */
     public function summaryForBillingMonth(CarbonInterface $month): array
     {
+        $billingMonth = CarbonImmutable::instance($month);
         $selfId = $this->selfId();
+        $rows = $this->expenseRowsForBillingMonth($billingMonth);
+        $applications = $this->applicationsUntil($billingMonth->endOfMonth());
 
-        return $this->summaryFromRows($this->expenseRowsForBillingMonth($month), $selfId);
+        return [
+            'ownConsumptionCents' => (int) $rows->filter(fn (array $row): bool => $row['participant_id'] === $selfId)->sum('amount_cents'),
+            'paidForOthersCents' => $this->sumOutstanding($rows->filter(fn (array $row): bool => $row['payer_id'] === $selfId && $row['participant_id'] !== null && $row['participant_id'] !== $selfId), $applications),
+            'owedToOthersCents' => $this->sumOutstanding($rows->filter(fn (array $row): bool => $row['payer_id'] !== null && $row['payer_id'] !== $selfId && $row['participant_id'] === $selfId), $applications),
+        ];
     }
 
     /** @param Collection<int, array<string, mixed>> $rows
@@ -289,12 +296,12 @@ class BalanceService
             }
 
             if ($purchase->allocations->isEmpty()) {
-                $rows->push($this->row('purchase', $purchase->id, $purchase->purchased_at, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->description));
+                $rows->push($this->row('purchase', $purchase->id, $purchase->purchased_at, $purchase->amount_cents, $purchase->payer_id ?? $selfId, $purchase->participant_id ?? $selfId, $purchase->description, $purchase->paymentMethod?->type));
 
                 continue;
             }
             foreach ($purchase->allocations as $allocation) {
-                $rows->push($this->row('purchase_allocation', $allocation->id, $purchase->purchased_at, $allocation->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $purchase->description));
+                $rows->push($this->row('purchase_allocation', $allocation->id, $purchase->purchased_at, $allocation->amount_cents, $purchase->payer_id ?? $selfId, $allocation->participant_id ?? $selfId, $purchase->description, $purchase->paymentMethod?->type));
             }
         }
         foreach (InstallmentOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->with(['paymentMethod:id,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at', 'allocations'])->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
@@ -303,13 +310,13 @@ class BalanceService
             }
 
             if ($occurrence->allocations->isEmpty()) {
-                $rows->push($this->row('installment_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description));
+                $rows->push($this->row('installment_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type));
 
                 continue;
             }
 
             foreach ($occurrence->allocations as $allocation) {
-                $rows->push($this->row('installment_allocation', $allocation->id, $occurrence->purchased_at, $allocation->amount_cents, $occurrence->payer_id ?? $selfId, $allocation->participant_id ?? $occurrence->participant_id ?? $selfId, $occurrence->description));
+                $rows->push($this->row('installment_allocation', $allocation->id, $occurrence->purchased_at, $allocation->amount_cents, $occurrence->payer_id ?? $selfId, $allocation->participant_id ?? $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type));
             }
         }
         foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->whereNotNull('payment_method_id')->with(['paymentMethod:id,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from,retired_at'])->when($since, fn (Builder $query): Builder => $query->whereDate('purchased_at', '>=', $since))->when($until, fn (Builder $query): Builder => $query->whereDate('purchased_at', '<=', $until))->get() as $occurrence) {
@@ -317,7 +324,7 @@ class BalanceService
                 continue;
             }
 
-            $rows->push($this->row('recurrence_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description));
+            $rows->push($this->row('recurrence_occurrence', $occurrence->id, $occurrence->purchased_at, $occurrence->amount_cents, $occurrence->payer_id ?? $selfId, $occurrence->participant_id ?? $selfId, $occurrence->description, $occurrence->paymentMethod?->type));
         }
 
         return $rows;
@@ -332,7 +339,10 @@ class BalanceService
             $billingMonth->addMonthsNoOverflow(2)->endOfMonth(),
         );
 
-        return $this->expenseRows(null, null, $billingMonth->format('Y-m'));
+        $sourceFrom = $billingMonth->subMonthsNoOverflow(2)->startOfMonth();
+        $sourceUntil = $billingMonth->addMonthsNoOverflow(2)->endOfMonth();
+
+        return $this->expenseRows($sourceUntil, $sourceFrom, $billingMonth->format('Y-m'));
     }
 
     private function belongsToInvoice(Purchase|InstallmentOccurrence|RecurrenceOccurrence $item, string $selectedMonth): bool
@@ -395,10 +405,16 @@ class BalanceService
         return [...$row, 'applied_cents' => $applications[$row['key']] ?? 0, 'outstanding_cents' => max(0, $row['amount_cents'] - ($applications[$row['key']] ?? 0))];
     }
 
-    /** @return array<string, mixed> */
-    private function row(string $sourceType, int $sourceId, CarbonInterface $date, int $amountCents, int $payerId, ?int $participantId, string $description): array
+    /** @param Collection<int, array<string, mixed>> $rows */
+    private function sumOutstanding(Collection $rows, Collection $applications): int
     {
-        return ['key' => $sourceType.':'.$sourceId, 'source_type' => $sourceType, 'source_id' => $sourceId, 'purchased_at' => $date->toDateString(), 'amount_cents' => $amountCents, 'payer_id' => $payerId, 'participant_id' => $participantId, 'description' => $description];
+        return (int) $rows->sum(fn (array $row): int => max(0, $row['amount_cents'] - ($applications[$row['key']] ?? 0)));
+    }
+
+    /** @return array<string, mixed> */
+    private function row(string $sourceType, int $sourceId, CarbonInterface $date, int $amountCents, int $payerId, ?int $participantId, string $description, ?string $paymentMethodType): array
+    {
+        return ['key' => $sourceType.':'.$sourceId, 'source_type' => $sourceType, 'source_id' => $sourceId, 'purchased_at' => $date->toDateString(), 'amount_cents' => $amountCents, 'payer_id' => $payerId, 'participant_id' => $participantId, 'description' => $description, 'payment_method_type' => $paymentMethodType];
     }
 
     /** @param array<string, mixed> $debt */

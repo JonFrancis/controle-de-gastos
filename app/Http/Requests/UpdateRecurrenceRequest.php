@@ -34,7 +34,7 @@ class UpdateRecurrenceRequest extends FormRequest
     {
         $validator->after(function (Validator $validator): void {
             $recurrence = $this->route('recurrence');
-            if ($recurrence?->paymentMethod?->type === PaymentMethod::TYPE_LOAN && blank($this->input('due_date')) && blank($recurrence?->due_date)) {
+            if ($recurrence?->paymentMethod?->type === PaymentMethod::TYPE_LOAN && blank($this->input('due_date'))) {
                 $validator->errors()->add('due_date', 'Informe a data de vencimento do empréstimo.');
             }
         });
