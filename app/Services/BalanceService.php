@@ -267,6 +267,17 @@ class BalanceService
     }
 
     /** @return Collection<int, array<string, mixed>> */
+    public function debtItemsForBillingMonth(CarbonInterface $month): Collection
+    {
+        $selfId = $this->selfId();
+
+        return $this->expenseRowsForBillingMonth($month)
+            ->filter(fn (array $row): bool => $row['payer_id'] === $selfId && $row['participant_id'] !== null && $row['participant_id'] !== $selfId)
+            ->sortBy([['purchased_at', 'asc'], ['source_id', 'asc']])
+            ->values();
+    }
+
+    /** @return Collection<int, array<string, mixed>> */
     private function expenseRows(?CarbonInterface $until = null, ?CarbonInterface $since = null, ?string $invoiceMonth = null): Collection
     {
         $selfId = $this->selfId();
