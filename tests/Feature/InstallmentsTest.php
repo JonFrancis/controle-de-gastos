@@ -82,6 +82,37 @@ class InstallmentsTest extends TestCase
         $this->assertSame('2026-11-25', $occurrence->fresh()->due_date->toDateString());
     }
 
+    public function test_legacy_loan_installment_occurrence_exposes_and_persists_a_missing_due_date(): void
+    {
+        $loan = PaymentMethod::create(['name' => 'Empréstimo legado', 'type' => PaymentMethod::TYPE_LOAN]);
+        $this->post('/installments', [
+            'start_date' => '2026-10-12',
+            'description' => 'Empréstimo legado',
+            'total' => '60,00',
+            'installment_count' => 2,
+            'payment_method_id' => $loan->id,
+            'due_date' => '2026-10-20',
+        ])->assertRedirect('/installments');
+        $installment = Installment::query()->latest('id')->firstOrFail();
+        $occurrence = $installment->occurrences()->where('installment_number', 2)->firstOrFail();
+        $occurrence->update(['due_date' => null]);
+
+        $this->get("/installment-occurrences/{$occurrence->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Installments/OccurrenceForm')
+                ->where('occurrence.payment_method_type', PaymentMethod::TYPE_LOAN)
+                ->where('occurrence.due_date', null));
+
+        $this->patch("/installment-occurrences/{$occurrence->id}", [
+            'amount' => '31,00',
+            'due_date' => '2026-12-20',
+            'payment_method_type' => PaymentMethod::TYPE_LOAN,
+        ])->assertRedirect('/installments');
+
+        $this->assertSame(3100, $occurrence->fresh()->amount_cents);
+        $this->assertSame('2026-12-20', $occurrence->fresh()->due_date->toDateString());
+    }
+
     public function test_installment_preview_classifies_loan_occurrences_by_their_due_month(): void
     {
         $loan = PaymentMethod::create(['name' => 'Empréstimo do preview', 'type' => PaymentMethod::TYPE_LOAN]);

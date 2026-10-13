@@ -172,7 +172,7 @@ class BalanceService
     /** @param list<array{source_type: string, source_id: int, amount_cents: int}> $applications */
     public function replaceManualApplications(Receipt $receipt, array $applications): void
     {
-        $debts = $this->debtItems()->keyBy('key');
+        $debts = $this->billableDebtItems()->keyBy('key');
         $total = 0;
         $keys = [];
 
@@ -245,7 +245,7 @@ class BalanceService
         $selfId = $this->selfId();
         $rows = $this->expenseRows($until, $since);
 
-        return $this->participantBalancesFromRows($rows, $until, $since, $selfId);
+        return $this->participantBalancesFromRows($rows, $until, $since, $selfId, $this->billableDebtItems()->pluck('key')->flip());
     }
 
     /** @return list<ParticipantBalance> */
@@ -259,17 +259,17 @@ class BalanceService
             $billingMonth->endOfMonth(),
             null,
             $selfId,
+            $this->billableDebtItems()->pluck('key')->flip(),
         );
     }
 
     /** @param Collection<int, ExpenseRow> $rows
      * @return list<ParticipantBalance>
      */
-    private function participantBalancesFromRows(Collection $rows, CarbonInterface $until, ?CarbonInterface $since, int $selfId): array
+    private function participantBalancesFromRows(Collection $rows, CarbonInterface $until, ?CarbonInterface $since, int $selfId, Collection $debtKeys): array
     {
-        $billableDebtKeys = $this->debtItems()->pluck('key')->flip();
-        $applications = $this->applicationsUntil($until, $billableDebtKeys);
-        $receiptBalances = $this->receiptBalancesUntil($until, $billableDebtKeys);
+        $applications = $this->applicationsUntil($until, $debtKeys);
+        $receiptBalances = $this->receiptBalancesUntil($until, $debtKeys);
         $receiptMovements = $this->receiptMovements($until, $since);
 
         return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($rows, $applications, $receiptBalances, $receiptMovements, $selfId): array {
@@ -297,7 +297,7 @@ class BalanceService
     /** @return list<ReceiptRow> */
     public function receipts(CarbonInterface $until): array
     {
-        $billableDebtKeys = $this->debtItems()->pluck('key')->flip();
+        $billableDebtKeys = $this->billableDebtItems()->pluck('key')->flip();
 
         return Receipt::query()->whereNull('archived_at')->whereDate('received_at', '<=', $until)->with(['participant:id,name', 'applications' => function (HasMany $query): void {
             $query->whereNull('superseded_at');
@@ -320,15 +320,36 @@ class BalanceService
         })->all();
     }
 
-    /** @return Collection<int, ExpenseRow> */
+    /**
+     * Return the complete historical debt queue for receipt reconciliation.
+     *
+     * This query must not be bounded to a billing month: oldest-debt
+     * reconciliation needs earlier calendar periods before it can reach a
+     * later debt, and truncating the queue would apply receipts incorrectly.
+     * Invoice-oriented callers use billableDebtItems() instead.
+     *
+     * @return Collection<int, ExpenseRow>
+     */
     public function debtItems(): Collection
     {
         $selfId = $this->selfId();
 
         return $this->expenseRows()
-            ->filter(fn (array $row): bool => $this->isBillableDebt($row) && $row['payer_id'] === $selfId && $row['participant_id'] !== null && $row['participant_id'] !== $selfId)
+            ->filter(fn (array $row): bool => $row['payer_id'] === $selfId && $row['participant_id'] !== null && $row['participant_id'] !== $selfId)
             ->sortBy([['purchased_at', 'asc'], ['source_id', 'asc']])
             ->values();
+    }
+
+    /**
+     * Return only debt rows that belong to the invoice-oriented balances flow.
+     *
+     * The general debt queue intentionally remains unbounded and includes every
+     * payment method: automatic receipt reconciliation must see the complete
+     * historical queue to preserve oldest-debt application order.
+     */
+    public function billableDebtItems(): Collection
+    {
+        return $this->debtItems()->filter(fn (array $debt): bool => $this->isBillableDebt($debt))->values();
     }
 
     /** @return Collection<int, ExpenseRow> */

@@ -430,7 +430,7 @@ class BalancesTest extends TestCase
             ->where('receipts.0.creditCents', 4000));
     }
 
-    public function test_receipts_do_not_reconcile_or_manually_apply_non_billable_items(): void
+    public function test_receipt_reconciliation_handles_non_billable_items_but_invoice_adjustments_reject_them(): void
     {
         [$self, $maria] = $this->catalogs();
         $allocations = collect([PaymentMethod::TYPE_PIX, PaymentMethod::TYPE_DEBIT, PaymentMethod::TYPE_CASH, PaymentMethod::TYPE_OTHER])->map(function (string $type, int $index) use ($self, $maria): PurchaseAllocation {
@@ -443,7 +443,7 @@ class BalancesTest extends TestCase
             ->assertRedirect('/balances');
 
         $receipt = Receipt::query()->firstOrFail();
-        $this->assertSame(0, ReceiptApplication::query()->where('receipt_id', $receipt->id)->whereNull('superseded_at')->count());
+        $this->assertSame(4, ReceiptApplication::query()->where('receipt_id', $receipt->id)->whereNull('superseded_at')->count());
 
         $this->from("/receipts/{$receipt->id}/edit")->put("/receipts/{$receipt->id}/applications", [
             'applications' => [[
@@ -456,6 +456,26 @@ class BalancesTest extends TestCase
         $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 0)
             ->where('participants.0.creditCents', 4000));
+    }
+
+    public function test_receipt_application_contract_materializes_outstanding_cents(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $allocation = $this->purchase('2026-10-06', 5000, $self, [[$maria, 5000]])->allocations()->firstOrFail();
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-10', 'amount_cents' => 2000]);
+        ReceiptApplication::create([
+            'receipt_id' => $receipt->id,
+            'source_type' => 'purchase_allocation',
+            'source_id' => $allocation->id,
+            'purchase_allocation_id' => $allocation->id,
+            'amount_cents' => 2000,
+            'source' => 'manual',
+        ]);
+
+        $this->get("/receipts/{$receipt->id}/edit?month=2026-10")
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('debts.0.applied_cents', 2000)
+                ->where('debts.0.outstanding_cents', 3000));
     }
 
     public function test_balance_details_include_card_fallback_and_loan_due_dates_without_replacing_purchase_dates(): void

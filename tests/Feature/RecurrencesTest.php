@@ -135,6 +135,38 @@ class RecurrencesTest extends TestCase
             );
     }
 
+    public function test_legacy_loan_recurrence_occurrence_exposes_and_persists_a_missing_due_date(): void
+    {
+        $loan = PaymentMethod::create(['name' => 'Empréstimo recorrente legado', 'type' => PaymentMethod::TYPE_LOAN]);
+        $this->post('/recurrences', [
+            'start_date' => '2026-10-12',
+            'end_date' => null,
+            'day_of_month' => 12,
+            'description' => 'Empréstimo recorrente legado',
+            'amount' => '100,00',
+            'payment_method_id' => $loan->id,
+            'due_date' => '2026-10-20',
+        ])->assertRedirect('/recurrences');
+        $recurrence = Recurrence::query()->latest('id')->firstOrFail();
+        $occurrence = $recurrence->occurrences()->firstOrFail();
+        $occurrence->update(['due_date' => null]);
+
+        $this->get("/recurrence-occurrences/{$occurrence->id}/edit")
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Recurrences/OccurrenceForm')
+                ->where('occurrence.payment_method_type', PaymentMethod::TYPE_LOAN)
+                ->where('occurrence.due_date', null));
+
+        $this->patch("/recurrence-occurrences/{$occurrence->id}", [
+            'amount' => '101,00',
+            'due_date' => '2026-12-20',
+            'payment_method_type' => PaymentMethod::TYPE_LOAN,
+        ])->assertRedirect('/recurrences');
+
+        $this->assertSame(10100, $occurrence->fresh()->amount_cents);
+        $this->assertSame('2026-12-20', $occurrence->fresh()->due_date->toDateString());
+    }
+
     public function test_deactivating_a_recurrence_preserves_past_occurrences_and_hides_future_ones(): void
     {
         $this->travelTo('2026-10-15 12:00:00');

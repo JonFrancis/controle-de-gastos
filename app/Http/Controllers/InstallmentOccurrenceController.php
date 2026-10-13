@@ -55,8 +55,21 @@ class InstallmentOccurrenceController extends Controller
             ]);
         }
 
+        $occurrence = $installmentOccurrence->load(['installment:id,description,installment_count', 'paymentMethod:id,type']);
+
         return Inertia::render('Installments/OccurrenceForm', [
-            'occurrence' => $installmentOccurrence->load('installment:id,description,installment_count'),
+            'occurrence' => [
+                'id' => $occurrence->id,
+                'installment_number' => $occurrence->installment_number,
+                'purchased_at' => $occurrence->purchased_at->toDateString(),
+                'due_date' => $occurrence->due_date?->toDateString(),
+                'amount_cents' => $occurrence->amount_cents,
+                'installment' => [
+                    'description' => $occurrence->installment->description,
+                    'installment_count' => $occurrence->installment->installment_count,
+                ],
+                'payment_method_type' => $occurrence->paymentMethod?->type,
+            ],
         ]);
     }
 
@@ -65,7 +78,12 @@ class InstallmentOccurrenceController extends Controller
         $oldValues = $installmentOccurrence->getAttributes();
         $oldAllocations = $installmentOccurrence->allocations()->get()->map(fn (InstallmentAllocation $allocation): array => $allocation->getAttributes())->all();
         $amount = (int) round(((float) $request->validated('amount')) * 100);
-        $installmentOccurrence->update(['amount_cents' => $amount, 'due_date' => $request->validated('due_date') ?? $installmentOccurrence->due_date?->toDateString(), 'is_adjusted' => true]);
+        $data = $request->validated();
+        $installmentOccurrence->update([
+            'amount_cents' => $amount,
+            'due_date' => array_key_exists('due_date', $data) ? ($data['due_date'] ?: null) : $installmentOccurrence->due_date?->toDateString(),
+            'is_adjusted' => true,
+        ]);
         $allocations->redistributeOccurrence($installmentOccurrence);
         $balanceService->reconcileAll();
         $audit->record(AuditLog::ACTION_UPDATE, $installmentOccurrence, oldValues: $oldValues, newValues: $installmentOccurrence->fresh()->getAttributes(), metadata: [
