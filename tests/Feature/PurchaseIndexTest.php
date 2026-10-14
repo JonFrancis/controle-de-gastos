@@ -243,6 +243,34 @@ class PurchaseIndexTest extends TestCase
             );
     }
 
+    public function test_historical_invoice_context_uses_the_closing_day_active_on_the_selected_closing_date(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão com mudança de fechamento', 5, 20);
+        $card->invoiceSettings()->create([
+            'closing_day' => 10,
+            'due_day' => 20,
+            'effective_from' => '2026-10-06',
+        ]);
+        $card->update(['closing_day' => 10]);
+        $this->createPurchase($self, $card, 'Compra na configuração histórica', '2026-09-06', 1500);
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-10',
+            'view' => 'invoice',
+            'payment_method_id' => $card->id,
+            'closing_date' => '2026-10-05',
+        ]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('invoiceContext.paymentMethodId', $card->id)
+                ->where('invoiceContext.closingDate', '2026-10-05')
+                ->where('invoiceContext.closingDay', 5)
+                ->where('invoiceGroups.0.paymentMethodId', $card->id)
+                ->where('invoiceGroups.0.closingDate', '2026-10-05')
+                ->where('invoiceGroups.0.totalCents', 1500)
+            );
+    }
+
     public function test_invoice_context_exposes_the_configured_closing_day_when_closing_date_is_month_end(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
