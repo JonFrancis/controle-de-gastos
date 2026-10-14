@@ -274,6 +274,51 @@ class PurchaseIndexTest extends TestCase
             );
     }
 
+    public function test_invoice_navigation_preserves_context_through_an_empty_month_before_reconciling_the_returning_cycle(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão com mês vazio', 5, 20);
+        $this->createPurchase($self, $card, 'Compra do ciclo anterior', '2026-09-06', 1200);
+        $card->invoiceSettings()->create([
+            'closing_day' => 10,
+            'due_day' => 20,
+            'effective_from' => '2026-10-06',
+        ]);
+        $card->update(['closing_day' => 10]);
+        $this->createPurchase($self, $card, 'Compra do ciclo seguinte', '2026-11-11', 1800);
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-10',
+            'view' => 'invoice',
+            'payment_method_id' => $card->id,
+            'closing_date' => '2026-10-05',
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->where('invoiceContext.closingDate', '2026-10-05')
+            ->where('invoiceGroups.0.closingDate', '2026-10-05'));
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-11',
+            'view' => 'invoice',
+            'payment_method_id' => $card->id,
+            'closing_date' => '2026-11-05',
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->has('invoiceGroups', 0)
+            ->where('invoiceContext.paymentMethodId', $card->id)
+            ->where('invoiceContext.closingDate', '2026-11-05')
+            ->where('invoiceContext.closingDay', 10));
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-12',
+            'view' => 'invoice',
+            'payment_method_id' => $card->id,
+            'closing_date' => '2026-12-05',
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->where('invoiceGroups.0.closingDate', '2026-12-10')
+            ->where('invoiceGroups.0.totalCents', 1800)
+            ->where('invoiceContext.closingDate', '2026-12-10')
+            ->where('invoiceContext.closingDay', 10));
+    }
+
     public function test_historical_invoice_context_uses_the_closing_day_active_on_the_selected_closing_date(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();

@@ -180,8 +180,12 @@ class PurchaseListingService
     {
         $matchingItems = $invoiceItems->filter(fn (array $item): bool => $item['closingDate'] === $closingDate)->values();
 
-        if ($matchingItems->isNotEmpty() || $paymentMethodId === null) {
-            return [$matchingItems, $matchingItems->isNotEmpty() ? $closingDate : null];
+        if ($matchingItems->isNotEmpty()) {
+            return [$matchingItems, $closingDate];
+        }
+
+        if ($invoiceItems->isEmpty() || $paymentMethodId === null) {
+            return [$matchingItems, $closingDate];
         }
 
         $availableDates = $invoiceItems
@@ -190,10 +194,14 @@ class PurchaseListingService
             ->unique()
             ->values();
 
+        if ($availableDates->isEmpty()) {
+            $availableDates = $invoiceItems->pluck('closingDate')->unique()->values();
+        }
+
         if ($availableDates->isNotEmpty()) {
             $invoiceItems = $invoiceItems->filter(fn (array $item): bool => $availableDates->contains($item['closingDate']))->values();
         }
 
-        return [$invoiceItems, $availableDates->count() === 1 ? $availableDates->first() : null];
+        return [$invoiceItems, $availableDates->count() === 1 ? $availableDates->first() : $closingDate];
     }
 }
