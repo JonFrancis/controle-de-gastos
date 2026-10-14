@@ -1,5 +1,7 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
+import type { ChangeEvent } from 'react';
+import { dashboardMonthUrl } from './dashboardMonthNavigation';
 
 type Props = {
     selectedMonth: string;
@@ -45,6 +47,39 @@ const navigation = (selectedMonth: string, balancesUrl: string) => [
 ];
 
 export default function Dashboard({ selectedMonth, balancesUrl, view, pendingReview, pendingReviewUrl, invoiceListUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
+    const [month, setMonth] = useState(selectedMonth);
+    const [monthRequestPending, setMonthRequestPending] = useState(false);
+    const [monthRequestFailed, setMonthRequestFailed] = useState(false);
+    const markMonthRequestFailed = () => {
+        setMonthRequestFailed(true);
+
+        return false;
+    };
+
+    const requestMonth = (nextMonth: string) => {
+        if (!nextMonth || (nextMonth === selectedMonth && !monthRequestFailed)) {
+            return;
+        }
+
+        setMonth(nextMonth);
+        setMonthRequestPending(true);
+        setMonthRequestFailed(false);
+
+        router.visit(dashboardMonthUrl(nextMonth, view, charts.selectedCategoryId), {
+            replace: true,
+            preserveState: true,
+            preserveScroll: true,
+            onError: () => setMonthRequestFailed(true),
+            onHttpException: markMonthRequestFailed,
+            onNetworkError: markMonthRequestFailed,
+            onFinish: () => setMonthRequestPending(false),
+        });
+    };
+
+    const handleMonthChange = (event: ChangeEvent<HTMLInputElement>) => {
+        requestMonth(event.currentTarget.value);
+    };
+
     return (
         <>
             <Head title={view === 'invoice' ? 'Faturas' : 'Visão geral'} />
@@ -80,12 +115,12 @@ export default function Dashboard({ selectedMonth, balancesUrl, view, pendingRev
                                 <p className="mt-2 text-sm text-slate-400">{view === 'invoice' ? 'Consulte as faturas pelo mês de vencimento.' : 'Consulte os lançamentos pelo mês-calendário.'}</p>
                             </div>
                             <div className="flex flex-wrap items-center gap-3">
-                                <form method="get" action="/" className="flex items-center gap-2">
-                                    <input type="hidden" name="view" value={view} />
+                                <div className="flex flex-wrap items-center gap-2" aria-busy={monthRequestPending}>
                                     <label htmlFor="dashboard-month" className="sr-only">{view === 'invoice' ? 'Mês de vencimento' : 'Mês'}</label>
-                                    <input id="dashboard-month" type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white" />
-                                    <button className="rounded-xl border border-white/10 px-3 py-2.5 text-sm text-slate-200">Aplicar</button>
-                                </form>
+                                    <input id="dashboard-month" type="month" name="month" value={month} onChange={handleMonthChange} disabled={monthRequestPending} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white disabled:cursor-wait disabled:opacity-60" />
+                                    {monthRequestPending && <span role="status" aria-live="polite" className="text-xs text-slate-400">Atualizando…</span>}
+                                    {monthRequestFailed && !monthRequestPending && <span role="alert" className="flex items-center gap-2 text-xs text-amber-300">Não foi possível atualizar. <button type="button" onClick={() => requestMonth(month)} className="font-semibold underline underline-offset-2">Tentar novamente</button></span>}
+                                </div>
                                 <Link href="/purchases/create" className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-400/10">＋ Nova compra</Link>
                                 <Link href={`/receipts/create?month=${selectedMonth}`} className="rounded-xl border border-emerald-300/30 px-4 py-2.5 text-sm font-semibold text-emerald-300">＋ Registrar recebimento</Link>
                             </div>

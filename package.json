@@ -5,7 +5,7 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "test:frontend": "node --test resources/js/Components/installmentAllocationRows.test.mjs"
+        "test:frontend": "node --experimental-strip-types --test resources/js/Components/installmentAllocationRows.test.mjs resources/js/Pages/dashboardMonthNavigation.test.mjs"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
