@@ -172,9 +172,9 @@ class BalanceService
     }
 
     /** @param list<array{source_type: string, source_id: int, amount_cents: int}> $applications */
-    public function replaceManualApplications(Receipt $receipt, array $applications): void
+    public function replaceManualApplications(Receipt $receipt, array $applications, bool $billingOnly = true): void
     {
-        $debts = $this->billableDebtItems()->keyBy('key');
+        $debts = ($billingOnly ? $this->billableDebtItems() : $this->debtItems())->keyBy('key');
         $activeApplications = $receipt->applications()->get();
         $total = 0;
         $keys = [];
@@ -371,6 +371,18 @@ class BalanceService
         return $this->expenseRowsForBillingMonth($month)
             ->filter(fn (array $row): bool => $this->isBillableDebt($row) && $row['payer_id'] === $selfId && $row['participant_id'] !== null && $row['participant_id'] !== $selfId)
             ->sortBy([['purchased_at', 'asc'], ['source_id', 'asc']])
+            ->values();
+    }
+
+    /** @return Collection<int, ExpenseRow> */
+    public function debtItemsForCalendarMonth(CarbonInterface $month): Collection
+    {
+        $calendarMonth = CarbonImmutable::instance($month);
+        $start = $calendarMonth->startOfMonth()->toDateString();
+        $until = $calendarMonth->endOfMonth()->toDateString();
+
+        return $this->debtItems()
+            ->filter(fn (array $row): bool => $row['purchased_at'] >= $start && $row['purchased_at'] <= $until)
             ->values();
     }
 

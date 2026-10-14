@@ -110,6 +110,10 @@ _Evitar_: erro, inválido.
 Estado de uma compra ou ocorrência que deixa de participar dos cálculos ativos sem perder seu histórico.
 _Evitar_: exclusão lógica quando estiver falando com o usuário.
 
+**Exclusão permanente**:
+Remoção definitiva de um parcelamento e das ocorrências que formam sua série, sem preservação do histórico do parcelamento.
+_Evitar_: arquivamento, encerramento.
+
 **Fila de revisão**:
 Conjunto de lançamentos incompletos, ambíguos ou potencialmente duplicados que aguardam decisão do usuário.
 _Evitar_: erros de importação.

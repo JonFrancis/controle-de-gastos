@@ -28,7 +28,7 @@ class InvoiceBillingRegressionTest extends TestCase
         $this->purchase('2026-08-21', 'Fatura de outubro do segundo cartão', 7000, $self, $maria, $cardWithLateClosing);
         $this->purchase('2026-09-21', 'Fatura de novembro do segundo cartão', 11000, $self, $maria, $cardWithLateClosing);
 
-        $this->get('/balances?month=2026-10')
+        $this->get('/balances?month=2026-10&view=invoice')
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 12000)
@@ -39,7 +39,7 @@ class InvoiceBillingRegressionTest extends TestCase
                 ->where('participants.0.receivableItems.1.description', 'Fatura de outubro do segundo cartão')
                 ->where('participants.0.receivableItems.1.due_date', '2026-10-05'));
 
-        $this->get('/balances?month=2026-11')
+        $this->get('/balances?month=2026-11&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 11000)
                 ->where('participants.0.receivableCents', 11000)
@@ -95,7 +95,7 @@ class InvoiceBillingRegressionTest extends TestCase
             'payment_method_id' => $loan->id,
         ]);
 
-        $this->get('/balances?month=2026-10')
+        $this->get('/balances?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 26000)
                 ->where('participants.0.receivableCents', 26000)
@@ -115,11 +115,11 @@ class InvoiceBillingRegressionTest extends TestCase
         $this->purchase('2026-10-04', 'Compra antes da troca', 1000, $self, $maria, $card);
         $this->purchase('2026-10-15', 'Compra depois da troca', 2000, $self, $maria, $card);
 
-        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('summary.paidForOthersCents', 1000)
             ->where('participants.0.receivableItems.0.description', 'Compra antes da troca'));
 
-        $this->get('/balances?month=2026-11')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-11&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('summary.paidForOthersCents', 2000)
             ->where('participants.0.receivableItems.0.description', 'Compra depois da troca'));
     }
@@ -138,7 +138,7 @@ class InvoiceBillingRegressionTest extends TestCase
             $this->purchase('2026-10-12', $description, 1000, $self, $maria, $method);
         }
 
-        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('summary.paidForOthersCents', 0)
             ->where('participants.0.hasMovement', false));
 
@@ -172,7 +172,7 @@ class InvoiceBillingRegressionTest extends TestCase
             'source' => 'manual',
         ]);
 
-        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 3000)
             ->where('participants.0.receivableItems.0.applied_cents', 2000)
             ->where('participants.0.receivableItems.0.outstanding_cents', 3000)
@@ -180,7 +180,7 @@ class InvoiceBillingRegressionTest extends TestCase
 
         $this->purchase('2026-10-06', 'Fatura seguinte', 7000, $self, $maria, $card);
 
-        $this->get('/balances?month=2026-11')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-11&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 7000)
             ->where('participants.0.receivableItems.0.applied_cents', 0)
             ->where('participants.0.receivableItems.0.outstanding_cents', 7000)
@@ -235,7 +235,7 @@ class InvoiceBillingRegressionTest extends TestCase
             'payment_method_id' => null,
         ]);
 
-        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('summary.paidForOthersCents', 0)
             ->where('participants.0.receivableCents', 0)
             ->where('participants.0.hasMovement', false));

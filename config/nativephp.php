@@ -3,7 +3,7 @@
 use App\Providers\NativeAppServiceProvider;
 
 return [
-    'version' => env('NATIVEPHP_APP_VERSION', '1.0.0'),
+    'version' => env('NATIVEPHP_APP_VERSION', '1.0.2'),
     'app_id' => env('NATIVEPHP_APP_ID', 'com.controlegastos.desktop'),
     'author' => env('NATIVEPHP_APP_AUTHOR', 'Controle de Gastos'),
     'copyright' => env('NATIVEPHP_APP_COPYRIGHT', 'Controle de Gastos'),

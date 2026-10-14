@@ -33,17 +33,21 @@ class ReceiptController extends Controller
         $selectedMonth = $this->validMonth($request->query('month'));
         $receipt->load(['participant', 'applications']);
         $applied = $receipt->applications->keyBy(fn ($application): string => $application->source_type.':'.$application->source_id);
-        $billingMonth = Carbon::createFromFormat('!Y-m', $selectedMonth);
-        $billableDebtItems = $service->billableDebtItems();
+        $month = Carbon::createFromFormat('!Y-m', $selectedMonth);
+        $view = $this->view($request);
+        $allDebtItems = $view === 'invoice' ? $service->billableDebtItems() : $service->debtItems();
         $applicationTotals = ReceiptApplication::query()
             ->whereNull('superseded_at')
             ->whereHas('receipt', fn (Builder $query): Builder => $query->whereNull('archived_at'))
             ->get()
             ->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)
             ->map(fn (Collection $applications): int => (int) $applications->sum('amount_cents'));
-        $debts = $service->debtItemsForBillingMonth($billingMonth)
+        $selectedDebts = $view === 'invoice'
+            ? $service->debtItemsForBillingMonth($month)
+            : $service->debtItemsForCalendarMonth($month);
+        $debts = $selectedDebts
             ->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id)
-            ->concat($billableDebtItems
+            ->concat($allDebtItems
                 ->filter(fn (array $debt): bool => $debt['participant_id'] === $receipt->participant_id
                     && $applied->has($debt['key']))
             )
@@ -58,6 +62,7 @@ class ReceiptController extends Controller
 
         return Inertia::render('Balances/ReceiptApplications', [
             'selectedMonth' => $selectedMonth,
+            'view' => $view,
             'receipt' => [
                 'id' => $receipt->id,
                 'participant' => ['name' => $receipt->participant->name],
@@ -84,10 +89,10 @@ class ReceiptController extends Controller
     {
         $oldApplications = $receipt->applications()->get()->toArray();
         $applications = collect($request->validated('applications', []))->map(fn (array $application): array => [...$application, 'source_id' => (int) $application['source_id'], 'amount_cents' => $this->moneyToCents($application['amount'])])->all();
-        $service->replaceManualApplications($receipt, $applications);
+        $service->replaceManualApplications($receipt, $applications, $this->view($request) === 'invoice');
         $audit->record(AuditLog::ACTION_UPDATE, $receipt, oldValues: ['applications' => $oldApplications], newValues: ['applications' => $receipt->fresh()->applications()->get()->toArray()], metadata: ['type' => 'receipt_applications']);
 
-        return to_route('balances', array_filter(['month' => $request->query('month')]))->with('success', 'Aplicações do recebimento ajustadas.');
+        return to_route('balances', array_filter(['month' => $request->query('month'), 'view' => $request->query('view')]))->with('success', 'Aplicações do recebimento ajustadas.');
     }
 
     private function moneyToCents(string|int $value): int
@@ -113,5 +118,10 @@ class ReceiptController extends Controller
         }
 
         return $month->format('Y-m') === $candidate ? $candidate : now()->format('Y-m');
+    }
+
+    private function view(Request $request): string
+    {
+        return $request->query('view') === 'invoice' ? 'invoice' : 'calendar';
     }
 }

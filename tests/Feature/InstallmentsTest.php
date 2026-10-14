@@ -1118,6 +1118,47 @@ class InstallmentsTest extends TestCase
         $this->get('/purchases?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page->where('monthTotalCents', 3333)->has('occurrences', 1));
     }
 
+    public function test_installment_can_be_deleted_with_all_related_records_and_receipt_applications(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $maria = Participant::create(['name' => 'Maria']);
+        $paymentMethod = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $installment = Installment::create([
+            'start_date' => '2026-10-01',
+            'description' => 'Parcelamento para excluir',
+            'total_cents' => 10000,
+            'installment_count' => 2,
+            'payer_id' => $self->id,
+            'payment_method_id' => $paymentMethod->id,
+        ]);
+        $occurrences = $installment->occurrences()->createMany([
+            ['installment_number' => 1, 'purchased_at' => '2026-10-01', 'description' => $installment->description, 'amount_cents' => 5000, 'payer_id' => $self->id, 'participant_id' => $maria->id, 'payment_method_id' => $paymentMethod->id],
+            ['installment_number' => 2, 'purchased_at' => '2026-11-01', 'description' => $installment->description, 'amount_cents' => 5000, 'payer_id' => $self->id, 'participant_id' => $maria->id, 'payment_method_id' => $paymentMethod->id],
+        ]);
+        $allocations = $occurrences->map(fn (InstallmentOccurrence $occurrence): InstallmentAllocation => InstallmentAllocation::create([
+            'installment_occurrence_id' => $occurrence->id,
+            'participant_id' => $maria->id,
+            'amount_cents' => $occurrence->amount_cents,
+        ]));
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-10', 'amount_cents' => 5000]);
+        $application = ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'installment_allocation', 'source_id' => $allocations->first()->id, 'amount_cents' => 5000, 'source' => 'manual']);
+
+        $this->delete("/installments/{$installment->id}")
+            ->assertRedirect('/installments')
+            ->assertSessionHas('success', 'Parcelamento excluído com sucesso.');
+
+        $this->assertDatabaseMissing('installments', ['id' => $installment->id]);
+        $this->assertDatabaseMissing('installment_occurrences', ['installment_id' => $installment->id]);
+        $this->assertDatabaseMissing('installment_allocations', ['id' => $allocations->first()->id]);
+        $this->assertDatabaseMissing('receipt_applications', ['id' => $application->id]);
+        $this->assertDatabaseHas('receipts', ['id' => $receipt->id]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => AuditLog::ACTION_DELETE,
+            'auditable_type' => Installment::class,
+            'auditable_id' => $installment->id,
+        ]);
+    }
+
     private function createInstallment(PaymentMethod $paymentMethod, string $startDate, int $count): Installment
     {
         $this->post('/installments', [
