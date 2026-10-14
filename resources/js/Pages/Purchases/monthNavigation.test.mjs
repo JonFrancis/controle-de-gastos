@@ -1,0 +1,66 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { visitPurchaseMonth } from './monthNavigation.ts';
+
+test('changes an invoice month without losing its payment method and derives the new closing date', () => {
+    let request = [];
+
+    visitPurchaseMonth(
+        { get: (...args) => { request = args; } },
+        '2026-11',
+        'invoice',
+        '2026-10',
+        { paymentMethodId: 7, closingDate: '2026-10-05' },
+    );
+
+    assert.deepEqual(request, [
+        '/purchases',
+        {
+            month: '2026-11',
+            view: 'invoice',
+            payment_method_id: 7,
+            closing_date: '2026-11-05',
+        },
+        { replace: true, preserveState: true, preserveScroll: true },
+    ]);
+});
+
+test('caps a derived invoice closing date at the target month end', () => {
+    let request = [];
+
+    visitPurchaseMonth(
+        { get: (...args) => { request = args; } },
+        '2026-11',
+        'invoice',
+        '2026-10',
+        { paymentMethodId: 7, closingDate: '2026-10-31' },
+    );
+
+    assert.strictEqual(request[1].closing_date, '2026-11-30');
+});
+
+test('forwards visit lifecycle callbacks so a failed invoice month can be retried', () => {
+    const callbacks = {
+        onStart: () => {},
+        onError: () => {},
+        onHttpException: () => {},
+        onNetworkError: () => {},
+        onFinish: () => {},
+    };
+    let request = [];
+
+    visitPurchaseMonth(
+        { get: (...args) => { request = args; } },
+        '2026-11',
+        'invoice',
+        '2026-10',
+        { paymentMethodId: 7, closingDate: '2026-10-05' },
+        callbacks,
+    );
+
+    assert.strictEqual(request[2].onStart, callbacks.onStart);
+    assert.strictEqual(request[2].onError, callbacks.onError);
+    assert.strictEqual(request[2].onHttpException, callbacks.onHttpException);
+    assert.strictEqual(request[2].onNetworkError, callbacks.onNetworkError);
+    assert.strictEqual(request[2].onFinish, callbacks.onFinish);
+});

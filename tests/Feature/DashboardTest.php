@@ -51,6 +51,15 @@ class DashboardTest extends TestCase
             );
     }
 
+    public function test_direct_dashboard_url_preserves_the_requested_month_and_invoice_view(): void
+    {
+        $this->get(route('dashboard', ['month' => '2026-12', 'view' => 'invoice']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Dashboard')
+                ->where('selectedMonth', '2026-12')
+                ->where('view', 'invoice'));
+    }
+
     public function test_dashboard_calendar_applies_receipts_to_non_billable_debts(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();

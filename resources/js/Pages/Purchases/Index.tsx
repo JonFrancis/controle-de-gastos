@@ -1,5 +1,6 @@
 import { Form, Head, Link, router } from '@inertiajs/react';
 import { useState, type ChangeEvent } from 'react';
+import { purchaseNavigationUrl, visitPurchaseMonth, type InvoiceContext } from './monthNavigation';
 
 type ExpenseItem = {
     id: number;
@@ -43,18 +44,6 @@ type Props = {
     flash?: { success?: string };
 };
 
-type InvoiceContext = {
-    paymentMethodId: number | null;
-    closingDate: string | null;
-};
-
-type PurchaseQuery = {
-    month: string;
-    view: 'calendar' | 'invoice';
-    payment_method_id?: number;
-    closing_date?: string;
-};
-
 export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthTotalCents, purchases, occurrences, invoiceGroups, invoiceContext, flash }: Props) {
     const itemCount = purchases.length + occurrences.length;
     const [month, setMonth] = useState(selectedMonth);
@@ -66,10 +55,7 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
         setError(null);
         setProcessing(true);
 
-        router.get('/purchases', purchaseQuery(nextMonth, view, invoiceContext), {
-            replace: true,
-            preserveState: true,
-            preserveScroll: true,
+        visitPurchaseMonth(router, nextMonth, view, selectedMonth, invoiceContext, {
             onSuccess: () => setError(null),
             onError: () => setError('Não foi possível carregar este mês.'),
             onHttpException: () => {
@@ -126,8 +112,8 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
                                 <p className="mt-1 text-sm text-slate-400">{view === 'invoice' ? `${invoiceGroups.length} fatura(s)` : `${itemCount} lançamento(s)`} · total de <strong className="text-emerald-300">{formatMoney(monthTotalCents)}</strong></p>
                             </div>
                             <div className="flex rounded-xl border border-white/10 bg-white/5 p-1 text-sm" aria-label="Visão de compras">
-                                <Link href={purchaseUrl(month, 'calendar')} className={`rounded-lg px-3 py-2 ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Movimentações</Link>
-                                <Link href={purchaseUrl(month, 'invoice', invoiceContext)} className={`rounded-lg px-3 py-2 ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Faturas</Link>
+                                <Link href={purchaseNavigationUrl(month, 'calendar')} className={`rounded-lg px-3 py-2 ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Movimentações</Link>
+                                <Link href={purchaseNavigationUrl(month, 'invoice', invoiceContext)} className={`rounded-lg px-3 py-2 ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Faturas</Link>
                             </div>
                         </div>
 
@@ -137,28 +123,6 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
             </main>
         </>
     );
-}
-
-function purchaseQuery(month: string, view: 'calendar' | 'invoice', invoiceContext: InvoiceContext | null): PurchaseQuery {
-    const query: PurchaseQuery = { month, view };
-
-    if (view === 'invoice' && invoiceContext?.paymentMethodId !== null && invoiceContext?.paymentMethodId !== undefined) {
-        query.payment_method_id = invoiceContext.paymentMethodId;
-    }
-
-    if (view === 'invoice' && invoiceContext?.closingDate) {
-        query.closing_date = invoiceContext.closingDate;
-    }
-
-    return query;
-}
-
-function purchaseUrl(month: string, view: 'calendar' | 'invoice', invoiceContext: InvoiceContext | null = null): string {
-    return `/purchases?${new URLSearchParams(stringifyQuery(purchaseQuery(month, view, invoiceContext))).toString()}`;
-}
-
-function stringifyQuery(query: PurchaseQuery): Record<string, string> {
-    return Object.fromEntries(Object.entries(query).map(([key, value]) => [key, String(value)]));
 }
 
 function CalendarPurchases({ purchases, occurrences }: { purchases: ExpenseItem[]; occurrences: ExpenseItem[] }) {

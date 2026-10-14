@@ -22,7 +22,7 @@ test('keeps the locally selected month in Dashboard navigation after a failed vi
         analysis: '/analysis?month=2026-11&view=invoice',
         purchasesInvoice: '/purchases?month=2026-11&view=invoice',
         purchasesCalendar: '/purchases?month=2026-11&view=calendar',
-        overview: '/?month=2026-11&view=calendar',
+        overview: '/?month=2026-11&view=invoice',
         receipt: '/receipts/create?month=2026-11',
     });
 });

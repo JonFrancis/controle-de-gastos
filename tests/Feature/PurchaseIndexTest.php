@@ -51,6 +51,15 @@ class PurchaseIndexTest extends TestCase
             );
     }
 
+    public function test_direct_purchases_url_preserves_the_requested_month_and_invoice_view(): void
+    {
+        $this->get(route('purchases.index', ['month' => '2026-12', 'view' => 'invoice']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Purchases/Index')
+                ->where('selectedMonth', '2026-12')
+                ->where('view', 'invoice'));
+    }
+
     public function test_purchases_page_defaults_to_faturas_by_due_month(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();

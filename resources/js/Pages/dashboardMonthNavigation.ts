@@ -25,7 +25,7 @@ export function dashboardNavigationUrls(month: string, view: DashboardView): Das
         analysis: `/analysis?month=${month}&view=${view}`,
         purchasesInvoice: `/purchases?month=${month}&view=invoice`,
         purchasesCalendar: `/purchases?month=${month}&view=calendar`,
-        overview: `/?month=${month}&view=calendar`,
+        overview: `/?month=${month}&view=${view}`,
         receipt: `/receipts/create?month=${month}`,
     };
 }

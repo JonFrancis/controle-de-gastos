@@ -52,6 +52,15 @@ class MonthlyAnalysisTest extends TestCase
             );
     }
 
+    public function test_direct_analysis_url_preserves_the_requested_month_and_invoice_view(): void
+    {
+        $this->get(route('analysis', ['month' => '2026-12', 'view' => 'invoice']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Analysis/Index')
+                ->where('selectedMonth', '2026-12')
+                ->where('view', 'invoice'));
+    }
+
     public function test_calendar_analysis_reconciles_people_totals_categories_origins_and_card_name(): void
     {
         [$self, $maria, $pix, $casa] = $this->catalogs();
