@@ -26,13 +26,14 @@ class PurchaseController extends Controller
         $selectedMonth = $this->validMonth($request->query('month'));
         $view = $request->query('view') === 'calendar' ? 'calendar' : 'invoice';
         $selfId = Participant::query()->where('is_default', true)->value('id');
+        $paymentMethodId = $request->integer('payment_method_id') ?: null;
         $closingDate = $request->query('closing_date');
         $closingDate = is_string($closingDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $closingDate) === 1 ? $closingDate : null;
         $purchaseListing = $purchaseListingService->forMonth(
             $selectedMonth,
             $view,
             $selfId,
-            $request->integer('payment_method_id') ?: null,
+            $paymentMethodId,
             $closingDate,
         );
         $month = $purchaseListing['month'];
@@ -46,6 +47,10 @@ class PurchaseController extends Controller
                 : 'Movimentação de '.ucfirst($month->locale('pt_BR')->translatedFormat('F \d\e Y')),
             'selectedMonth' => $selectedMonth,
             'view' => $view,
+            'invoiceContext' => $view === 'invoice' ? [
+                'paymentMethodId' => $paymentMethodId,
+                'closingDate' => $closingDate,
+            ] : null,
             'monthTotalCents' => (int) ($view === 'invoice' ? $invoiceGroups->sum('totalCents') : $purchases->sum('amount_cents') + $occurrences->sum('amount_cents')),
             'purchases' => $view === 'calendar' ? $purchases->map(fn (Purchase $purchase): array => $purchaseListingService->purchaseData($purchase, $selfId))->values() : [],
             'occurrences' => $view === 'calendar' ? $occurrences->map(fn ($occurrence): array => $purchaseListingService->occurrenceData($occurrence, $selfId))->values() : [],
