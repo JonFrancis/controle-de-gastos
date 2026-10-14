@@ -1,7 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { dashboardMonthUrl } from './dashboardMonthNavigation';
+import { dashboardMonthUrl, dashboardNavigationUrls } from './dashboardMonthNavigation';
 
 type Props = {
     selectedMonth: string;
@@ -32,24 +32,29 @@ type PersonChartItem = { id: number; name: string; amountCents: number; netCents
 type PersonChartData = { expenses: PersonChartItem[]; balances: PersonChartItem[] };
 type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStart: string; periodEnd: string; closingDate: string; dueDate: string | null; totalCents: number; purchases: { id: number }[]; detailsUrl: string };
 
-const navigation = (selectedMonth: string, balancesUrl: string, view: 'calendar' | 'invoice') => [
-    ['Faturas', `/purchases?month=${selectedMonth}&view=invoice`],
-    ['Movimentações', `/purchases?month=${selectedMonth}&view=calendar`],
-    ['Visão geral', `/?month=${selectedMonth}&view=calendar`],
-    ['Compras', `/purchases?month=${selectedMonth}&view=invoice`],
-    ['Parcelamentos', '/installments'],
-    ['Recorrentes', '/recurrences'],
-    ['Saldos', balancesUrl],
-    ['Análise', `/analysis?month=${selectedMonth}&view=${view}`],
-    ['Exportações', '/exports'],
-    ['Pessoas', '#pessoas'],
-    ['Configurações', '/settings/catalogs'],
-];
+const navigation = (month: string, view: 'calendar' | 'invoice') => {
+    const urls = dashboardNavigationUrls(month, view);
 
-export default function Dashboard({ selectedMonth, balancesUrl, view, pendingReview, pendingReviewUrl, invoiceListUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
+    return [
+        ['Faturas', urls.purchasesInvoice],
+        ['Movimentações', urls.purchasesCalendar],
+        ['Visão geral', urls.overview],
+        ['Compras', urls.purchasesInvoice],
+        ['Parcelamentos', '/installments'],
+        ['Recorrentes', '/recurrences'],
+        ['Saldos', urls.balances],
+        ['Análise', urls.analysis],
+        ['Exportações', '/exports'],
+        ['Pessoas', '#pessoas'],
+        ['Configurações', '/settings/catalogs'],
+    ];
+};
+
+export default function Dashboard({ selectedMonth, view, pendingReview, pendingReviewUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
     const [month, setMonth] = useState(selectedMonth);
     const [monthRequestPending, setMonthRequestPending] = useState(false);
     const [monthRequestFailed, setMonthRequestFailed] = useState(false);
+    const localNavigationUrls = dashboardNavigationUrls(month, view);
     const markMonthRequestFailed = () => {
         setMonthRequestFailed(true);
 
@@ -93,7 +98,7 @@ export default function Dashboard({ selectedMonth, balancesUrl, view, pendingRev
                         </div>
                     </div>
                     <nav className="mt-10 space-y-2">
-                        {navigation(selectedMonth, balancesUrl, view).map(([label, href], index) => (
+                        {navigation(month, view).map(([label, href], index) => (
                             <Link
                                 key={label}
                                 href={href}
@@ -122,23 +127,23 @@ export default function Dashboard({ selectedMonth, balancesUrl, view, pendingRev
                                     {monthRequestFailed && !monthRequestPending && <span role="alert" className="flex items-center gap-2 text-xs text-amber-300">Não foi possível atualizar. <button type="button" onClick={() => requestMonth(month)} className="font-semibold underline underline-offset-2">Tentar novamente</button></span>}
                                 </div>
                                 <Link href="/purchases/create" className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-400/10">＋ Nova compra</Link>
-                                <Link href={`/receipts/create?month=${selectedMonth}`} className="rounded-xl border border-emerald-300/30 px-4 py-2.5 text-sm font-semibold text-emerald-300">＋ Registrar recebimento</Link>
+                                <Link href={localNavigationUrls.receipt} className="rounded-xl border border-emerald-300/30 px-4 py-2.5 text-sm font-semibold text-emerald-300">＋ Registrar recebimento</Link>
                             </div>
                         </header>
 
                         {flash?.success && <p role="status" className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{flash.success}</p>}
 
-                        {view === 'invoice' ? <InvoiceOverview groups={invoiceGroups} selectedMonth={selectedMonth} totalCents={summary.totalDisbursedCents} invoiceListUrl={invoiceListUrl} /> : <>
+                        {view === 'invoice' ? <InvoiceOverview groups={invoiceGroups} selectedMonth={selectedMonth} totalCents={summary.totalDisbursedCents} invoiceListUrl={localNavigationUrls.purchasesInvoice} /> : <>
                             <section className="mt-8 grid gap-4 md:grid-cols-2">
                                 <SummaryCard label="Meus gastos totais do mês" value={formatMoney(summary.ownConsumptionCents)} note="Consumo próprio atribuído a Eu" accent="emerald" />
-                                <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} selectedMonth={selectedMonth} />
+                                <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} selectedMonth={month} />
                             </section>
 
-                            <MovementChart selectedMonth={selectedMonth} movement={charts.movement} categories={charts.categories} selectedCategoryId={charts.selectedCategoryId} />
+                            <MovementChart selectedMonth={month} movement={charts.movement} categories={charts.categories} selectedCategoryId={charts.selectedCategoryId} />
 
                             <PaymentMethodChart rows={charts.paymentMethodTotals} />
 
-                            <ParticipantChart chart={personChart} balancesUrl={balancesUrl} />
+                            <ParticipantChart chart={personChart} balancesUrl={localNavigationUrls.balances} />
                         </>}
 
                         {pendingReview > 0 && pendingReviewUrl && <div className="mt-6 flex flex-col justify-between gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100 sm:flex-row sm:items-center"><span>{pendingReview} item(ns) aguardando revisão.</span><Link href={pendingReviewUrl} className="font-semibold text-amber-200 hover:text-white">Revisar agora →</Link></div>}

@@ -8,3 +8,9 @@ export declare function analysisMonthVisit(month: string, view: AnalysisView): {
         preserveScroll: true;
     };
 };
+
+export declare function analysisNavigationUrls(month: string, view: AnalysisView): {
+    overview: string;
+    calendar: string;
+    invoice: string;
+};
