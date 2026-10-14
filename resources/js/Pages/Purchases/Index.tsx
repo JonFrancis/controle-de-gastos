@@ -98,7 +98,7 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
             <main className="min-h-screen bg-slate-950 px-5 py-6 text-white sm:px-8 lg:px-12 lg:py-10">
                 <div className="mx-auto max-w-6xl">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                        <Link href="/" className="text-sm text-emerald-300">← Voltar para visão geral</Link>
+                        <Link href={`/?month=${month}&view=${view}`} className="text-sm text-emerald-300">← Voltar para visão geral</Link>
                         <Link href="/purchases/create" className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950">＋ Nova compra</Link>
                     </div>
 

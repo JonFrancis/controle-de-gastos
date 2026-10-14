@@ -32,7 +32,7 @@ type PersonChartItem = { id: number; name: string; amountCents: number; netCents
 type PersonChartData = { expenses: PersonChartItem[]; balances: PersonChartItem[] };
 type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStart: string; periodEnd: string; closingDate: string; dueDate: string | null; totalCents: number; purchases: { id: number }[]; detailsUrl: string };
 
-const navigation = (selectedMonth: string, balancesUrl: string) => [
+const navigation = (selectedMonth: string, balancesUrl: string, view: 'calendar' | 'invoice') => [
     ['Faturas', `/purchases?month=${selectedMonth}&view=invoice`],
     ['Movimentações', `/purchases?month=${selectedMonth}&view=calendar`],
     ['Visão geral', `/?month=${selectedMonth}&view=calendar`],
@@ -40,7 +40,7 @@ const navigation = (selectedMonth: string, balancesUrl: string) => [
     ['Parcelamentos', '/installments'],
     ['Recorrentes', '/recurrences'],
     ['Saldos', balancesUrl],
-    ['Análise', '/analysis'],
+    ['Análise', `/analysis?month=${selectedMonth}&view=${view}`],
     ['Exportações', '/exports'],
     ['Pessoas', '#pessoas'],
     ['Configurações', '/settings/catalogs'],
@@ -93,7 +93,7 @@ export default function Dashboard({ selectedMonth, balancesUrl, view, pendingRev
                         </div>
                     </div>
                     <nav className="mt-10 space-y-2">
-                        {navigation(selectedMonth, balancesUrl).map(([label, href], index) => (
+                        {navigation(selectedMonth, balancesUrl, view).map(([label, href], index) => (
                             <Link
                                 key={label}
                                 href={href}

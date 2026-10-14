@@ -47,7 +47,7 @@ class DashboardTest extends TestCase
         $this->get('/?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('selectedMonth', '2026-10')
-                ->where('balancesUrl', route('balances', ['month' => '2026-10'], false))
+                ->where('balancesUrl', route('balances', ['month' => '2026-10', 'view' => 'calendar'], false))
             );
     }
 
