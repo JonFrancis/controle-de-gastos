@@ -39,6 +39,29 @@ test('caps a derived invoice closing date at the target month end', () => {
     assert.strictEqual(request[1].closing_date, '2026-11-30');
 });
 
+test('uses the configured closing day when February closing dates are both the last day', () => {
+    let cardClosingOnDay28 = [];
+    let cardClosingOnDay31 = [];
+
+    visitPurchaseMonth(
+        { get: (...args) => { cardClosingOnDay28 = args; } },
+        '2026-03',
+        'invoice',
+        '2026-02',
+        { paymentMethodId: 28, closingDate: '2026-02-28', closingDay: 28 },
+    );
+    visitPurchaseMonth(
+        { get: (...args) => { cardClosingOnDay31 = args; } },
+        '2026-03',
+        'invoice',
+        '2026-02',
+        { paymentMethodId: 31, closingDate: '2026-02-28', closingDay: 31 },
+    );
+
+    assert.strictEqual(cardClosingOnDay28[1].closing_date, '2026-03-28');
+    assert.strictEqual(cardClosingOnDay31[1].closing_date, '2026-03-31');
+});
+
 test('forwards visit lifecycle callbacks so a failed invoice month can be retried', () => {
     const callbacks = {
         onStart: () => {},

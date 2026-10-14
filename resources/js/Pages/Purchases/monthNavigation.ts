@@ -3,6 +3,7 @@ export type PurchaseView = 'calendar' | 'invoice';
 export type InvoiceContext = {
     paymentMethodId: number | null;
     closingDate: string | null;
+    closingDay?: number | null;
 };
 
 type PurchaseQuery = {
@@ -51,7 +52,7 @@ function purchaseQuery(month: string, view: PurchaseView, currentMonth: string, 
         query.payment_method_id = invoiceContext.paymentMethodId;
     }
 
-    const closingDate = deriveClosingDate(currentMonth, month, invoiceContext?.closingDate ?? null);
+    const closingDate = deriveClosingDate(currentMonth, month, invoiceContext?.closingDate ?? null, invoiceContext?.closingDay);
 
     if (closingDate !== null) {
         query.closing_date = closingDate;
@@ -60,7 +61,7 @@ function purchaseQuery(month: string, view: PurchaseView, currentMonth: string, 
     return query;
 }
 
-function deriveClosingDate(currentMonth: string, nextMonth: string, closingDate: string | null): string | null {
+function deriveClosingDate(currentMonth: string, nextMonth: string, closingDate: string | null, closingDay?: number | null): string | null {
     if (closingDate === null) {
         return null;
     }
@@ -72,9 +73,15 @@ function deriveClosingDate(currentMonth: string, nextMonth: string, closingDate:
     const targetMonth = targetMonthIndex % 12 + 1;
     const sourceDays = daysInMonth(year, month);
     const targetDays = daysInMonth(targetYear, targetMonth);
-    const targetDay = day === sourceDays ? targetDays : Math.min(day, targetDays);
+    const targetDay = isValidClosingDay(closingDay)
+        ? Math.min(closingDay, targetDays)
+        : day === sourceDays ? targetDays : Math.min(day, targetDays);
 
     return `${targetYear}-${pad(targetMonth)}-${pad(targetDay)}`;
+}
+
+function isValidClosingDay(value: number | null | undefined): value is number {
+    return value !== null && value !== undefined && Number.isInteger(value) && value >= 1 && value <= 31;
 }
 
 function monthIndex(value: string): number {

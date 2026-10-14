@@ -27,6 +27,9 @@ class PurchaseController extends Controller
         $view = $request->query('view') === 'calendar' ? 'calendar' : 'invoice';
         $selfId = Participant::query()->where('is_default', true)->value('id');
         $paymentMethodId = $request->integer('payment_method_id') ?: null;
+        $paymentMethod = $view === 'invoice' && $paymentMethodId !== null
+            ? PaymentMethod::query()->with('latestInvoiceSetting')->find($paymentMethodId)
+            : null;
         $closingDate = $request->query('closing_date');
         $closingDate = is_string($closingDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $closingDate) === 1 ? $closingDate : null;
         $purchaseListing = $purchaseListingService->forMonth(
@@ -50,6 +53,7 @@ class PurchaseController extends Controller
             'invoiceContext' => $view === 'invoice' ? [
                 'paymentMethodId' => $paymentMethodId,
                 'closingDate' => $closingDate,
+                'closingDay' => $paymentMethod?->latestInvoiceSetting?->closing_day ?? $paymentMethod?->closing_day,
             ] : null,
             'monthTotalCents' => (int) ($view === 'invoice' ? $invoiceGroups->sum('totalCents') : $purchases->sum('amount_cents') + $occurrences->sum('amount_cents')),
             'purchases' => $view === 'calendar' ? $purchases->map(fn (Purchase $purchase): array => $purchaseListingService->purchaseData($purchase, $selfId))->values() : [],

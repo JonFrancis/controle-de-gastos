@@ -233,10 +233,44 @@ class PurchaseIndexTest extends TestCase
                 ->where('view', 'invoice')
                 ->where('invoiceContext.paymentMethodId', $card->id)
                 ->where('invoiceContext.closingDate', '2026-11-05')
+                ->where('invoiceContext.closingDay', 5)
                 ->where('invoiceGroups.0.paymentMethodId', $card->id)
                 ->where('invoiceGroups.0.closingDate', '2026-11-05')
                 ->where('invoiceGroups.0.totalCents', 1500)
             );
+    }
+
+    public function test_invoice_context_exposes_the_configured_closing_day_when_closing_date_is_month_end(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $cardClosingOnDay28 = $this->createCreditCard('Cartão dia 28', 28, 10);
+        $cardClosingOnDay31 = $this->createCreditCard('Cartão dia 31', 31, 10);
+        $this->createPurchase($self, $cardClosingOnDay28, 'Compra do cartão dia 28', '2026-02-28', 2800);
+        $this->createPurchase($self, $cardClosingOnDay31, 'Compra do cartão dia 31', '2026-02-28', 3100);
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-03',
+            'view' => 'invoice',
+            'payment_method_id' => $cardClosingOnDay28->id,
+            'closing_date' => '2026-02-28',
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->where('invoiceContext.paymentMethodId', $cardClosingOnDay28->id)
+            ->where('invoiceContext.closingDate', '2026-02-28')
+            ->where('invoiceContext.closingDay', 28)
+            ->where('invoiceGroups.0.closingDate', '2026-02-28')
+            ->where('invoiceGroups.0.totalCents', 2800));
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-03',
+            'view' => 'invoice',
+            'payment_method_id' => $cardClosingOnDay31->id,
+            'closing_date' => '2026-02-28',
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->where('invoiceContext.paymentMethodId', $cardClosingOnDay31->id)
+            ->where('invoiceContext.closingDate', '2026-02-28')
+            ->where('invoiceContext.closingDay', 31)
+            ->where('invoiceGroups.0.closingDate', '2026-02-28')
+            ->where('invoiceGroups.0.totalCents', 3100));
     }
 
     public function test_invoice_view_includes_the_previous_previous_month_when_due_on_the_first(): void
