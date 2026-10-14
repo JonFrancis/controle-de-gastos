@@ -207,6 +207,29 @@ class PurchaseIndexTest extends TestCase
             );
     }
 
+    public function test_invoice_view_preserves_its_context_when_loading_another_month(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão contextual', 5, 20);
+        $this->createPurchase($self, $card, 'Compra da próxima fatura', '2026-10-06', 1500);
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-11',
+            'view' => 'invoice',
+            'payment_method_id' => $card->id,
+            'closing_date' => '2026-11-05',
+        ]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-11')
+                ->where('view', 'invoice')
+                ->where('invoiceContext.paymentMethodId', $card->id)
+                ->where('invoiceContext.closingDate', '2026-11-05')
+                ->where('invoiceGroups.0.paymentMethodId', $card->id)
+                ->where('invoiceGroups.0.closingDate', '2026-11-05')
+                ->where('invoiceGroups.0.totalCents', 1500)
+            );
+    }
+
     public function test_invoice_view_includes_the_previous_previous_month_when_due_on_the_first(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
