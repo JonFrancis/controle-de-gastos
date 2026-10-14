@@ -1,7 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { dashboardMonthUrl, dashboardNavigationUrls } from './dashboardMonthNavigation';
+import { dashboardNavigationUrls, visitDashboardMonth } from './dashboardMonthNavigation';
 
 type Props = {
     selectedMonth: string;
@@ -70,10 +70,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
         setMonthRequestPending(true);
         setMonthRequestFailed(false);
 
-        router.visit(dashboardMonthUrl(nextMonth, view, charts.selectedCategoryId), {
-            replace: true,
-            preserveState: true,
-            preserveScroll: true,
+        visitDashboardMonth(router, nextMonth, view, charts.selectedCategoryId, {
             onError: () => setMonthRequestFailed(true),
             onHttpException: markMonthRequestFailed,
             onNetworkError: markMonthRequestFailed,

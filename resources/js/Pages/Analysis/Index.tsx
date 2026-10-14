@@ -1,7 +1,7 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { analysisMonthVisit, analysisNavigationUrls } from './monthNavigation.mjs';
+import { analysisNavigationUrls, visitAnalysisMonth } from './monthNavigation.mjs';
 
 type Summary = { ownConsumptionCents: number; paidForOthersCents: number; totalDisbursedCents: number; salaryRemainingCents: number | null };
 type MessageItem = { date: string; description: string; cardName: string | null; origin: string; amountCents: number; abatementCents: number; finalCents: number };
@@ -99,9 +99,7 @@ function AnalysisFilters({ month, setMonth, view }: { month: string; setMonth: (
         setNavigationError(false);
         setProcessing(true);
 
-        const visit = analysisMonthVisit(nextMonth, view);
-        router.visit(visit.url, {
-            ...visit.options,
+        visitAnalysisMonth(router, nextMonth, view, {
             onSuccess: () => setNavigationError(false),
             onError: () => setNavigationError(true),
             onHttpException: () => setNavigationError(true),

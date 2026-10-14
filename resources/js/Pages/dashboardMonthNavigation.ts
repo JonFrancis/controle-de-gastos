@@ -1,5 +1,16 @@
 type DashboardView = 'calendar' | 'invoice';
 
+type DashboardRouter = {
+    visit(url: string, options: DashboardVisitOptions & { replace: boolean; preserveState: boolean; preserveScroll: boolean }): void;
+};
+
+export type DashboardVisitOptions = {
+    onError?: () => void;
+    onHttpException?: () => void;
+    onNetworkError?: () => void;
+    onFinish?: () => void;
+};
+
 export type DashboardNavigationUrls = {
     balances: string;
     analysis: string;
@@ -17,6 +28,15 @@ export function dashboardMonthUrl(month: string, view: DashboardView, categoryId
     }
 
     return `/?${params.toString()}`;
+}
+
+export function visitDashboardMonth(router: DashboardRouter, month: string, view: DashboardView, categoryId: number | null, callbacks: DashboardVisitOptions = {}): void {
+    router.visit(dashboardMonthUrl(month, view, categoryId), {
+        replace: true,
+        preserveState: true,
+        preserveScroll: true,
+        ...callbacks,
+    });
 }
 
 export function dashboardNavigationUrls(month: string, view: DashboardView): DashboardNavigationUrls {

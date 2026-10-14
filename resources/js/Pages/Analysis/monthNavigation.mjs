@@ -5,6 +5,15 @@ export function analysisMonthVisit(month, view) {
     };
 }
 
+export function visitAnalysisMonth(router, month, view, callbacks = {}) {
+    const visit = analysisMonthVisit(month, view);
+
+    router.visit(visit.url, {
+        ...visit.options,
+        ...callbacks,
+    });
+}
+
 export function analysisNavigationUrls(month, view) {
     return {
         overview: `/?month=${month}&view=${view}`,
