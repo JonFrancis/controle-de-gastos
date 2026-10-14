@@ -63,7 +63,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
     }, [charts.selectedCategoryId, selectedMonth]);
 
     const localNavigationUrls = dashboardNavigationUrls(navigationBases, month, view, localCategoryId);
-    const markMonthRequestFailed = () => {
+    const markMonthRequestFailed = (): false => {
         setMonthRequestFailed(true);
 
         return false;

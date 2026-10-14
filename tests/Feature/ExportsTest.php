@@ -21,11 +21,12 @@ class ExportsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_export_page_exposes_period_selection_reconciled_summary_and_editable_prompt(): void
+    public function test_export_page_preserves_the_explicit_period_selection(): void
     {
         $this->createExportData();
 
-        $this->get('/exports?mode=period&start_date=2026-10-01&end_date=2026-10-31')
+        $response = $this->get('/exports?mode=period&start_date=2026-10-01&end_date=2026-10-31');
+        $response
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Exports/Index')
                 ->where('mode', 'period')
@@ -45,7 +46,7 @@ class ExportsTest extends TestCase
                 ->where('prompt', fn (string $prompt): bool => str_contains($prompt, 'Analise os dados de gastos')));
     }
 
-    public function test_selected_period_exports_each_csv_without_out_of_range_records(): void
+    public function test_period_csv_exports_use_the_explicit_date_range(): void
     {
         $this->createExportData();
 
@@ -135,7 +136,8 @@ class ExportsTest extends TestCase
         ])->assertRedirect('/exports');
 
         $this->assertDatabaseHas('prompt_versions', ['mode' => 'period', 'content' => '# Prompt revisado pelo usuário']);
-        $this->get('/exports?mode=period&start_date=2026-10-01&end_date=2026-10-31')
+        $response = $this->get('/exports?mode=period&start_date=2026-10-01&end_date=2026-10-31');
+        $response
             ->assertInertia(fn (Assert $page) => $page->where('prompt', '# Prompt revisado pelo usuário'));
         $response = $this->get('/exports/prompt?mode=period&start_date=2026-10-01&end_date=2026-10-31');
         $response->assertDownload('prompt-2026-10-01-2026-10-31.md');

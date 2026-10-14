@@ -1,5 +1,10 @@
 export type AnalysisView = 'calendar' | 'invoice';
 
+export type AnalysisNavigationBases = {
+    overview: string;
+    analysis: string;
+};
+
 export type AnalysisVisitOptions = {
     onSuccess?: () => void;
     onError?: () => void;
@@ -12,7 +17,7 @@ type AnalysisRouter = {
     visit(url: string, options: AnalysisVisitOptions & { replace: boolean; preserveState: boolean; preserveScroll: boolean }): void;
 };
 
-export declare function analysisMonthVisit(month: string, view: AnalysisView): {
+export declare function analysisMonthVisit(analysisBaseUrl: string, month: string, view: AnalysisView): {
     url: string;
     options: {
         replace: true;
@@ -21,9 +26,9 @@ export declare function analysisMonthVisit(month: string, view: AnalysisView): {
     };
 };
 
-export declare function visitAnalysisMonth(router: AnalysisRouter, month: string, view: AnalysisView, callbacks?: AnalysisVisitOptions): void;
+export declare function visitAnalysisMonth(router: AnalysisRouter, analysisBaseUrl: string, month: string, view: AnalysisView, callbacks?: AnalysisVisitOptions): void;
 
-export declare function analysisNavigationUrls(month: string, view: AnalysisView): {
+export declare function analysisNavigationUrls(bases: AnalysisNavigationBases, month: string, view: AnalysisView): {
     overview: string;
     calendar: string;
     invoice: string;
