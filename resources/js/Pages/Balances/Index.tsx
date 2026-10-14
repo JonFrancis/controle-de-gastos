@@ -7,13 +7,14 @@ type Receipt = { id: number; participant: string; receivedAt: string; amountCent
 
 type Props = {
     selectedMonth: string;
+    view: 'calendar' | 'invoice';
     summary: Summary;
     participants: ParticipantBalance[];
     receipts: Receipt[];
     flash?: { success?: string };
 };
 
-export default function Balances({ selectedMonth, summary, participants, receipts, flash }: Props) {
+export default function Balances({ selectedMonth, view, summary, participants, receipts, flash }: Props) {
     return (
         <>
             <Head title="Saldos e recebimentos" />
@@ -30,10 +31,15 @@ export default function Balances({ selectedMonth, summary, participants, receipt
                             <Link href={`/receipts/create?month=${selectedMonth}`} className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950">Registrar recebimento</Link>
                             <form method="get" action="/balances" className="flex items-center gap-2">
                                 <input type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
+                                <input type="hidden" name="view" value={view} />
                                 <button className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200">Filtrar</button>
                             </form>
                         </div>
                     </header>
+                    <nav className="mt-5 flex flex-wrap gap-2" aria-label="Modo de saldos">
+                        <Link href={`/balances?month=${selectedMonth}&view=calendar`} className={`rounded-xl px-4 py-2 text-sm ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'border border-white/10 text-slate-300'}`}>Mês-calendário</Link>
+                        <Link href={`/balances?month=${selectedMonth}&view=invoice`} className={`rounded-xl px-4 py-2 text-sm ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'border border-white/10 text-slate-300'}`}>Mês de vencimento</Link>
+                    </nav>
                     {flash?.success && <p role="status" className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{flash.success}</p>}
                     <section className="mt-8 grid gap-4 md:grid-cols-3">
                         <SummaryCard label="Meu consumo próprio" value={summary.ownConsumptionCents} note="Rateios atribuídos a Eu" />

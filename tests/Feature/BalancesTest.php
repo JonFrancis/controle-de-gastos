@@ -111,6 +111,19 @@ class BalancesTest extends TestCase
             );
     }
 
+    public function test_balances_default_to_the_selected_calendar_month_for_non_invoice_methods(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $debit = PaymentMethod::create(['name' => 'Débito', 'type' => PaymentMethod::TYPE_DEBIT]);
+        $this->purchase('2026-10-15', 8000, $self, [[$maria, 8000]], $debit->id);
+
+        $this->get('/balances?month=2026-10')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('view', 'calendar')
+                ->where('summary.paidForOthersCents', 8000)
+                ->where('participants.0.receivableCents', 8000));
+    }
+
     public function test_billing_summary_uses_outstanding_amounts_after_historical_applications(): void
     {
         [$self, $maria] = $this->catalogs();
@@ -122,7 +135,7 @@ class BalancesTest extends TestCase
         ReceiptApplication::create(['receipt_id' => $mariaReceipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $receivable->id, 'purchase_allocation_id' => $receivable->id, 'amount_cents' => 2000, 'source' => 'manual']);
         ReceiptApplication::create(['receipt_id' => $selfReceipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $payable->id, 'purchase_allocation_id' => $payable->id, 'amount_cents' => 1000, 'source' => 'manual']);
 
-        $this->get('/balances?month=2026-10')
+        $this->get('/balances?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.ownConsumptionCents', 4000)
                 ->where('summary.paidForOthersCents', 3000)
@@ -138,7 +151,7 @@ class BalancesTest extends TestCase
         $this->purchase('2026-10-06', 7000, $self, [[$maria, 7000]], $card->id);
         $this->purchase('2026-10-01', 9000, $self, [[$maria, 9000]], $pix->id);
 
-        $this->get('/balances?month=2026-10')
+        $this->get('/balances?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 5000)
                 ->where('participants.0.receivableCents', 5000)
@@ -146,7 +159,7 @@ class BalancesTest extends TestCase
                 ->where('participants.0.receivableItems.0.description', 'Compra 2026-09-06')
             );
 
-        $this->get('/balances?month=2026-11')
+        $this->get('/balances?month=2026-11&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 7000)
                 ->where('participants.0.receivableCents', 7000)
@@ -168,14 +181,14 @@ class BalancesTest extends TestCase
         $this->purchase('2026-10-04', 1000, $self, [[$maria, 1000]], $card->id);
         $this->purchase('2026-10-15', 2000, $self, [[$maria, 2000]], $card->id);
 
-        $this->get('/balances?month=2026-10')
+        $this->get('/balances?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 1000)
                 ->where('participants.0.receivableCents', 1000)
                 ->where('participants.0.receivableItems.0.description', 'Compra 2026-10-04')
             );
 
-        $this->get('/balances?month=2026-11')
+        $this->get('/balances?month=2026-11&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 2000)
                 ->where('participants.0.receivableCents', 2000)
@@ -224,7 +237,7 @@ class BalancesTest extends TestCase
             'payment_method_id' => $card->id,
         ]);
 
-        $this->get('/balances?month=2026-10')
+        $this->get('/balances?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 7000)
                 ->where('participants.0.receivableCents', 7000)
@@ -239,13 +252,13 @@ class BalancesTest extends TestCase
         $this->purchase('2026-09-06', 5000, $self, [[$maria, 5000]], $loan->id)->update(['due_date' => '2026-10-20']);
         $this->purchase('2026-10-06', 7000, $self, [[$maria, 7000]], $loan->id)->update(['due_date' => '2026-11-20']);
 
-        $this->get('/balances?month=2026-10')
+        $this->get('/balances?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 5000)
                 ->where('participants.0.receivableCents', 5000)
                 ->where('participants.0.receivableItems.0.description', 'Compra 2026-09-06'));
 
-        $this->get('/balances?month=2026-11')
+        $this->get('/balances?month=2026-11&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 7000)
                 ->where('participants.0.receivableCents', 7000)
@@ -322,7 +335,7 @@ class BalancesTest extends TestCase
             'payment_method_id' => $loan->id,
         ]);
 
-        $this->get('/balances?month=2026-10')
+        $this->get('/balances?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 10000)
                 ->where('participants.0.receivableCents', 10000)
@@ -373,13 +386,13 @@ class BalancesTest extends TestCase
             'payment_method_id' => $loan->id,
         ]);
 
-        $this->get('/balances?month=2026-10')
+        $this->get('/balances?month=2026-10&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 7000)
                 ->where('participants.0.receivableCents', 7000)
                 ->has('participants.0.receivableItems', 2));
 
-        $this->get('/balances?month=2026-11')
+        $this->get('/balances?month=2026-11&view=invoice')
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.paidForOthersCents', 4000)
                 ->where('participants.0.receivableCents', 4000)
@@ -393,7 +406,7 @@ class BalancesTest extends TestCase
         $this->purchase('2026-10-06', 7000, $self, [[$maria, 7000]]);
         $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-09-30', 'amount_cents' => 5000]);
 
-        $this->get("/receipts/{$receipt->id}/edit?month=2026-10")
+        $this->get("/receipts/{$receipt->id}/edit?month=2026-10&view=invoice")
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Balances/ReceiptApplications')
                 ->where('selectedMonth', '2026-10')
@@ -420,10 +433,10 @@ class BalancesTest extends TestCase
             'source' => 'manual',
         ]));
 
-        $this->get("/receipts/{$receipt->id}/edit?month=2026-10")
+        $this->get("/receipts/{$receipt->id}/edit?month=2026-10&view=invoice")
             ->assertInertia(fn (Assert $page) => $page->has('debts', 0));
 
-        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 0)
             ->has('participants.0.receivableItems', 0)
             ->where('participants.0.creditCents', 0)
@@ -446,15 +459,15 @@ class BalancesTest extends TestCase
         $receipt = Receipt::query()->firstOrFail();
         $this->assertSame(4, ReceiptApplication::query()->where('receipt_id', $receipt->id)->whereNull('superseded_at')->count());
 
-        $this->from("/receipts/{$receipt->id}/edit")->put("/receipts/{$receipt->id}/applications", [
+        $this->from("/receipts/{$receipt->id}/edit?month=2026-10&view=invoice")->put("/receipts/{$receipt->id}/applications?month=2026-10&view=invoice", [
             'applications' => [[
                 'source_type' => 'purchase_allocation',
                 'source_id' => $allocations->first()->id,
                 'amount' => '10,00',
             ]],
-        ])->assertRedirect("/receipts/{$receipt->id}/edit")->assertSessionHasErrors('applications');
+        ])->assertRedirect("/receipts/{$receipt->id}/edit?month=2026-10&view=invoice")->assertSessionHasErrors('applications');
 
-        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 0)
             ->where('participants.0.creditCents', 0)
             ->where('receipts.0.appliedCents', 4000)
@@ -479,20 +492,20 @@ class BalancesTest extends TestCase
             ->whereNull('superseded_at')
             ->firstOrFail();
 
-        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->has('participants.0.receivableItems', 1)
             ->where('participants.0.receivableItems.0.source_id', $billableAllocation->id)
             ->where('participants.0.creditCents', 0)
             ->where('receipts.0.appliedCents', 6000)
             ->where('receipts.0.creditCents', 0));
 
-        $this->put("/receipts/{$receipt->id}/applications?month=2026-10", [
+        $this->put("/receipts/{$receipt->id}/applications?month=2026-10&view=invoice", [
             'applications' => [[
                 'source_type' => 'purchase_allocation',
                 'source_id' => $billableAllocation->id,
                 'amount' => '30,00',
             ]],
-        ])->assertRedirect('/balances?month=2026-10')->assertSessionHasNoErrors();
+        ])->assertRedirect('/balances?month=2026-10&view=invoice')->assertSessionHasNoErrors();
 
         $this->assertDatabaseHas('receipt_applications', [
             'receipt_id' => $receipt->id,
@@ -509,7 +522,7 @@ class BalancesTest extends TestCase
             'source' => 'manual',
             'superseded_at' => null,
         ]);
-        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 1000)
             ->has('participants.0.receivableItems', 1)
             ->where('participants.0.receivableItems.0.source_id', $billableAllocation->id)
@@ -532,7 +545,7 @@ class BalancesTest extends TestCase
             'source' => 'manual',
         ]);
 
-        $this->get("/receipts/{$receipt->id}/edit?month=2026-10")
+        $this->get("/receipts/{$receipt->id}/edit?month=2026-10&view=invoice")
             ->assertInertia(fn (Assert $page) => $page
                 ->where('debts.0.applied_cents', 2000)
                 ->where('debts.0.outstanding_cents', 3000));
@@ -547,7 +560,7 @@ class BalancesTest extends TestCase
         $purchase->update(['due_date' => '2026-10-20']);
         $this->purchase('2026-09-06', 4000, $self, [[$maria, 4000]], $card->id);
 
-        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableItems.0.purchased_at', '2025-01-06')
             ->where('participants.0.receivableItems.0.due_date', '2026-10-20')
             ->where('participants.0.receivableItems.1.purchased_at', '2026-09-06')
@@ -561,15 +574,15 @@ class BalancesTest extends TestCase
         $this->purchase('2026-10-06', 7000, $self, [[$maria, 7000]]);
         $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-09-30', 'amount_cents' => 5000]);
 
-        $this->put("/receipts/{$receipt->id}/applications?month=2026-10", [
+        $this->put("/receipts/{$receipt->id}/applications?month=2026-10&view=invoice", [
             'applications' => [[
                 'source_type' => 'purchase_allocation',
                 'source_id' => $allocation->id,
                 'amount' => '20,00',
             ]],
-        ])->assertRedirect('/balances?month=2026-10')->assertSessionHasNoErrors();
+        ])->assertRedirect('/balances?month=2026-10&view=invoice')->assertSessionHasNoErrors();
 
-        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 3000)
             ->where('participants.0.receivableItems.0.amount_cents', 5000)
             ->where('participants.0.receivableItems.0.applied_cents', 2000)
@@ -585,7 +598,7 @@ class BalancesTest extends TestCase
         Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-09-30', 'amount_cents' => 3000]);
         $this->purchase('2026-10-06', 7000, $self, [[$maria, 7000]]);
 
-        $this->get('/balances?month=2026-11')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-11&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.name', 'Maria')
             ->where('participants.0.creditCents', 3000)
             ->where('participants.0.receivableCents', 7000)
@@ -621,7 +634,7 @@ class BalancesTest extends TestCase
             'amount' => '20,00',
         ])->assertRedirect('/balances');
 
-        $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
+        $this->get('/balances?month=2026-10&view=invoice')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 2000)
             ->where('participants.0.receivableItems.0.source_type', 'recurrence_occurrence')
             ->where('participants.0.receivableItems.0.source_id', $occurrence->id)

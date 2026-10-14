@@ -96,4 +96,20 @@ class InstallmentController extends Controller
 
         return to_route('installments.index')->with('success', 'Parcelamento encerrado.');
     }
+
+    public function destroy(Installment $installment, InstallmentService $service, BalanceService $balanceService, AuditService $audit): RedirectResponse
+    {
+        $oldValues = $installment->getAttributes();
+        $deleted = $service->delete($installment);
+        $balanceService->reconcileAll();
+        $audit->record(AuditLog::ACTION_DELETE, $installment, oldValues: $oldValues, metadata: [
+            'type' => 'installment_deletion',
+            'deleted_occurrence_ids' => $deleted['occurrence_ids'],
+            'deleted_allocation_ids' => $deleted['allocation_ids'],
+            'deleted_receipt_application_ids' => $deleted['receipt_application_ids'],
+            'balances_reconciled' => true,
+        ]);
+
+        return to_route('installments.index')->with('success', 'Parcelamento excluído com sucesso.');
+    }
 }
