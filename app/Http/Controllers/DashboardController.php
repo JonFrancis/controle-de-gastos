@@ -54,9 +54,7 @@ class DashboardController extends Controller
 
         return Inertia::render('Dashboard', [
             'selectedMonth' => $selectedMonth,
-            'balancesUrl' => route('balances', ['month' => $selectedMonth], false),
             'view' => $view,
-            'invoiceListUrl' => route('purchases.index', ['month' => $selectedMonth, 'view' => 'invoice'], false),
             'summary' => $budgetSummary,
             'personChart' => [
                 'expenses' => $budgetAnalysis['participantExpenses'],
@@ -71,6 +69,14 @@ class DashboardController extends Controller
             'pendingReview' => $pendingReview,
             'pendingReviewUrl' => $pendingReview > 0 ? route('imports.queue', [], false) : null,
             'invoiceGroups' => $invoiceGroups,
+            'navigationBases' => [
+                'overview' => route('dashboard', [], false),
+                'analysis' => route('analysis', [], false),
+                'balances' => route('balances', [], false),
+                'purchases' => route('purchases.index', [], false),
+                'receipt' => route('receipts.create', [], false),
+                'purchaseCreate' => route('purchases.create', [], false),
+            ],
         ]);
     }
 

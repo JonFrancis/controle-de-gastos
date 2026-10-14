@@ -45,6 +45,9 @@ class BalancesTest extends TestCase
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Balances/Index')
+                ->where('navigationBases.overview', route('dashboard', [], false))
+                ->where('navigationBases.balances', route('balances', [], false))
+                ->where('navigationBases.receipt', route('receipts.create', [], false))
                 ->where('summary.ownConsumptionCents', 6000)
                 ->where('summary.paidForOthersCents', 6000)
                 ->where('summary.owedToOthersCents', 2000)
@@ -122,6 +125,34 @@ class BalancesTest extends TestCase
                 ->where('view', 'calendar')
                 ->where('summary.paidForOthersCents', 8000)
                 ->where('participants.0.receivableCents', 8000));
+    }
+
+    public function test_direct_balances_url_preserves_the_requested_month_and_calendar_view(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $debit = PaymentMethod::create(['name' => 'Débito', 'type' => PaymentMethod::TYPE_DEBIT]);
+        $card = PaymentMethod::query()->where('type', PaymentMethod::TYPE_CREDIT)->firstOrFail();
+        $this->purchase('2026-10-15', 8000, $self, [[$maria, 8000]], $debit->id);
+        $this->purchase('2026-09-06', 5000, $self, [[$maria, 5000]], $card->id);
+
+        $this->get('/balances?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-10')
+                ->where('view', 'calendar')
+                ->where('summary.paidForOthersCents', 8000));
+    }
+
+    public function test_direct_balances_url_preserves_the_requested_month_and_invoice_view(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $card = PaymentMethod::query()->where('type', PaymentMethod::TYPE_CREDIT)->firstOrFail();
+        $this->purchase('2026-09-06', 5000, $self, [[$maria, 5000]], $card->id);
+
+        $this->get('/balances?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-10')
+                ->where('view', 'invoice')
+                ->where('summary.paidForOthersCents', 5000));
     }
 
     public function test_billing_summary_uses_outstanding_amounts_after_historical_applications(): void

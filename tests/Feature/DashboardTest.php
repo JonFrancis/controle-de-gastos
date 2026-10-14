@@ -30,6 +30,12 @@ class DashboardTest extends TestCase
                 ->component('Dashboard')
                 ->where('pendingReview', 0)
                 ->where('pendingReviewUrl', null)
+                ->where('navigationBases.overview', route('dashboard', [], false))
+                ->where('navigationBases.analysis', route('analysis', [], false))
+                ->where('navigationBases.balances', route('balances', [], false))
+                ->where('navigationBases.purchases', route('purchases.index', [], false))
+                ->where('navigationBases.receipt', route('receipts.create', [], false))
+                ->where('navigationBases.purchaseCreate', route('purchases.create', [], false))
                 ->has('summary')
                 ->where('view', 'calendar')
                 ->where('charts.paymentMethodTotals', [])
@@ -42,13 +48,13 @@ class DashboardTest extends TestCase
             );
     }
 
-    public function test_dashboard_preserves_the_selected_month_in_the_balances_navigation_url(): void
+    public function test_direct_dashboard_url_preserves_the_requested_month_and_invoice_view(): void
     {
-        $this->get('/?month=2026-10&view=calendar')
+        $this->get(route('dashboard', ['month' => '2026-12', 'view' => 'invoice']))
             ->assertInertia(fn (Assert $page) => $page
-                ->where('selectedMonth', '2026-10')
-                ->where('balancesUrl', route('balances', ['month' => '2026-10'], false))
-            );
+                ->component('Dashboard')
+                ->where('selectedMonth', '2026-12')
+                ->where('view', 'invoice'));
     }
 
     public function test_dashboard_calendar_applies_receipts_to_non_billable_debts(): void
@@ -125,7 +131,7 @@ class DashboardTest extends TestCase
             );
     }
 
-    public function test_dashboard_exposes_unfiltered_invoice_list_and_card_cycle_navigation_urls(): void
+    public function test_dashboard_exposes_card_cycle_navigation_urls(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $card = PaymentMethod::create(['name' => 'Cartão navegação', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
@@ -141,7 +147,6 @@ class DashboardTest extends TestCase
 
         $this->get(route('dashboard', ['month' => '2026-10', 'view' => 'invoice']))
             ->assertInertia(fn (Assert $page) => $page
-                ->where('invoiceListUrl', route('purchases.index', ['month' => '2026-10', 'view' => 'invoice'], false))
                 ->where('invoiceGroups.0.detailsUrl', route('purchases.index', [
                     'month' => '2026-10',
                     'view' => 'invoice',
@@ -256,6 +261,65 @@ class DashboardTest extends TestCase
                     ['week' => 2, 'label' => 'Semana 2', 'amountCents' => 3000],
                 ])
                 ->where('charts.selectedCategoryId', $food->id)
+            );
+    }
+
+    public function test_dashboard_uses_the_selected_month_with_the_active_view_and_category_filter(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $food = Category::create(['name' => 'Alimentação']);
+
+        Purchase::create([
+            'purchased_at' => '2026-10-10',
+            'description' => 'Compra do mês anterior',
+            'amount_cents' => 1000,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+            'category_id' => $food->id,
+        ]);
+        Purchase::create([
+            'purchased_at' => '2026-11-10',
+            'description' => 'Compra do mês consultado',
+            'amount_cents' => 2500,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+            'category_id' => $food->id,
+        ]);
+
+        $this->get('/?month=2026-11&view=calendar&category='.$food->id)
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-11')
+                ->where('view', 'calendar')
+                ->where('summary.ownConsumptionCents', 2500)
+                ->where('charts.selectedCategoryId', $food->id)
+                ->where('charts.movement', [
+                    ['week' => 2, 'label' => 'Semana 2', 'amountCents' => 2500],
+                ])
+            );
+    }
+
+    public function test_dashboard_keeps_category_filter_when_selected_month_has_no_matching_entries(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $food = Category::create(['name' => 'Alimentação']);
+
+        Purchase::create([
+            'purchased_at' => '2026-10-10',
+            'description' => 'Compra do mês anterior',
+            'amount_cents' => 2500,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+            'category_id' => $food->id,
+        ]);
+
+        $this->get('/?month=2026-11&view=calendar&category='.$food->id)
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-11')
+                ->where('summary.ownConsumptionCents', 0)
+                ->where('charts.selectedCategoryId', $food->id)
+                ->where('charts.movement', [])
             );
     }
 

@@ -23,6 +23,11 @@ class BalanceController extends Controller
             'summary' => $view === 'invoice' ? $service->summaryForBillingMonth($month) : $service->summary($until, $month->startOfMonth()),
             'participants' => $view === 'invoice' ? $service->participantBalancesForBillingMonth($month) : $service->participantBalances($until, $month->startOfMonth()),
             'receipts' => $service->receipts($until),
+            'navigationBases' => [
+                'overview' => route('dashboard', [], false),
+                'balances' => route('balances', [], false),
+                'receipt' => route('receipts.create', [], false),
+            ],
         ]);
     }
 

@@ -43,12 +43,24 @@ class PurchaseIndexTest extends TestCase
         $this->get('/purchases?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Purchases/Index')
+                ->where('navigationBases.overview', route('dashboard', [], false))
+                ->where('navigationBases.purchases', route('purchases.index', [], false))
+                ->where('navigationBases.create', route('purchases.create', [], false))
                 ->where('selectedMonth', '2026-10')
                 ->where('view', 'calendar')
                 ->has('purchases', 1)
                 ->where('purchases.0.description', 'Compra de outubro')
                 ->where('monthTotalCents', 12500)
             );
+    }
+
+    public function test_direct_purchases_url_preserves_the_requested_month_and_invoice_view(): void
+    {
+        $this->get(route('purchases.index', ['month' => '2026-12', 'view' => 'invoice']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Purchases/Index')
+                ->where('selectedMonth', '2026-12')
+                ->where('view', 'invoice'));
     }
 
     public function test_purchases_page_defaults_to_faturas_by_due_month(): void
@@ -205,6 +217,167 @@ class PurchaseIndexTest extends TestCase
                 ->where('invoiceGroups.0.totalCents', 1500)
                 ->where('invoiceGroups.0.purchases.0.description', 'Compra filtrada')
             );
+    }
+
+    public function test_invoice_view_preserves_its_context_when_loading_another_month(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão contextual', 5, 20);
+        $this->createPurchase($self, $card, 'Compra da próxima fatura', '2026-10-06', 1500);
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-11',
+            'view' => 'invoice',
+            'payment_method_id' => $card->id,
+            'closing_date' => '2026-11-05',
+        ]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-11')
+                ->where('view', 'invoice')
+                ->where('invoiceContext.paymentMethodId', $card->id)
+                ->where('invoiceContext.closingDate', '2026-11-05')
+                ->where('invoiceContext.closingDay', 5)
+                ->where('invoiceGroups.0.paymentMethodId', $card->id)
+                ->where('invoiceGroups.0.closingDate', '2026-11-05')
+                ->where('invoiceGroups.0.totalCents', 1500)
+            );
+    }
+
+    public function test_invoice_month_navigation_reconciles_a_stale_closing_date_after_a_card_configuration_change(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão com mudança durante a navegação', 5, 20);
+        $card->invoiceSettings()->create([
+            'closing_day' => 10,
+            'due_day' => 20,
+            'effective_from' => '2026-10-06',
+        ]);
+        $card->update(['closing_day' => 10]);
+        $this->createPurchase($self, $card, 'Compra após a mudança de fechamento', '2026-10-11', 1800);
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-11',
+            'view' => 'invoice',
+            'payment_method_id' => $card->id,
+            'closing_date' => '2026-11-05',
+        ]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-11')
+                ->has('invoiceGroups', 1)
+                ->where('invoiceGroups.0.paymentMethodId', $card->id)
+                ->where('invoiceGroups.0.closingDate', '2026-11-10')
+                ->where('invoiceGroups.0.totalCents', 1800)
+                ->where('invoiceGroups.0.purchases.0.description', 'Compra após a mudança de fechamento')
+                ->where('invoiceContext.paymentMethodId', $card->id)
+                ->where('invoiceContext.closingDate', '2026-11-10')
+                ->where('invoiceContext.closingDay', 10)
+            );
+    }
+
+    public function test_invoice_navigation_preserves_context_through_an_empty_month_before_reconciling_the_returning_cycle(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão com mês vazio', 5, 20);
+        $this->createPurchase($self, $card, 'Compra do ciclo anterior', '2026-09-06', 1200);
+        $card->invoiceSettings()->create([
+            'closing_day' => 10,
+            'due_day' => 20,
+            'effective_from' => '2026-10-06',
+        ]);
+        $card->update(['closing_day' => 10]);
+        $this->createPurchase($self, $card, 'Compra do ciclo seguinte', '2026-11-11', 1800);
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-10',
+            'view' => 'invoice',
+            'payment_method_id' => $card->id,
+            'closing_date' => '2026-10-05',
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->where('invoiceContext.closingDate', '2026-10-05')
+            ->where('invoiceGroups.0.closingDate', '2026-10-05'));
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-11',
+            'view' => 'invoice',
+            'payment_method_id' => $card->id,
+            'closing_date' => '2026-11-05',
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->has('invoiceGroups', 0)
+            ->where('invoiceContext.paymentMethodId', $card->id)
+            ->where('invoiceContext.closingDate', '2026-11-05')
+            ->where('invoiceContext.closingDay', 10));
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-12',
+            'view' => 'invoice',
+            'payment_method_id' => $card->id,
+            'closing_date' => '2026-12-05',
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->where('invoiceGroups.0.closingDate', '2026-12-10')
+            ->where('invoiceGroups.0.totalCents', 1800)
+            ->where('invoiceContext.closingDate', '2026-12-10')
+            ->where('invoiceContext.closingDay', 10));
+    }
+
+    public function test_historical_invoice_context_uses_the_closing_day_active_on_the_selected_closing_date(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $card = $this->createCreditCard('Cartão com mudança de fechamento', 5, 20);
+        $card->invoiceSettings()->create([
+            'closing_day' => 10,
+            'due_day' => 20,
+            'effective_from' => '2026-10-06',
+        ]);
+        $card->update(['closing_day' => 10]);
+        $this->createPurchase($self, $card, 'Compra na configuração histórica', '2026-09-06', 1500);
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-10',
+            'view' => 'invoice',
+            'payment_method_id' => $card->id,
+            'closing_date' => '2026-10-05',
+        ]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('invoiceContext.paymentMethodId', $card->id)
+                ->where('invoiceContext.closingDate', '2026-10-05')
+                ->where('invoiceContext.closingDay', 5)
+                ->where('invoiceGroups.0.paymentMethodId', $card->id)
+                ->where('invoiceGroups.0.closingDate', '2026-10-05')
+                ->where('invoiceGroups.0.totalCents', 1500)
+            );
+    }
+
+    public function test_invoice_context_exposes_the_configured_closing_day_when_closing_date_is_month_end(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $cardClosingOnDay28 = $this->createCreditCard('Cartão dia 28', 28, 10);
+        $cardClosingOnDay31 = $this->createCreditCard('Cartão dia 31', 31, 10);
+        $this->createPurchase($self, $cardClosingOnDay28, 'Compra do cartão dia 28', '2026-02-28', 2800);
+        $this->createPurchase($self, $cardClosingOnDay31, 'Compra do cartão dia 31', '2026-02-28', 3100);
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-03',
+            'view' => 'invoice',
+            'payment_method_id' => $cardClosingOnDay28->id,
+            'closing_date' => '2026-02-28',
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->where('invoiceContext.paymentMethodId', $cardClosingOnDay28->id)
+            ->where('invoiceContext.closingDate', '2026-02-28')
+            ->where('invoiceContext.closingDay', 28)
+            ->where('invoiceGroups.0.closingDate', '2026-02-28')
+            ->where('invoiceGroups.0.totalCents', 2800));
+
+        $this->get(route('purchases.index', [
+            'month' => '2026-03',
+            'view' => 'invoice',
+            'payment_method_id' => $cardClosingOnDay31->id,
+            'closing_date' => '2026-02-28',
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->where('invoiceContext.paymentMethodId', $cardClosingOnDay31->id)
+            ->where('invoiceContext.closingDate', '2026-02-28')
+            ->where('invoiceContext.closingDay', 31)
+            ->where('invoiceGroups.0.closingDate', '2026-02-28')
+            ->where('invoiceGroups.0.totalCents', 3100));
     }
 
     public function test_invoice_view_includes_the_previous_previous_month_when_due_on_the_first(): void

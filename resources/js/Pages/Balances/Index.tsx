@@ -1,4 +1,7 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
+import { createRecoverableNavigationHandler } from '../recoverableNavigationFailure';
+import { balanceNavigationUrls, visitBalanceMonth, type BalanceNavigationBases } from './monthSelection';
 
 type Summary = { ownConsumptionCents: number; paidForOthersCents: number; owedToOthersCents: number };
 type Item = { key: string; source_type: string; source_id: number; description: string; purchased_at: string; due_date: string | null; amount_cents: number; applied_cents: number; outstanding_cents: number; payment_method_type: string | null };
@@ -12,15 +15,45 @@ type Props = {
     participants: ParticipantBalance[];
     receipts: Receipt[];
     flash?: { success?: string };
+    navigationBases: BalanceNavigationBases;
 };
 
-export default function Balances({ selectedMonth, view, summary, participants, receipts, flash }: Props) {
+export default function Balances({ selectedMonth, view, summary, participants, receipts, flash, navigationBases }: Props) {
+    const [month, setMonth] = useState(selectedMonth);
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadError, setLoadError] = useState(false);
+
+    useEffect(() => {
+        setMonth(selectedMonth);
+        setLoadError(false);
+    }, [selectedMonth]);
+
+    const loadMonth = (nextMonth: string) => {
+        if (!nextMonth) {
+            return;
+        }
+
+        setMonth(nextMonth);
+        setLoadError(false);
+        const markLoadFailed = createRecoverableNavigationHandler(setLoadError);
+
+        visitBalanceMonth(router, navigationBases.balances, nextMonth, view, {
+            onStart: () => setIsLoading(true),
+            onError: () => setLoadError(true),
+            onHttpException: markLoadFailed,
+            onNetworkError: markLoadFailed,
+            onFinish: () => setIsLoading(false),
+        });
+    };
+
+    const navigationUrls = balanceNavigationUrls(navigationBases, month, view);
+
     return (
         <>
             <Head title="Saldos e recebimentos" />
-            <main className="min-h-screen bg-slate-950 px-5 py-6 text-white sm:px-8 lg:px-12 lg:py-10">
+            <main aria-busy={isLoading} className="min-h-screen bg-slate-950 px-5 py-6 text-white sm:px-8 lg:px-12 lg:py-10">
                 <div className="mx-auto max-w-7xl">
-                    <Link href="/" className="text-sm text-emerald-300">← Voltar para visão geral</Link>
+                    <Link href={navigationUrls.overview} className="text-sm text-emerald-300">← Voltar para visão geral</Link>
                     <header className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
                         <div>
                             <p className="text-sm font-medium text-emerald-300">Fechamento financeiro</p>
@@ -28,17 +61,16 @@ export default function Balances({ selectedMonth, view, summary, participants, r
                             <p className="mt-2 text-sm text-slate-400">Consulte o que foi consumido, pago por terceiros e o que ainda precisa ser compensado.</p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            <Link href={`/receipts/create?month=${selectedMonth}`} className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950">Registrar recebimento</Link>
-                            <form method="get" action="/balances" className="flex items-center gap-2">
-                                <input type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
-                                <input type="hidden" name="view" value={view} />
-                                <button className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200">Filtrar</button>
-                            </form>
+                            <Link href={navigationUrls.receipt} className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950">Registrar recebimento</Link>
+                            <label htmlFor="balances-month" className="sr-only">{view === 'invoice' ? 'Mês de vencimento' : 'Mês-calendário'}</label>
+                            <input id="balances-month" type="month" value={month} disabled={isLoading} onChange={(event) => loadMonth(event.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-60" />
+                            {isLoading && <span role="status" className="text-xs text-slate-400">Atualizando…</span>}
                         </div>
                     </header>
+                    {loadError && <div role="alert" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm text-rose-200"><span>Não foi possível carregar o mês selecionado.</span><button type="button" onClick={() => loadMonth(month)} className="font-semibold text-rose-100 underline underline-offset-2">Tentar novamente</button></div>}
                     <nav className="mt-5 flex flex-wrap gap-2" aria-label="Modo de saldos">
-                        <Link href={`/balances?month=${selectedMonth}&view=calendar`} className={`rounded-xl px-4 py-2 text-sm ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'border border-white/10 text-slate-300'}`}>Mês-calendário</Link>
-                        <Link href={`/balances?month=${selectedMonth}&view=invoice`} className={`rounded-xl px-4 py-2 text-sm ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'border border-white/10 text-slate-300'}`}>Mês de vencimento</Link>
+                        <Link href={navigationUrls.calendar} className={`rounded-xl px-4 py-2 text-sm ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'border border-white/10 text-slate-300'}`}>Mês-calendário</Link>
+                        <Link href={navigationUrls.invoice} className={`rounded-xl px-4 py-2 text-sm ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'border border-white/10 text-slate-300'}`}>Mês de vencimento</Link>
                     </nav>
                     {flash?.success && <p role="status" className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{flash.success}</p>}
                     <section className="mt-8 grid gap-4 md:grid-cols-3">
@@ -60,11 +92,11 @@ export default function Balances({ selectedMonth, view, summary, participants, r
                                 <h2 className="font-semibold">Recebimentos do período</h2>
                                 <p className="mt-1 text-sm text-slate-400">Consulte os valores registrados ou ajuste a aplicação de um recebimento existente.</p>
                             </div>
-                            <Link href={`/receipts/create?month=${selectedMonth}`} className="text-sm font-semibold text-emerald-300">+ Registrar recebimento</Link>
+                            <Link href={navigationUrls.receipt} className="text-sm font-semibold text-emerald-300">+ Registrar recebimento</Link>
                         </div>
                         <div className="mt-5 flex flex-col gap-3">
                             {receipts.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Nenhum recebimento registrado.</p>}
-                            {receipts.map((receipt) => <div key={receipt.id} className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-slate-200">{receipt.participant} · {formatDate(receipt.receivedAt)}</p><p className="mt-1 text-xs text-slate-500">{receipt.note ?? 'Sem observação'} · aplicado {formatMoney(receipt.appliedCents)}{receipt.creditCents > 0 ? ` · crédito ${formatMoney(receipt.creditCents)}` : ''}</p></div><Link href={`/receipts/${receipt.id}/edit?month=${selectedMonth}`} className="text-xs font-semibold text-emerald-300">Ajustar aplicação</Link></div>)}
+                            {receipts.map((receipt) => <div key={receipt.id} className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-slate-200">{receipt.participant} · {formatDate(receipt.receivedAt)}</p><p className="mt-1 text-xs text-slate-500">{receipt.note ?? 'Sem observação'} · aplicado {formatMoney(receipt.appliedCents)}{receipt.creditCents > 0 ? ` · crédito ${formatMoney(receipt.creditCents)}` : ''}</p></div><Link href={`/receipts/${receipt.id}/edit?month=${month}`} className="text-xs font-semibold text-emerald-300">Ajustar aplicação</Link></div>)}
                         </div>
                     </section>
                 </div>

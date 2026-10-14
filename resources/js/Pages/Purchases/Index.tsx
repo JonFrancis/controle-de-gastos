@@ -1,4 +1,6 @@
-import { Form, Head, Link } from '@inertiajs/react';
+import { Form, Head, Link, router } from '@inertiajs/react';
+import { useState, type ChangeEvent } from 'react';
+import { purchaseNavigationUrls, visitPurchaseMonth, type InvoiceContext, type PurchaseNavigationBases } from './monthNavigation';
 
 type ExpenseItem = {
     id: number;
@@ -38,11 +40,46 @@ type Props = {
     purchases: ExpenseItem[];
     occurrences: ExpenseItem[];
     invoiceGroups: InvoiceGroup[];
+    invoiceContext: InvoiceContext | null;
     flash?: { success?: string };
+    navigationBases: PurchaseNavigationBases;
 };
 
-export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthTotalCents, purchases, occurrences, invoiceGroups, flash }: Props) {
+export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthTotalCents, purchases, occurrences, invoiceGroups, invoiceContext, flash, navigationBases }: Props) {
     const itemCount = purchases.length + occurrences.length;
+    const [month, setMonth] = useState(selectedMonth);
+    const [processing, setProcessing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const loadMonth = (nextMonth: string): void => {
+        setMonth(nextMonth);
+        setError(null);
+        setProcessing(true);
+
+        visitPurchaseMonth(router, navigationBases.purchases, nextMonth, view, selectedMonth, invoiceContext, {
+            onSuccess: () => setError(null),
+            onError: () => setError('Não foi possível carregar este mês.'),
+            onHttpException: () => {
+                setError('Não foi possível carregar este mês. Tente novamente.');
+
+                return false;
+            },
+            onNetworkError: () => {
+                setError('Não foi possível carregar este mês. Tente novamente.');
+
+                return false;
+            },
+            onFinish: () => setProcessing(false),
+        });
+    };
+
+    const navigationUrls = purchaseNavigationUrls(navigationBases, month, view, invoiceContext);
+
+    const handleMonthChange = (event: ChangeEvent<HTMLInputElement>): void => {
+        if (event.target.value !== '') {
+            loadMonth(event.target.value);
+        }
+    };
 
     return (
         <>
@@ -50,8 +87,8 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
             <main className="min-h-screen bg-slate-950 px-5 py-6 text-white sm:px-8 lg:px-12 lg:py-10">
                 <div className="mx-auto max-w-6xl">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                        <Link href="/" className="text-sm text-emerald-300">← Voltar para visão geral</Link>
-                        <Link href="/purchases/create" className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950">＋ Nova compra</Link>
+                        <Link href={navigationUrls.overview} className="text-sm text-emerald-300">← Voltar para visão geral</Link>
+                        <Link href={navigationUrls.create} className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950">＋ Nova compra</Link>
                     </div>
 
                     <header className="mt-6 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
@@ -60,14 +97,14 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
                             <h1 className="mt-1 text-3xl font-bold tracking-tight">{view === 'invoice' ? 'Faturas' : 'Movimentações'}</h1>
                             <p className="mt-2 text-sm text-slate-400">{view === 'invoice' ? 'Consulte o que precisa ser pago pelo mês de vencimento.' : 'Consulte lançamentos que não possuem uma fatura, pelo mês-calendário.'}</p>
                         </div>
-                        <form method="get" action="/purchases" className="flex flex-wrap items-center gap-2">
-                            <input type="hidden" name="view" value={view} />
+                        <div className="flex flex-wrap items-center gap-2" aria-busy={processing}>
                             <label htmlFor="purchases-month" className="text-sm text-slate-400">{view === 'invoice' ? 'Faturas com vencimento em' : 'Mês-calendário'}</label>
-                            <input id="purchases-month" type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
-                            <button className="rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/40">Filtrar</button>
-                        </form>
+                            <input id="purchases-month" type="month" value={month} onChange={handleMonthChange} disabled={processing} aria-busy={processing} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white disabled:cursor-wait disabled:opacity-60" />
+                            {processing && <span role="status" className="text-xs text-slate-400">Carregando...</span>}
+                        </div>
                     </header>
 
+                    {error && <div role="alert" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm text-rose-200"><span>{error}</span><button type="button" onClick={() => loadMonth(month)} disabled={processing} className="font-semibold text-rose-100 underline disabled:opacity-60">Tentar novamente</button></div>}
                     {flash?.success && <p role="status" className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{flash.success}</p>}
 
                     <section className="mt-8 rounded-3xl border border-white/10 bg-slate-900/70 p-5 sm:p-6">
@@ -78,8 +115,8 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
                                 <p className="mt-1 text-sm text-slate-400">{view === 'invoice' ? `${invoiceGroups.length} fatura(s)` : `${itemCount} lançamento(s)`} · total de <strong className="text-emerald-300">{formatMoney(monthTotalCents)}</strong></p>
                             </div>
                             <div className="flex rounded-xl border border-white/10 bg-white/5 p-1 text-sm" aria-label="Visão de compras">
-                                <Link href={`/purchases?month=${selectedMonth}&view=calendar`} className={`rounded-lg px-3 py-2 ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Movimentações</Link>
-                                <Link href={`/purchases?month=${selectedMonth}&view=invoice`} className={`rounded-lg px-3 py-2 ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Faturas</Link>
+                                <Link href={navigationUrls.calendar} className={`rounded-lg px-3 py-2 ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Movimentações</Link>
+                                <Link href={navigationUrls.invoice} className={`rounded-lg px-3 py-2 ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Faturas</Link>
                             </div>
                         </div>
 

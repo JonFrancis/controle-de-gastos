@@ -16,8 +16,8 @@ class PurchaseListingService
         private readonly RecurrenceService $recurrenceService,
     ) {}
 
-    /** @return array{month: Carbon, purchases: Collection<int, Purchase>, occurrences: Collection<int, InstallmentOccurrence|RecurrenceOccurrence>, invoiceGroups: Collection<int, array<string, mixed>>} */
-    public function forMonth(string $selectedMonth, string $view, ?int $selfId, ?int $paymentMethodId = null, ?string $closingDate = null): array
+    /** @return array{month: Carbon, purchases: Collection<int, Purchase>, occurrences: Collection<int, InstallmentOccurrence|RecurrenceOccurrence>, invoiceGroups: Collection<int, array<string, mixed>>, resolvedClosingDate: string|null} */
+    public function forMonth(string $selectedMonth, string $view, ?int $selfId, ?int $paymentMethodId = null, ?string $closingDate = null, ?int $closingDay = null): array
     {
         $month = Carbon::createFromFormat('Y-m', $selectedMonth);
         $range = $view === 'invoice'
@@ -61,8 +61,10 @@ class PurchaseListingService
             $invoiceItems = $invoiceItems->filter(fn (array $item): bool => (int) $item['paymentMethodId'] === $paymentMethodId);
         }
 
-        if ($closingDate !== null) {
-            $invoiceItems = $invoiceItems->filter(fn (array $item): bool => $item['closingDate'] === $closingDate);
+        $resolvedClosingDate = $closingDate;
+
+        if ($view === 'invoice' && $closingDate !== null) {
+            [$invoiceItems, $resolvedClosingDate] = $this->reconcileClosingDate($invoiceItems, $paymentMethodId, $closingDate, $closingDay);
         }
 
         $invoiceGroups = $invoiceItems
@@ -84,7 +86,7 @@ class PurchaseListingService
             ->sortBy(fn (array $group): string => ($group['dueDate'] ?? $group['closingDate']).'-'.$group['paymentMethod'])
             ->values();
 
-        return compact('month', 'purchases', 'occurrences', 'invoiceGroups');
+        return compact('month', 'purchases', 'occurrences', 'invoiceGroups', 'resolvedClosingDate');
     }
 
     /** @return array<string, mixed> */
@@ -171,5 +173,35 @@ class PurchaseListingService
         return $item->paymentMethod === null
             ? null
             : $this->invoiceSettings->detailsFor($item->paymentMethod, $item->purchased_at);
+    }
+
+    /** @return array{0: Collection<int, array<string, mixed>>, 1: string|null} */
+    private function reconcileClosingDate(Collection $invoiceItems, ?int $paymentMethodId, string $closingDate, ?int $closingDay): array
+    {
+        $matchingItems = $invoiceItems->filter(fn (array $item): bool => $item['closingDate'] === $closingDate)->values();
+
+        if ($matchingItems->isNotEmpty()) {
+            return [$matchingItems, $closingDate];
+        }
+
+        if ($invoiceItems->isEmpty() || $paymentMethodId === null) {
+            return [$matchingItems, $closingDate];
+        }
+
+        $availableDates = $invoiceItems
+            ->filter(fn (array $item): bool => $closingDay === null || Carbon::createFromFormat('Y-m-d', $item['closingDate'])->day === $closingDay)
+            ->pluck('closingDate')
+            ->unique()
+            ->values();
+
+        if ($availableDates->isEmpty()) {
+            $availableDates = $invoiceItems->pluck('closingDate')->unique()->values();
+        }
+
+        if ($availableDates->isNotEmpty()) {
+            $invoiceItems = $invoiceItems->filter(fn (array $item): bool => $availableDates->contains($item['closingDate']))->values();
+        }
+
+        return [$invoiceItems, $availableDates->count() === 1 ? $availableDates->first() : $closingDate];
     }
 }

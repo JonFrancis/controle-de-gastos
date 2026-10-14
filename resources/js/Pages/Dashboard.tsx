@@ -1,13 +1,14 @@
-import { Head, Link } from '@inertiajs/react';
-import { useState } from 'react';
+import { Head, Link, router } from '@inertiajs/react';
+import { useEffect, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
+import { createRecoverableNavigationHandler } from './recoverableNavigationFailure';
+import { dashboardCategoryIdForResponse, dashboardNavigationUrls, visitDashboardMonth, type DashboardNavigationBases } from './dashboardMonthNavigation';
 
 type Props = {
     selectedMonth: string;
-    balancesUrl: string;
     view: 'calendar' | 'invoice';
     pendingReview: number;
     pendingReviewUrl: string | null;
-    invoiceListUrl: string;
     summary: {
         ownConsumptionCents: number;
         totalDisbursedCents: number;
@@ -23,6 +24,7 @@ type Props = {
     };
     personChart: PersonChartData;
     flash?: { success?: string };
+    navigationBases: DashboardNavigationBases;
 };
 type ChartRow = { name: string; amountCents: number };
 type MovementRow = { week: number; label: string; amountCents: number };
@@ -30,21 +32,64 @@ type PersonChartItem = { id: number; name: string; amountCents: number; netCents
 type PersonChartData = { expenses: PersonChartItem[]; balances: PersonChartItem[] };
 type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStart: string; periodEnd: string; closingDate: string; dueDate: string | null; totalCents: number; purchases: { id: number }[]; detailsUrl: string };
 
-const navigation = (selectedMonth: string, balancesUrl: string) => [
-    ['Faturas', `/purchases?month=${selectedMonth}&view=invoice`],
-    ['Movimentações', `/purchases?month=${selectedMonth}&view=calendar`],
-    ['Visão geral', `/?month=${selectedMonth}&view=calendar`],
-    ['Compras', `/purchases?month=${selectedMonth}&view=invoice`],
-    ['Parcelamentos', '/installments'],
-    ['Recorrentes', '/recurrences'],
-    ['Saldos', balancesUrl],
-    ['Análise', '/analysis'],
-    ['Exportações', '/exports'],
-    ['Pessoas', '#pessoas'],
-    ['Configurações', '/settings/catalogs'],
-];
+const navigation = (navigationBases: DashboardNavigationBases, month: string, view: 'calendar' | 'invoice', categoryId: number | null) => {
+    const urls = dashboardNavigationUrls(navigationBases, month, view, categoryId);
 
-export default function Dashboard({ selectedMonth, balancesUrl, view, pendingReview, pendingReviewUrl, invoiceListUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
+    return [
+        ['Faturas', urls.purchasesInvoice],
+        ['Movimentações', urls.purchasesCalendar],
+        ['Visão geral', urls.overview],
+        ['Compras', urls.purchasesInvoice],
+        ['Parcelamentos', '/installments'],
+        ['Recorrentes', '/recurrences'],
+        ['Saldos', urls.balances],
+        ['Análise', urls.analysis],
+        ['Exportações', '/exports'],
+        ['Pessoas', '#pessoas'],
+        ['Configurações', '/settings/catalogs'],
+    ];
+};
+
+export default function Dashboard({ selectedMonth, view, pendingReview, pendingReviewUrl, summary, charts, personChart, invoiceGroups, flash, navigationBases }: Props) {
+    const [month, setMonth] = useState(selectedMonth);
+    const [localCategoryId, setLocalCategoryId] = useState(charts.selectedCategoryId);
+    const [monthRequestPending, setMonthRequestPending] = useState(false);
+    const [monthRequestFailed, setMonthRequestFailed] = useState(false);
+    const monthlyNavigationInFlight = useRef(false);
+
+    useEffect(() => {
+        const preserveLocalSelection = monthlyNavigationInFlight.current;
+        monthlyNavigationInFlight.current = false;
+        setLocalCategoryId((currentCategoryId) => dashboardCategoryIdForResponse(currentCategoryId, charts.selectedCategoryId, preserveLocalSelection));
+    }, [charts.selectedCategoryId, selectedMonth]);
+
+    const localNavigationUrls = dashboardNavigationUrls(navigationBases, month, view, localCategoryId);
+    const markMonthRequestFailed = createRecoverableNavigationHandler(setMonthRequestFailed, () => {
+        monthlyNavigationInFlight.current = false;
+    });
+
+    const requestMonth = (nextMonth: string) => {
+        if (!nextMonth || (nextMonth === selectedMonth && !monthRequestFailed)) {
+            return;
+        }
+
+        setMonth(nextMonth);
+        setMonthRequestPending(true);
+        setMonthRequestFailed(false);
+        monthlyNavigationInFlight.current = true;
+
+        visitDashboardMonth(router, navigationBases.overview, nextMonth, view, localCategoryId, {
+            onError: markMonthRequestFailed,
+            onHttpException: markMonthRequestFailed,
+            onNetworkError: markMonthRequestFailed,
+            onFinish: () => setMonthRequestPending(false),
+        });
+    };
+
+    const handleMonthChange = (event: ChangeEvent<HTMLInputElement>) => {
+        requestMonth(event.currentTarget.value);
+    };
+
     return (
         <>
             <Head title={view === 'invoice' ? 'Faturas' : 'Visão geral'} />
@@ -58,7 +103,7 @@ export default function Dashboard({ selectedMonth, balancesUrl, view, pendingRev
                         </div>
                     </div>
                     <nav className="mt-10 space-y-2">
-                        {navigation(selectedMonth, balancesUrl).map(([label, href], index) => (
+                        {navigation(navigationBases, month, view, localCategoryId).map(([label, href], index) => (
                             <Link
                                 key={label}
                                 href={href}
@@ -80,30 +125,30 @@ export default function Dashboard({ selectedMonth, balancesUrl, view, pendingRev
                                 <p className="mt-2 text-sm text-slate-400">{view === 'invoice' ? 'Consulte as faturas pelo mês de vencimento.' : 'Consulte os lançamentos pelo mês-calendário.'}</p>
                             </div>
                             <div className="flex flex-wrap items-center gap-3">
-                                <form method="get" action="/" className="flex items-center gap-2">
-                                    <input type="hidden" name="view" value={view} />
+                                <div className="flex flex-wrap items-center gap-2" aria-busy={monthRequestPending}>
                                     <label htmlFor="dashboard-month" className="sr-only">{view === 'invoice' ? 'Mês de vencimento' : 'Mês'}</label>
-                                    <input id="dashboard-month" type="month" name="month" defaultValue={selectedMonth} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white" />
-                                    <button className="rounded-xl border border-white/10 px-3 py-2.5 text-sm text-slate-200">Aplicar</button>
-                                </form>
-                                <Link href="/purchases/create" className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-400/10">＋ Nova compra</Link>
-                                <Link href={`/receipts/create?month=${selectedMonth}`} className="rounded-xl border border-emerald-300/30 px-4 py-2.5 text-sm font-semibold text-emerald-300">＋ Registrar recebimento</Link>
+                                    <input id="dashboard-month" type="month" name="month" value={month} onChange={handleMonthChange} disabled={monthRequestPending} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white disabled:cursor-wait disabled:opacity-60" />
+                                    {monthRequestPending && <span role="status" aria-live="polite" className="text-xs text-slate-400">Atualizando…</span>}
+                                    {monthRequestFailed && !monthRequestPending && <span role="alert" className="flex items-center gap-2 text-xs text-amber-300">Não foi possível atualizar. <button type="button" onClick={() => requestMonth(month)} className="font-semibold underline underline-offset-2">Tentar novamente</button></span>}
+                                </div>
+                                <Link href={localNavigationUrls.purchaseCreate} className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-400/10">＋ Nova compra</Link>
+                                <Link href={localNavigationUrls.receipt} className="rounded-xl border border-emerald-300/30 px-4 py-2.5 text-sm font-semibold text-emerald-300">＋ Registrar recebimento</Link>
                             </div>
                         </header>
 
                         {flash?.success && <p role="status" className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-200">{flash.success}</p>}
 
-                        {view === 'invoice' ? <InvoiceOverview groups={invoiceGroups} selectedMonth={selectedMonth} totalCents={summary.totalDisbursedCents} invoiceListUrl={invoiceListUrl} /> : <>
+                        {view === 'invoice' ? <InvoiceOverview groups={invoiceGroups} selectedMonth={selectedMonth} totalCents={summary.totalDisbursedCents} invoiceListUrl={localNavigationUrls.purchasesInvoice} /> : <>
                             <section className="mt-8 grid gap-4 md:grid-cols-2">
                                 <SummaryCard label="Meus gastos totais do mês" value={formatMoney(summary.ownConsumptionCents)} note="Consumo próprio atribuído a Eu" accent="emerald" />
-                                <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} selectedMonth={selectedMonth} />
+                                <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} salaryUrl={localNavigationUrls.analysisSalary} />
                             </section>
 
-                            <MovementChart selectedMonth={selectedMonth} movement={charts.movement} categories={charts.categories} selectedCategoryId={charts.selectedCategoryId} />
+                            <MovementChart selectedMonth={month} movement={charts.movement} categories={charts.categories} selectedCategoryId={localCategoryId} onCategoryChange={setLocalCategoryId} />
 
                             <PaymentMethodChart rows={charts.paymentMethodTotals} />
 
-                            <ParticipantChart chart={personChart} balancesUrl={balancesUrl} />
+                            <ParticipantChart chart={personChart} balancesUrl={localNavigationUrls.balances} />
                         </>}
 
                         {pendingReview > 0 && pendingReviewUrl && <div className="mt-6 flex flex-col justify-between gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100 sm:flex-row sm:items-center"><span>{pendingReview} item(ns) aguardando revisão.</span><Link href={pendingReviewUrl} className="font-semibold text-amber-200 hover:text-white">Revisar agora →</Link></div>}
@@ -129,10 +174,11 @@ function InvoiceOverview({ groups, selectedMonth, totalCents, invoiceListUrl }: 
     </section>;
 }
 
-function MovementChart({ selectedMonth, movement, categories, selectedCategoryId }: { selectedMonth: string; movement: MovementRow[]; categories: { id: number; name: string }[]; selectedCategoryId: number | null }) {
+function MovementChart({ selectedMonth, movement, categories, selectedCategoryId, onCategoryChange }: { selectedMonth: string; movement: MovementRow[]; categories: { id: number; name: string }[]; selectedCategoryId: number | null; onCategoryChange: (categoryId: number | null) => void }) {
     const maximum = Math.max(...movement.map((row) => row.amountCents), 0);
+    const selectedCategoryIsMissing = selectedCategoryId !== null && !categories.some((category) => category.id === selectedCategoryId);
 
-    return <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><h2 className="font-semibold text-white">Movimentação do mês</h2><p className="mt-1 text-sm text-slate-400">Consumo próprio por semana</p></div><form method="get" action="/" className="flex items-center gap-2"><input type="hidden" name="month" value={selectedMonth} /><label htmlFor="movement-category" className="sr-only">Filtrar movimentação por categoria</label><select id="movement-category" name="category" defaultValue={selectedCategoryId ?? ''} className="max-w-48 rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white"><option value="">Todas as categorias</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><button className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">Filtrar</button></form></div>{movement.length === 0 ? <p className="mt-8 rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Ainda não há consumo próprio neste mês para movimentar.</p> : <div className="mt-8 flex h-48 items-end justify-between gap-3 px-2" aria-label="Movimentação semanal"><div className="sr-only">{movement.map((row) => `${row.label}: ${formatMoney(row.amountCents)}`).join(', ')}</div>{movement.map((row) => <div key={row.week} className="flex min-w-0 flex-1 flex-col items-center gap-2"><div className="flex h-40 w-full flex-col items-center justify-end gap-1"><span className="whitespace-nowrap text-[11px] font-semibold text-emerald-200">{formatMoney(row.amountCents)}</span><div className="w-full rounded-t-lg bg-gradient-to-t from-emerald-500/40 to-emerald-300" style={{ height: `${(row.amountCents / maximum) * 100}%` }} title={`${row.label}: ${formatMoney(row.amountCents)}`} /></div><span className="text-center text-[10px] text-slate-500">{row.label}</span></div>)}</div>}</section>;
+    return <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><h2 className="font-semibold text-white">Movimentação do mês</h2><p className="mt-1 text-sm text-slate-400">Consumo próprio por semana</p></div><form method="get" action="/" className="flex items-center gap-2"><input type="hidden" name="month" value={selectedMonth} /><label htmlFor="movement-category" className="sr-only">Filtrar movimentação por categoria</label><select id="movement-category" name="category" value={selectedCategoryId ?? ''} onChange={(event) => onCategoryChange(event.currentTarget.value === '' ? null : Number(event.currentTarget.value))} className="max-w-48 rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white"><option value="">Todas as categorias</option>{selectedCategoryIsMissing && <option value={selectedCategoryId}>Categoria selecionada</option>}{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><button className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">Filtrar</button></form></div>{movement.length === 0 ? <p className="mt-8 rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Ainda não há consumo próprio neste mês para movimentar.</p> : <div className="mt-8 flex h-48 items-end justify-between gap-3 px-2" aria-label="Movimentação semanal"><div className="sr-only">{movement.map((row) => `${row.label}: ${formatMoney(row.amountCents)}`).join(', ')}</div>{movement.map((row) => <div key={row.week} className="flex min-w-0 flex-1 flex-col items-center gap-2"><div className="flex h-40 w-full flex-col items-center justify-end gap-1"><span className="whitespace-nowrap text-[11px] font-semibold text-emerald-200">{formatMoney(row.amountCents)}</span><div className="w-full rounded-t-lg bg-gradient-to-t from-emerald-500/40 to-emerald-300" style={{ height: `${(row.amountCents / maximum) * 100}%` }} title={`${row.label}: ${formatMoney(row.amountCents)}`} /></div><span className="text-center text-[10px] text-slate-500">{row.label}</span></div>)}</div>}</section>;
 }
 
 function PaymentMethodChart({ rows }: { rows: ChartRow[] }) {
@@ -192,8 +238,8 @@ function SummaryCard({ label, value, note, accent }: { label: string; value: str
     return <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-5"><div className="flex items-start justify-between"><p className="text-sm text-slate-400">{label}</p><span className={`rounded-lg px-2 py-1 text-xs ${accents[accent]}`}>●</span></div><p className="mt-5 text-2xl font-bold text-white">{value}</p><p className="mt-2 text-xs text-slate-500">{note}</p></div>;
 }
 
-function SalarySummaryCard({ salaryCents, remainingCents, selectedMonth }: { salaryCents: number | null; remainingCents: number | null; selectedMonth: string }) {
+function SalarySummaryCard({ salaryCents, remainingCents, salaryUrl }: { salaryCents: number | null; remainingCents: number | null; salaryUrl: string }) {
     const hasDeficit = remainingCents !== null && remainingCents < 0;
 
-    return <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-5"><div className="flex items-start justify-between"><p className="text-sm text-slate-400">Restante do salário</p><span className={`rounded-lg px-2 py-1 text-xs ${hasDeficit ? 'bg-rose-300/10 text-rose-300' : 'bg-emerald-300/10 text-emerald-300'}`}>●</span></div><p className={`mt-5 text-2xl font-bold ${hasDeficit ? 'text-rose-300' : 'text-white'}`}>{remainingCents === null ? 'Salário não configurado' : formatMoney(remainingCents)}</p>{salaryCents === null ? <Link href={`/analysis?month=${selectedMonth}#salary`} className="mt-3 inline-block text-sm font-semibold text-emerald-300">Configurar salário →</Link> : <p className={`mt-2 text-xs ${hasDeficit ? 'text-rose-300' : 'text-slate-500'}`}>{hasDeficit ? 'Déficit do salário' : `Salário configurado: ${formatMoney(salaryCents)}`}</p>}</div>;
+    return <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-5"><div className="flex items-start justify-between"><p className="text-sm text-slate-400">Restante do salário</p><span className={`rounded-lg px-2 py-1 text-xs ${hasDeficit ? 'bg-rose-300/10 text-rose-300' : 'bg-emerald-300/10 text-emerald-300'}`}>●</span></div><p className={`mt-5 text-2xl font-bold ${hasDeficit ? 'text-rose-300' : 'text-white'}`}>{remainingCents === null ? 'Salário não configurado' : formatMoney(remainingCents)}</p>{salaryCents === null ? <Link href={salaryUrl} className="mt-3 inline-block text-sm font-semibold text-emerald-300">Configurar salário →</Link> : <p className={`mt-2 text-xs ${hasDeficit ? 'text-rose-300' : 'text-slate-500'}`}>{hasDeficit ? 'Déficit do salário' : `Salário configurado: ${formatMoney(salaryCents)}`}</p>}</div>;
 }

@@ -11,8 +11,10 @@ use App\Models\PaymentMethod;
 use App\Models\Purchase;
 use App\Services\AuditService;
 use App\Services\BalanceService;
+use App\Services\PaymentMethodInvoiceSettingService;
 use App\Services\PurchaseListingService;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -21,20 +23,32 @@ use Inertia\Response;
 
 class PurchaseController extends Controller
 {
-    public function index(Request $request, PurchaseListingService $purchaseListingService): Response
+    public function index(Request $request, PurchaseListingService $purchaseListingService, PaymentMethodInvoiceSettingService $invoiceSettings): Response
     {
         $selectedMonth = $this->validMonth($request->query('month'));
         $view = $request->query('view') === 'calendar' ? 'calendar' : 'invoice';
         $selfId = Participant::query()->where('is_default', true)->value('id');
-        $closingDate = $request->query('closing_date');
-        $closingDate = is_string($closingDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $closingDate) === 1 ? $closingDate : null;
+        $paymentMethodId = $request->integer('payment_method_id') ?: null;
+        $paymentMethod = $view === 'invoice' && $paymentMethodId !== null
+            ? PaymentMethod::query()->with(['latestInvoiceSetting', 'invoiceSettings'])->find($paymentMethodId)
+            : null;
+        $validatedClosingDate = $this->validClosingDate($request->query('closing_date'));
+        $requestedClosingDate = $validatedClosingDate?->toDateString();
+        $closingDay = $paymentMethod?->latestInvoiceSetting?->closing_day ?? $paymentMethod?->closing_day;
+
+        if ($paymentMethod !== null && $validatedClosingDate !== null) {
+            $closingDay = $invoiceSettings->forDate($paymentMethod, $validatedClosingDate)?->closing_day ?? $closingDay;
+        }
+
         $purchaseListing = $purchaseListingService->forMonth(
             $selectedMonth,
             $view,
             $selfId,
-            $request->integer('payment_method_id') ?: null,
-            $closingDate,
+            $paymentMethodId,
+            $requestedClosingDate,
+            $closingDay,
         );
+        $closingDate = $purchaseListing['resolvedClosingDate'];
         $month = $purchaseListing['month'];
         $purchases = $purchaseListing['purchases'];
         $occurrences = $purchaseListing['occurrences'];
@@ -46,11 +60,21 @@ class PurchaseController extends Controller
                 : 'Movimentação de '.ucfirst($month->locale('pt_BR')->translatedFormat('F \d\e Y')),
             'selectedMonth' => $selectedMonth,
             'view' => $view,
+            'invoiceContext' => $view === 'invoice' ? [
+                'paymentMethodId' => $paymentMethodId,
+                'closingDate' => $closingDate,
+                'closingDay' => $closingDay,
+            ] : null,
             'monthTotalCents' => (int) ($view === 'invoice' ? $invoiceGroups->sum('totalCents') : $purchases->sum('amount_cents') + $occurrences->sum('amount_cents')),
             'purchases' => $view === 'calendar' ? $purchases->map(fn (Purchase $purchase): array => $purchaseListingService->purchaseData($purchase, $selfId))->values() : [],
             'occurrences' => $view === 'calendar' ? $occurrences->map(fn ($occurrence): array => $purchaseListingService->occurrenceData($occurrence, $selfId))->values() : [],
             'invoiceGroups' => $invoiceGroups,
             'flash' => ['success' => session('success')],
+            'navigationBases' => [
+                'overview' => route('dashboard', [], false),
+                'purchases' => route('purchases.index', [], false),
+                'create' => route('purchases.create', [], false),
+            ],
         ]);
     }
 
@@ -162,5 +186,22 @@ class PurchaseController extends Controller
         }
 
         return $month->format('Y-m') === $candidate ? $candidate : now()->format('Y-m');
+    }
+
+    private function validClosingDate(mixed $value): ?CarbonImmutable
+    {
+        $candidate = (string) $value;
+
+        if (! is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2}$/', $candidate) !== 1) {
+            return null;
+        }
+
+        try {
+            $date = CarbonImmutable::createFromFormat('!Y-m-d', $candidate);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $date !== false && $date->format('Y-m-d') === $candidate ? $date : null;
     }
 }
