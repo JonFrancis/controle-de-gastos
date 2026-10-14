@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createRecoverableNavigationHandler } from './recoverableNavigationFailure.ts';
 import { dashboardCategoryIdForResponse, dashboardMonthUrl, dashboardNavigationUrls, visitDashboardMonth } from './dashboardMonthNavigation.ts';
 
 const bases = {
@@ -41,9 +42,42 @@ test('keeps the local category for the next month after a response without that 
     );
 });
 
+test('includes the active Dashboard view in salary analysis links', () => {
+    assert.equal(
+        dashboardNavigationUrls(bases, '2026-11', 'calendar').analysisSalary,
+        '/custom-analysis?month=2026-11&view=calendar#salary',
+    );
+    assert.equal(
+        dashboardNavigationUrls(bases, '2026-11', 'invoice').analysisSalary,
+        '/custom-analysis?month=2026-11&view=invoice#salary',
+    );
+});
+
 test('accepts an explicit category response outside monthly navigation', () => {
     assert.strictEqual(dashboardCategoryIdForResponse(7, 11, false), 11);
     assert.strictEqual(dashboardCategoryIdForResponse(7, null, false), null);
+});
+
+test('does not restore a previous category after a failed month visit and an explicit category response', () => {
+    let monthlyNavigationInFlight = true;
+    let monthRequestFailed = false;
+    const events = [];
+    const markMonthRequestFailed = createRecoverableNavigationHandler(
+        (failed) => {
+            events.push('mark-error');
+            monthRequestFailed = failed;
+        },
+        () => {
+            events.push('clear-month-navigation');
+            monthlyNavigationInFlight = false;
+        },
+    );
+
+    assert.strictEqual(markMonthRequestFailed(), false);
+    assert.deepEqual(events, ['clear-month-navigation', 'mark-error']);
+    assert.equal(monthlyNavigationInFlight, false);
+    assert.equal(monthRequestFailed, true);
+    assert.equal(dashboardCategoryIdForResponse(7, null, monthlyNavigationInFlight), null);
 });
 
 test('forwards visit failure handlers so a failed Dashboard month can be retried', () => {
@@ -70,7 +104,7 @@ test('keeps the locally selected month in Dashboard navigation after a failed vi
     assert.deepEqual(dashboardNavigationUrls(bases, '2026-11', 'invoice'), {
         balances: '/custom-balances?month=2026-11&view=invoice',
         analysis: '/custom-analysis?month=2026-11&view=invoice',
-        analysisSalary: '/custom-analysis?month=2026-11#salary',
+        analysisSalary: '/custom-analysis?month=2026-11&view=invoice#salary',
         purchasesInvoice: '/custom-purchases?month=2026-11&view=invoice',
         purchasesCalendar: '/custom-purchases?month=2026-11&view=calendar',
         overview: '/dashboard?month=2026-11&view=invoice',

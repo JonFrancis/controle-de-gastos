@@ -1,6 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
+import { createRecoverableNavigationHandler } from './recoverableNavigationFailure';
 import { dashboardCategoryIdForResponse, dashboardNavigationUrls, visitDashboardMonth, type DashboardNavigationBases } from './dashboardMonthNavigation';
 
 type Props = {
@@ -63,11 +64,9 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
     }, [charts.selectedCategoryId, selectedMonth]);
 
     const localNavigationUrls = dashboardNavigationUrls(navigationBases, month, view, localCategoryId);
-    const markMonthRequestFailed = (): false => {
-        setMonthRequestFailed(true);
-
-        return false;
-    };
+    const markMonthRequestFailed = createRecoverableNavigationHandler(setMonthRequestFailed, () => {
+        monthlyNavigationInFlight.current = false;
+    });
 
     const requestMonth = (nextMonth: string) => {
         if (!nextMonth || (nextMonth === selectedMonth && !monthRequestFailed)) {
@@ -80,7 +79,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
         monthlyNavigationInFlight.current = true;
 
         visitDashboardMonth(router, navigationBases.overview, nextMonth, view, localCategoryId, {
-            onError: () => setMonthRequestFailed(true),
+            onError: markMonthRequestFailed,
             onHttpException: markMonthRequestFailed,
             onNetworkError: markMonthRequestFailed,
             onFinish: () => setMonthRequestPending(false),

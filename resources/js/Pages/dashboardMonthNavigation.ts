@@ -60,7 +60,7 @@ export function dashboardNavigationUrls(bases: DashboardNavigationBases, month: 
     return {
         balances: `${bases.balances}?${params.toString()}`,
         analysis: `${bases.analysis}?${params.toString()}`,
-        analysisSalary: `${bases.analysis}?month=${encodeURIComponent(month)}#salary`,
+        analysisSalary: `${bases.analysis}?${params.toString()}#salary`,
         purchasesInvoice: `${bases.purchases}?month=${encodeURIComponent(month)}&view=invoice`,
         purchasesCalendar: `${bases.purchases}?month=${encodeURIComponent(month)}&view=calendar`,
         overview: dashboardMonthUrl(bases.overview, month, view, categoryId),
