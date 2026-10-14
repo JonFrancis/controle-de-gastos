@@ -3,8 +3,8 @@ export type AnalysisView = 'calendar' | 'invoice';
 export type AnalysisVisitOptions = {
     onSuccess?: () => void;
     onError?: () => void;
-    onHttpException?: () => void;
-    onNetworkError?: () => void;
+    onHttpException?: () => false | void;
+    onNetworkError?: () => false | void;
     onFinish?: () => void;
 };
 

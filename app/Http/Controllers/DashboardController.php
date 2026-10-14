@@ -54,9 +54,7 @@ class DashboardController extends Controller
 
         return Inertia::render('Dashboard', [
             'selectedMonth' => $selectedMonth,
-            'balancesUrl' => route('balances', ['month' => $selectedMonth, 'view' => $view], false),
             'view' => $view,
-            'invoiceListUrl' => route('purchases.index', ['month' => $selectedMonth, 'view' => 'invoice'], false),
             'summary' => $budgetSummary,
             'personChart' => [
                 'expenses' => $budgetAnalysis['participantExpenses'],

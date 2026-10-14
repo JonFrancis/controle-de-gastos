@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createRecoverableNavigationHandler } from '../recoverableNavigationFailure.ts';
 import { visitBalanceMonth } from './monthSelection.ts';
 
 test('loads a calendar month without adding a history entry', () => {
@@ -30,8 +31,8 @@ test('forwards visit lifecycle callbacks so a failed month can be retried', () =
     const callbacks = {
         onStart: () => {},
         onError: () => {},
-        onHttpException: () => {},
-        onNetworkError: () => {},
+        onHttpException: () => false,
+        onNetworkError: () => false,
         onFinish: () => {},
     };
     let request = [];
@@ -43,4 +44,14 @@ test('forwards visit lifecycle callbacks so a failed month can be retried', () =
     assert.strictEqual(request[2].onHttpException, callbacks.onHttpException);
     assert.strictEqual(request[2].onNetworkError, callbacks.onNetworkError);
     assert.strictEqual(request[2].onFinish, callbacks.onFinish);
+    assert.strictEqual(request[2].onHttpException(), false);
+    assert.strictEqual(request[2].onNetworkError(), false);
+});
+
+test('contains a recoverable Balances visit failure while preserving retry state', () => {
+    let failed = false;
+    const handler = createRecoverableNavigationHandler((value) => { failed = value; });
+
+    assert.strictEqual(handler(), false);
+    assert.equal(failed, true);
 });

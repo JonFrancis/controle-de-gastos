@@ -7,8 +7,8 @@ type BalanceRouter = {
 export type BalanceMonthVisitOptions = {
     onStart?: () => void;
     onError?: () => void;
-    onHttpException?: () => void;
-    onNetworkError?: () => void;
+    onHttpException?: () => false | void;
+    onNetworkError?: () => false | void;
     onFinish?: () => void;
 };
 

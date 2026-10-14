@@ -16,11 +16,18 @@ test('does not add a category to invoice queries', () => {
     );
 });
 
+test('preserves the selected category when returning to the Dashboard overview', () => {
+    assert.equal(
+        dashboardNavigationUrls('2026-11', 'calendar', 7).overview,
+        '/?month=2026-11&view=calendar&category=7',
+    );
+});
+
 test('forwards visit failure handlers so a failed Dashboard month can be retried', () => {
     const callbacks = {
         onError: () => {},
-        onHttpException: () => {},
-        onNetworkError: () => {},
+        onHttpException: () => false,
+        onNetworkError: () => false,
         onFinish: () => {},
     };
 
@@ -32,6 +39,8 @@ test('forwards visit failure handlers so a failed Dashboard month can be retried
     assert.strictEqual(request[1].onHttpException, callbacks.onHttpException);
     assert.strictEqual(request[1].onNetworkError, callbacks.onNetworkError);
     assert.strictEqual(request[1].onFinish, callbacks.onFinish);
+    assert.strictEqual(request[1].onHttpException(), false);
+    assert.strictEqual(request[1].onNetworkError(), false);
 });
 
 test('keeps the locally selected month in Dashboard navigation after a failed visit', () => {

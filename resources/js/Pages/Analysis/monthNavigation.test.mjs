@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createRecoverableNavigationHandler } from '../recoverableNavigationFailure.ts';
 import { analysisMonthVisit, analysisNavigationUrls, visitAnalysisMonth } from './monthNavigation.mjs';
 
 test('changes the calendar analysis month without changing its active view or browser history', () => {
@@ -20,8 +21,8 @@ test('forwards visit failure handlers so a failed analysis month can be retried'
     const callbacks = {
         onSuccess: () => {},
         onError: () => {},
-        onHttpException: () => {},
-        onNetworkError: () => {},
+        onHttpException: () => false,
+        onNetworkError: () => false,
         onFinish: () => {},
     };
 
@@ -34,6 +35,8 @@ test('forwards visit failure handlers so a failed analysis month can be retried'
     assert.strictEqual(request[1].onHttpException, callbacks.onHttpException);
     assert.strictEqual(request[1].onNetworkError, callbacks.onNetworkError);
     assert.strictEqual(request[1].onFinish, callbacks.onFinish);
+    assert.strictEqual(request[1].onHttpException(), false);
+    assert.strictEqual(request[1].onNetworkError(), false);
 });
 
 test('keeps the locally selected month in Analysis navigation after a failed visit', () => {
@@ -42,4 +45,12 @@ test('keeps the locally selected month in Analysis navigation after a failed vis
         calendar: '/analysis?month=2026-11&view=calendar',
         invoice: '/analysis?month=2026-11&view=invoice',
     });
+});
+
+test('contains a recoverable Analysis visit failure while preserving retry state', () => {
+    let failed = false;
+    const handler = createRecoverableNavigationHandler((value) => { failed = value; });
+
+    assert.strictEqual(handler(), false);
+    assert.equal(failed, true);
 });

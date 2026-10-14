@@ -43,8 +43,8 @@ test('forwards visit lifecycle callbacks so a failed invoice month can be retrie
     const callbacks = {
         onStart: () => {},
         onError: () => {},
-        onHttpException: () => {},
-        onNetworkError: () => {},
+        onHttpException: () => false,
+        onNetworkError: () => false,
         onFinish: () => {},
     };
     let request = [];
@@ -63,4 +63,6 @@ test('forwards visit lifecycle callbacks so a failed invoice month can be retrie
     assert.strictEqual(request[2].onHttpException, callbacks.onHttpException);
     assert.strictEqual(request[2].onNetworkError, callbacks.onNetworkError);
     assert.strictEqual(request[2].onFinish, callbacks.onFinish);
+    assert.strictEqual(request[2].onHttpException(), false);
+    assert.strictEqual(request[2].onNetworkError(), false);
 });

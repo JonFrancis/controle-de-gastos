@@ -1,5 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
+import { createRecoverableNavigationHandler } from '../recoverableNavigationFailure';
 import { visitBalanceMonth } from './monthSelection';
 
 type Summary = { ownConsumptionCents: number; paidForOthersCents: number; owedToOthersCents: number };
@@ -33,11 +34,13 @@ export default function Balances({ selectedMonth, view, summary, participants, r
 
         setMonth(nextMonth);
         setLoadError(false);
+        const markLoadFailed = createRecoverableNavigationHandler(setLoadError);
+
         visitBalanceMonth(router, nextMonth, view, {
             onStart: () => setIsLoading(true),
             onError: () => setLoadError(true),
-            onHttpException: () => setLoadError(true),
-            onNetworkError: () => setLoadError(true),
+            onHttpException: markLoadFailed,
+            onNetworkError: markLoadFailed,
             onFinish: () => setIsLoading(false),
         });
     };

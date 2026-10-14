@@ -1,6 +1,7 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { createRecoverableNavigationHandler } from '../recoverableNavigationFailure';
 import { analysisNavigationUrls, visitAnalysisMonth } from './monthNavigation.mjs';
 
 type Summary = { ownConsumptionCents: number; paidForOthersCents: number; totalDisbursedCents: number; salaryRemainingCents: number | null };
@@ -98,12 +99,13 @@ function AnalysisFilters({ month, setMonth, view }: { month: string; setMonth: (
         setMonth(nextMonth);
         setNavigationError(false);
         setProcessing(true);
+        const markNavigationFailed = createRecoverableNavigationHandler(setNavigationError);
 
         visitAnalysisMonth(router, nextMonth, view, {
             onSuccess: () => setNavigationError(false),
             onError: () => setNavigationError(true),
-            onHttpException: () => setNavigationError(true),
-            onNetworkError: () => setNavigationError(true),
+            onHttpException: markNavigationFailed,
+            onNetworkError: markNavigationFailed,
             onFinish: () => setProcessing(false),
         });
     };

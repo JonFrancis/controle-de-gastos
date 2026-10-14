@@ -6,8 +6,8 @@ type DashboardRouter = {
 
 export type DashboardVisitOptions = {
     onError?: () => void;
-    onHttpException?: () => void;
-    onNetworkError?: () => void;
+    onHttpException?: () => false | void;
+    onNetworkError?: () => false | void;
     onFinish?: () => void;
 };
 
@@ -39,13 +39,13 @@ export function visitDashboardMonth(router: DashboardRouter, month: string, view
     });
 }
 
-export function dashboardNavigationUrls(month: string, view: DashboardView): DashboardNavigationUrls {
+export function dashboardNavigationUrls(month: string, view: DashboardView, categoryId: number | null = null): DashboardNavigationUrls {
     return {
         balances: `/balances?month=${month}&view=${view}`,
         analysis: `/analysis?month=${month}&view=${view}`,
         purchasesInvoice: `/purchases?month=${month}&view=invoice`,
         purchasesCalendar: `/purchases?month=${month}&view=calendar`,
-        overview: `/?month=${month}&view=${view}`,
+        overview: dashboardMonthUrl(month, view, categoryId),
         receipt: `/receipts/create?month=${month}`,
     };
 }

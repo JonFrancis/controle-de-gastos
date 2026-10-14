@@ -20,8 +20,8 @@ export type PurchaseVisitOptions = {
     onStart?: () => void;
     onSuccess?: () => void;
     onError?: () => void;
-    onHttpException?: () => void;
-    onNetworkError?: () => void;
+    onHttpException?: () => false | void;
+    onNetworkError?: () => false | void;
     onFinish?: () => void;
 };
 

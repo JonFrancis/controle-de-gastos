@@ -42,15 +42,6 @@ class DashboardTest extends TestCase
             );
     }
 
-    public function test_dashboard_preserves_the_selected_month_in_the_balances_navigation_url(): void
-    {
-        $this->get('/?month=2026-10&view=calendar')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('selectedMonth', '2026-10')
-                ->where('balancesUrl', route('balances', ['month' => '2026-10', 'view' => 'calendar'], false))
-            );
-    }
-
     public function test_direct_dashboard_url_preserves_the_requested_month_and_invoice_view(): void
     {
         $this->get(route('dashboard', ['month' => '2026-12', 'view' => 'invoice']))
@@ -134,7 +125,7 @@ class DashboardTest extends TestCase
             );
     }
 
-    public function test_dashboard_exposes_unfiltered_invoice_list_and_card_cycle_navigation_urls(): void
+    public function test_dashboard_exposes_card_cycle_navigation_urls(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
         $card = PaymentMethod::create(['name' => 'Cartão navegação', 'type' => PaymentMethod::TYPE_CREDIT, 'closing_day' => 5]);
@@ -150,7 +141,6 @@ class DashboardTest extends TestCase
 
         $this->get(route('dashboard', ['month' => '2026-10', 'view' => 'invoice']))
             ->assertInertia(fn (Assert $page) => $page
-                ->where('invoiceListUrl', route('purchases.index', ['month' => '2026-10', 'view' => 'invoice'], false))
                 ->where('invoiceGroups.0.detailsUrl', route('purchases.index', [
                     'month' => '2026-10',
                     'view' => 'invoice',

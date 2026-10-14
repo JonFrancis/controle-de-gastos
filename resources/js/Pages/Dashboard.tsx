@@ -5,11 +5,9 @@ import { dashboardNavigationUrls, visitDashboardMonth } from './dashboardMonthNa
 
 type Props = {
     selectedMonth: string;
-    balancesUrl: string;
     view: 'calendar' | 'invoice';
     pendingReview: number;
     pendingReviewUrl: string | null;
-    invoiceListUrl: string;
     summary: {
         ownConsumptionCents: number;
         totalDisbursedCents: number;
@@ -32,8 +30,8 @@ type PersonChartItem = { id: number; name: string; amountCents: number; netCents
 type PersonChartData = { expenses: PersonChartItem[]; balances: PersonChartItem[] };
 type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStart: string; periodEnd: string; closingDate: string; dueDate: string | null; totalCents: number; purchases: { id: number }[]; detailsUrl: string };
 
-const navigation = (month: string, view: 'calendar' | 'invoice') => {
-    const urls = dashboardNavigationUrls(month, view);
+const navigation = (month: string, view: 'calendar' | 'invoice', categoryId: number | null) => {
+    const urls = dashboardNavigationUrls(month, view, categoryId);
 
     return [
         ['Faturas', urls.purchasesInvoice],
@@ -54,7 +52,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
     const [month, setMonth] = useState(selectedMonth);
     const [monthRequestPending, setMonthRequestPending] = useState(false);
     const [monthRequestFailed, setMonthRequestFailed] = useState(false);
-    const localNavigationUrls = dashboardNavigationUrls(month, view);
+    const localNavigationUrls = dashboardNavigationUrls(month, view, charts.selectedCategoryId);
     const markMonthRequestFailed = () => {
         setMonthRequestFailed(true);
 
@@ -95,7 +93,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
                         </div>
                     </div>
                     <nav className="mt-10 space-y-2">
-                        {navigation(month, view).map(([label, href], index) => (
+                        {navigation(month, view, charts.selectedCategoryId).map(([label, href], index) => (
                             <Link
                                 key={label}
                                 href={href}
