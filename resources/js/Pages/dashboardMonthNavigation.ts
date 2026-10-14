@@ -31,6 +31,10 @@ export type DashboardNavigationBases = {
     purchaseCreate: string;
 };
 
+export function dashboardCategoryIdForResponse(localCategoryId: number | null, responseCategoryId: number | null, preserveLocalSelection: boolean): number | null {
+    return preserveLocalSelection && responseCategoryId === null ? localCategoryId : responseCategoryId;
+}
+
 export function dashboardMonthUrl(overviewBaseUrl: string, month: string, view: DashboardView, categoryId: number | null): string {
     const params = new URLSearchParams({ month, view });
 

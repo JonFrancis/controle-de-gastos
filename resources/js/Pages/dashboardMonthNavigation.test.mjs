@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { dashboardMonthUrl, dashboardNavigationUrls, visitDashboardMonth } from './dashboardMonthNavigation.ts';
+import { dashboardCategoryIdForResponse, dashboardMonthUrl, dashboardNavigationUrls, visitDashboardMonth } from './dashboardMonthNavigation.ts';
 
 const bases = {
     overview: '/dashboard',
@@ -30,6 +30,20 @@ test('preserves the selected category when returning to the Dashboard overview',
         dashboardNavigationUrls(bases, '2026-11', 'calendar', 7).overview,
         '/dashboard?month=2026-11&view=calendar&category=7',
     );
+});
+
+test('keeps the local category for the next month after a response without that category', () => {
+    const locallySelectedCategoryId = dashboardCategoryIdForResponse(7, null, true);
+
+    assert.equal(
+        dashboardNavigationUrls(bases, '2026-12', 'calendar', locallySelectedCategoryId).overview,
+        '/dashboard?month=2026-12&view=calendar&category=7',
+    );
+});
+
+test('accepts an explicit category response outside monthly navigation', () => {
+    assert.strictEqual(dashboardCategoryIdForResponse(7, 11, false), 11);
+    assert.strictEqual(dashboardCategoryIdForResponse(7, null, false), null);
 });
 
 test('forwards visit failure handlers so a failed Dashboard month can be retried', () => {
