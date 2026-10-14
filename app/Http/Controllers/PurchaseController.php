@@ -33,7 +33,7 @@ class PurchaseController extends Controller
             ? PaymentMethod::query()->with(['latestInvoiceSetting', 'invoiceSettings'])->find($paymentMethodId)
             : null;
         $validatedClosingDate = $this->validClosingDate($request->query('closing_date'));
-        $closingDate = $validatedClosingDate?->toDateString();
+        $requestedClosingDate = $validatedClosingDate?->toDateString();
         $closingDay = $paymentMethod?->latestInvoiceSetting?->closing_day ?? $paymentMethod?->closing_day;
 
         if ($paymentMethod !== null && $validatedClosingDate !== null) {
@@ -45,8 +45,10 @@ class PurchaseController extends Controller
             $view,
             $selfId,
             $paymentMethodId,
-            $closingDate,
+            $requestedClosingDate,
+            $closingDay,
         );
+        $closingDate = $purchaseListing['resolvedClosingDate'];
         $month = $purchaseListing['month'];
         $purchases = $purchaseListing['purchases'];
         $occurrences = $purchaseListing['occurrences'];
