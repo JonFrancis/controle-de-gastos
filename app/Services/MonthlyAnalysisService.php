@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AppSetting;
+use App\Models\Category;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
@@ -60,7 +61,7 @@ class MonthlyAnalysisService
         $selfId = $this->selfId();
         $participants = $this->participantRows($chargeableItems, $selfId, $periodStart, $periodEnd);
         $movementCategories = $this->movementCategories($chargeableItems, $selfId);
-        $selectedMovementCategoryId = collect($movementCategories)->contains(fn (array $category): bool => $category['id'] === $movementCategoryId)
+        $selectedMovementCategoryId = $movementCategoryId !== null && Category::query()->whereKey($movementCategoryId)->exists()
             ? $movementCategoryId
             : null;
 
