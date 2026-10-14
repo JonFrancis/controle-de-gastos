@@ -1,6 +1,6 @@
 import { Form, Head, Link, router } from '@inertiajs/react';
 import { useState, type ChangeEvent } from 'react';
-import { purchaseNavigationUrl, visitPurchaseMonth, type InvoiceContext } from './monthNavigation';
+import { purchaseNavigationUrls, visitPurchaseMonth, type InvoiceContext, type PurchaseNavigationBases } from './monthNavigation';
 
 type ExpenseItem = {
     id: number;
@@ -42,9 +42,10 @@ type Props = {
     invoiceGroups: InvoiceGroup[];
     invoiceContext: InvoiceContext | null;
     flash?: { success?: string };
+    navigationBases: PurchaseNavigationBases;
 };
 
-export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthTotalCents, purchases, occurrences, invoiceGroups, invoiceContext, flash }: Props) {
+export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthTotalCents, purchases, occurrences, invoiceGroups, invoiceContext, flash, navigationBases }: Props) {
     const itemCount = purchases.length + occurrences.length;
     const [month, setMonth] = useState(selectedMonth);
     const [processing, setProcessing] = useState(false);
@@ -55,7 +56,7 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
         setError(null);
         setProcessing(true);
 
-        visitPurchaseMonth(router, nextMonth, view, selectedMonth, invoiceContext, {
+        visitPurchaseMonth(router, navigationBases.purchases, nextMonth, view, selectedMonth, invoiceContext, {
             onSuccess: () => setError(null),
             onError: () => setError('Não foi possível carregar este mês.'),
             onHttpException: () => {
@@ -72,6 +73,8 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
         });
     };
 
+    const navigationUrls = purchaseNavigationUrls(navigationBases, month, view, invoiceContext);
+
     const handleMonthChange = (event: ChangeEvent<HTMLInputElement>): void => {
         if (event.target.value !== '') {
             loadMonth(event.target.value);
@@ -84,8 +87,8 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
             <main className="min-h-screen bg-slate-950 px-5 py-6 text-white sm:px-8 lg:px-12 lg:py-10">
                 <div className="mx-auto max-w-6xl">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                        <Link href={`/?month=${month}&view=${view}`} className="text-sm text-emerald-300">← Voltar para visão geral</Link>
-                        <Link href="/purchases/create" className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950">＋ Nova compra</Link>
+                        <Link href={navigationUrls.overview} className="text-sm text-emerald-300">← Voltar para visão geral</Link>
+                        <Link href={navigationUrls.create} className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950">＋ Nova compra</Link>
                     </div>
 
                     <header className="mt-6 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
@@ -112,8 +115,8 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
                                 <p className="mt-1 text-sm text-slate-400">{view === 'invoice' ? `${invoiceGroups.length} fatura(s)` : `${itemCount} lançamento(s)`} · total de <strong className="text-emerald-300">{formatMoney(monthTotalCents)}</strong></p>
                             </div>
                             <div className="flex rounded-xl border border-white/10 bg-white/5 p-1 text-sm" aria-label="Visão de compras">
-                                <Link href={purchaseNavigationUrl(month, 'calendar')} className={`rounded-lg px-3 py-2 ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Movimentações</Link>
-                                <Link href={purchaseNavigationUrl(month, 'invoice', invoiceContext)} className={`rounded-lg px-3 py-2 ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Faturas</Link>
+                                <Link href={navigationUrls.calendar} className={`rounded-lg px-3 py-2 ${view === 'calendar' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Movimentações</Link>
+                                <Link href={navigationUrls.invoice} className={`rounded-lg px-3 py-2 ${view === 'invoice' ? 'bg-emerald-400 font-semibold text-slate-950' : 'text-slate-300 hover:text-white'}`}>Faturas</Link>
                             </div>
                         </div>
 

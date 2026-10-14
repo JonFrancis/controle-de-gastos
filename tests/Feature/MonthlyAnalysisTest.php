@@ -57,6 +57,8 @@ class MonthlyAnalysisTest extends TestCase
         $this->get(route('analysis', ['month' => '2026-12', 'view' => 'invoice']))
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Analysis/Index')
+                ->where('navigationBases.overview', route('dashboard', [], false))
+                ->where('navigationBases.analysis', route('analysis', [], false))
                 ->where('selectedMonth', '2026-12')
                 ->where('view', 'invoice'));
     }

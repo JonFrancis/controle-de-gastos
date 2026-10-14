@@ -43,6 +43,9 @@ class PurchaseIndexTest extends TestCase
         $this->get('/purchases?month=2026-10&view=calendar')
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Purchases/Index')
+                ->where('navigationBases.overview', route('dashboard', [], false))
+                ->where('navigationBases.purchases', route('purchases.index', [], false))
+                ->where('navigationBases.create', route('purchases.create', [], false))
                 ->where('selectedMonth', '2026-10')
                 ->where('view', 'calendar')
                 ->has('purchases', 1)

@@ -1,12 +1,14 @@
-export function analysisMonthVisit(month, view) {
+export function analysisMonthVisit(analysisBaseUrl, month, view) {
+    const params = new URLSearchParams({ month, view });
+
     return {
-        url: `/analysis?month=${encodeURIComponent(month)}&view=${view}`,
+        url: `${analysisBaseUrl}?${params.toString()}`,
         options: { replace: true, preserveState: true, preserveScroll: true },
     };
 }
 
-export function visitAnalysisMonth(router, month, view, callbacks = {}) {
-    const visit = analysisMonthVisit(month, view);
+export function visitAnalysisMonth(router, analysisBaseUrl, month, view, callbacks = {}) {
+    const visit = analysisMonthVisit(analysisBaseUrl, month, view);
 
     router.visit(visit.url, {
         ...visit.options,
@@ -14,10 +16,12 @@ export function visitAnalysisMonth(router, month, view, callbacks = {}) {
     });
 }
 
-export function analysisNavigationUrls(month, view) {
+export function analysisNavigationUrls(bases, month, view) {
+    const params = new URLSearchParams({ month, view });
+
     return {
-        overview: `/?month=${month}&view=${view}`,
-        calendar: `/analysis?month=${month}&view=calendar`,
-        invoice: `/analysis?month=${month}&view=invoice`,
+        overview: `${bases.overview}?${params.toString()}`,
+        calendar: `${bases.analysis}?month=${encodeURIComponent(month)}&view=calendar`,
+        invoice: `${bases.analysis}?month=${encodeURIComponent(month)}&view=invoice`,
     };
 }

@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { visitPurchaseMonth } from './monthNavigation.ts';
+import { purchaseNavigationUrl, purchaseNavigationUrls, visitPurchaseMonth } from './monthNavigation.ts';
+
+const bases = {
+    overview: '/custom-dashboard',
+    purchases: '/custom-purchases',
+    create: '/custom-purchases/create',
+};
 
 test('changes an invoice month without losing its payment method and derives the new closing date', () => {
     let request = [];
 
     visitPurchaseMonth(
         { get: (...args) => { request = args; } },
+        bases.purchases,
         '2026-11',
         'invoice',
         '2026-10',
@@ -14,7 +21,7 @@ test('changes an invoice month without losing its payment method and derives the
     );
 
     assert.deepEqual(request, [
-        '/purchases',
+        '/custom-purchases',
         {
             month: '2026-11',
             view: 'invoice',
@@ -30,6 +37,7 @@ test('caps a derived invoice closing date at the target month end', () => {
 
     visitPurchaseMonth(
         { get: (...args) => { request = args; } },
+        bases.purchases,
         '2026-11',
         'invoice',
         '2026-10',
@@ -45,6 +53,7 @@ test('uses the configured closing day when February closing dates are both the l
 
     visitPurchaseMonth(
         { get: (...args) => { cardClosingOnDay28 = args; } },
+        bases.purchases,
         '2026-03',
         'invoice',
         '2026-02',
@@ -52,6 +61,7 @@ test('uses the configured closing day when February closing dates are both the l
     );
     visitPurchaseMonth(
         { get: (...args) => { cardClosingOnDay31 = args; } },
+        bases.purchases,
         '2026-03',
         'invoice',
         '2026-02',
@@ -74,6 +84,7 @@ test('forwards visit lifecycle callbacks so a failed invoice month can be retrie
 
     visitPurchaseMonth(
         { get: (...args) => { request = args; } },
+        bases.purchases,
         '2026-11',
         'invoice',
         '2026-10',
@@ -88,4 +99,16 @@ test('forwards visit lifecycle callbacks so a failed invoice month can be retrie
     assert.strictEqual(request[2].onFinish, callbacks.onFinish);
     assert.strictEqual(request[2].onHttpException(), false);
     assert.strictEqual(request[2].onNetworkError(), false);
+});
+
+test('composes purchase navigation URLs from the controller-provided bases', () => {
+    const context = { paymentMethodId: 7, closingDate: '2026-11-05', closingDay: 5 };
+
+    assert.equal(purchaseNavigationUrl(bases.purchases, '2026-11', 'invoice', context), '/custom-purchases?month=2026-11&view=invoice&payment_method_id=7&closing_date=2026-11-05');
+    assert.deepEqual(purchaseNavigationUrls(bases, '2026-11', 'invoice', context), {
+        overview: '/custom-dashboard?month=2026-11&view=invoice',
+        create: '/custom-purchases/create',
+        calendar: '/custom-purchases?month=2026-11&view=calendar',
+        invoice: '/custom-purchases?month=2026-11&view=invoice&payment_method_id=7&closing_date=2026-11-05',
+    });
 });

@@ -1,7 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { dashboardNavigationUrls, visitDashboardMonth } from './dashboardMonthNavigation';
+import { dashboardNavigationUrls, visitDashboardMonth, type DashboardNavigationBases } from './dashboardMonthNavigation';
 
 type Props = {
     selectedMonth: string;
@@ -23,6 +23,7 @@ type Props = {
     };
     personChart: PersonChartData;
     flash?: { success?: string };
+    navigationBases: DashboardNavigationBases;
 };
 type ChartRow = { name: string; amountCents: number };
 type MovementRow = { week: number; label: string; amountCents: number };
@@ -30,8 +31,8 @@ type PersonChartItem = { id: number; name: string; amountCents: number; netCents
 type PersonChartData = { expenses: PersonChartItem[]; balances: PersonChartItem[] };
 type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStart: string; periodEnd: string; closingDate: string; dueDate: string | null; totalCents: number; purchases: { id: number }[]; detailsUrl: string };
 
-const navigation = (month: string, view: 'calendar' | 'invoice', categoryId: number | null) => {
-    const urls = dashboardNavigationUrls(month, view, categoryId);
+const navigation = (navigationBases: DashboardNavigationBases, month: string, view: 'calendar' | 'invoice', categoryId: number | null) => {
+    const urls = dashboardNavigationUrls(navigationBases, month, view, categoryId);
 
     return [
         ['Faturas', urls.purchasesInvoice],
@@ -48,11 +49,11 @@ const navigation = (month: string, view: 'calendar' | 'invoice', categoryId: num
     ];
 };
 
-export default function Dashboard({ selectedMonth, view, pendingReview, pendingReviewUrl, summary, charts, personChart, invoiceGroups, flash }: Props) {
+export default function Dashboard({ selectedMonth, view, pendingReview, pendingReviewUrl, summary, charts, personChart, invoiceGroups, flash, navigationBases }: Props) {
     const [month, setMonth] = useState(selectedMonth);
     const [monthRequestPending, setMonthRequestPending] = useState(false);
     const [monthRequestFailed, setMonthRequestFailed] = useState(false);
-    const localNavigationUrls = dashboardNavigationUrls(month, view, charts.selectedCategoryId);
+    const localNavigationUrls = dashboardNavigationUrls(navigationBases, month, view, charts.selectedCategoryId);
     const markMonthRequestFailed = () => {
         setMonthRequestFailed(true);
 
@@ -68,7 +69,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
         setMonthRequestPending(true);
         setMonthRequestFailed(false);
 
-        visitDashboardMonth(router, nextMonth, view, charts.selectedCategoryId, {
+        visitDashboardMonth(router, navigationBases.overview, nextMonth, view, charts.selectedCategoryId, {
             onError: () => setMonthRequestFailed(true),
             onHttpException: markMonthRequestFailed,
             onNetworkError: markMonthRequestFailed,
@@ -93,7 +94,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
                         </div>
                     </div>
                     <nav className="mt-10 space-y-2">
-                        {navigation(month, view, charts.selectedCategoryId).map(([label, href], index) => (
+                        {navigation(navigationBases, month, view, charts.selectedCategoryId).map(([label, href], index) => (
                             <Link
                                 key={label}
                                 href={href}
@@ -121,7 +122,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
                                     {monthRequestPending && <span role="status" aria-live="polite" className="text-xs text-slate-400">Atualizando…</span>}
                                     {monthRequestFailed && !monthRequestPending && <span role="alert" className="flex items-center gap-2 text-xs text-amber-300">Não foi possível atualizar. <button type="button" onClick={() => requestMonth(month)} className="font-semibold underline underline-offset-2">Tentar novamente</button></span>}
                                 </div>
-                                <Link href="/purchases/create" className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-400/10">＋ Nova compra</Link>
+                                <Link href={localNavigationUrls.purchaseCreate} className="rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-400/10">＋ Nova compra</Link>
                                 <Link href={localNavigationUrls.receipt} className="rounded-xl border border-emerald-300/30 px-4 py-2.5 text-sm font-semibold text-emerald-300">＋ Registrar recebimento</Link>
                             </div>
                         </header>
@@ -131,7 +132,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
                         {view === 'invoice' ? <InvoiceOverview groups={invoiceGroups} selectedMonth={selectedMonth} totalCents={summary.totalDisbursedCents} invoiceListUrl={localNavigationUrls.purchasesInvoice} /> : <>
                             <section className="mt-8 grid gap-4 md:grid-cols-2">
                                 <SummaryCard label="Meus gastos totais do mês" value={formatMoney(summary.ownConsumptionCents)} note="Consumo próprio atribuído a Eu" accent="emerald" />
-                                <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} selectedMonth={month} />
+                                <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} salaryUrl={localNavigationUrls.analysisSalary} />
                             </section>
 
                             <MovementChart selectedMonth={month} movement={charts.movement} categories={charts.categories} selectedCategoryId={charts.selectedCategoryId} />
@@ -227,8 +228,8 @@ function SummaryCard({ label, value, note, accent }: { label: string; value: str
     return <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-5"><div className="flex items-start justify-between"><p className="text-sm text-slate-400">{label}</p><span className={`rounded-lg px-2 py-1 text-xs ${accents[accent]}`}>●</span></div><p className="mt-5 text-2xl font-bold text-white">{value}</p><p className="mt-2 text-xs text-slate-500">{note}</p></div>;
 }
 
-function SalarySummaryCard({ salaryCents, remainingCents, selectedMonth }: { salaryCents: number | null; remainingCents: number | null; selectedMonth: string }) {
+function SalarySummaryCard({ salaryCents, remainingCents, salaryUrl }: { salaryCents: number | null; remainingCents: number | null; salaryUrl: string }) {
     const hasDeficit = remainingCents !== null && remainingCents < 0;
 
-    return <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-5"><div className="flex items-start justify-between"><p className="text-sm text-slate-400">Restante do salário</p><span className={`rounded-lg px-2 py-1 text-xs ${hasDeficit ? 'bg-rose-300/10 text-rose-300' : 'bg-emerald-300/10 text-emerald-300'}`}>●</span></div><p className={`mt-5 text-2xl font-bold ${hasDeficit ? 'text-rose-300' : 'text-white'}`}>{remainingCents === null ? 'Salário não configurado' : formatMoney(remainingCents)}</p>{salaryCents === null ? <Link href={`/analysis?month=${selectedMonth}#salary`} className="mt-3 inline-block text-sm font-semibold text-emerald-300">Configurar salário →</Link> : <p className={`mt-2 text-xs ${hasDeficit ? 'text-rose-300' : 'text-slate-500'}`}>{hasDeficit ? 'Déficit do salário' : `Salário configurado: ${formatMoney(salaryCents)}`}</p>}</div>;
+    return <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-5"><div className="flex items-start justify-between"><p className="text-sm text-slate-400">Restante do salário</p><span className={`rounded-lg px-2 py-1 text-xs ${hasDeficit ? 'bg-rose-300/10 text-rose-300' : 'bg-emerald-300/10 text-emerald-300'}`}>●</span></div><p className={`mt-5 text-2xl font-bold ${hasDeficit ? 'text-rose-300' : 'text-white'}`}>{remainingCents === null ? 'Salário não configurado' : formatMoney(remainingCents)}</p>{salaryCents === null ? <Link href={salaryUrl} className="mt-3 inline-block text-sm font-semibold text-emerald-300">Configurar salário →</Link> : <p className={`mt-2 text-xs ${hasDeficit ? 'text-rose-300' : 'text-slate-500'}`}>{hasDeficit ? 'Déficit do salário' : `Salário configurado: ${formatMoney(salaryCents)}`}</p>}</div>;
 }

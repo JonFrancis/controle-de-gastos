@@ -1,15 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRecoverableNavigationHandler } from '../recoverableNavigationFailure.ts';
-import { visitBalanceMonth } from './monthSelection.ts';
+import { balanceNavigationUrls, visitBalanceMonth } from './monthSelection.ts';
+
+const bases = {
+    overview: '/custom-dashboard',
+    balances: '/custom-balances',
+    receipt: '/custom-receipts/create',
+};
 
 test('loads a calendar month without adding a history entry', () => {
     let request = [];
 
-    visitBalanceMonth({ get: (...args) => { request = args; } }, '2026-11', 'calendar');
+    visitBalanceMonth({ get: (...args) => { request = args; } }, bases.balances, '2026-11', 'calendar');
 
     assert.deepEqual(request, [
-        '/balances',
+        '/custom-balances',
         { month: '2026-11', view: 'calendar' },
         { replace: true, preserveState: true, preserveScroll: true },
     ]);
@@ -18,10 +24,10 @@ test('loads a calendar month without adding a history entry', () => {
 test('loads an invoice month while preserving the active view', () => {
     let request = [];
 
-    visitBalanceMonth({ get: (...args) => { request = args; } }, '2026-11', 'invoice');
+    visitBalanceMonth({ get: (...args) => { request = args; } }, bases.balances, '2026-11', 'invoice');
 
     assert.deepEqual(request, [
-        '/balances',
+        '/custom-balances',
         { month: '2026-11', view: 'invoice' },
         { replace: true, preserveState: true, preserveScroll: true },
     ]);
@@ -37,7 +43,7 @@ test('forwards visit lifecycle callbacks so a failed month can be retried', () =
     };
     let request = [];
 
-    visitBalanceMonth({ get: (...args) => { request = args; } }, '2026-11', 'calendar', callbacks);
+    visitBalanceMonth({ get: (...args) => { request = args; } }, bases.balances, '2026-11', 'calendar', callbacks);
 
     assert.strictEqual(request[2].onStart, callbacks.onStart);
     assert.strictEqual(request[2].onError, callbacks.onError);
@@ -46,6 +52,15 @@ test('forwards visit lifecycle callbacks so a failed month can be retried', () =
     assert.strictEqual(request[2].onFinish, callbacks.onFinish);
     assert.strictEqual(request[2].onHttpException(), false);
     assert.strictEqual(request[2].onNetworkError(), false);
+});
+
+test('composes monthly balance links from the controller-provided bases', () => {
+    assert.deepEqual(balanceNavigationUrls(bases, '2026-11', 'invoice'), {
+        overview: '/custom-dashboard?month=2026-11&view=invoice',
+        receipt: '/custom-receipts/create?month=2026-11',
+        calendar: '/custom-balances?month=2026-11&view=calendar',
+        invoice: '/custom-balances?month=2026-11&view=invoice',
+    });
 });
 
 test('contains a recoverable Balances visit failure while preserving retry state', () => {

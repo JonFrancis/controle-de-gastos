@@ -14,24 +14,35 @@ export type DashboardVisitOptions = {
 export type DashboardNavigationUrls = {
     balances: string;
     analysis: string;
+    analysisSalary: string;
     purchasesInvoice: string;
     purchasesCalendar: string;
     overview: string;
     receipt: string;
+    purchaseCreate: string;
 };
 
-export function dashboardMonthUrl(month: string, view: DashboardView, categoryId: number | null): string {
+export type DashboardNavigationBases = {
+    balances: string;
+    analysis: string;
+    purchases: string;
+    overview: string;
+    receipt: string;
+    purchaseCreate: string;
+};
+
+export function dashboardMonthUrl(overviewBaseUrl: string, month: string, view: DashboardView, categoryId: number | null): string {
     const params = new URLSearchParams({ month, view });
 
     if (view === 'calendar' && categoryId !== null) {
         params.set('category', String(categoryId));
     }
 
-    return `/?${params.toString()}`;
+    return `${overviewBaseUrl}?${params.toString()}`;
 }
 
-export function visitDashboardMonth(router: DashboardRouter, month: string, view: DashboardView, categoryId: number | null, callbacks: DashboardVisitOptions = {}): void {
-    router.visit(dashboardMonthUrl(month, view, categoryId), {
+export function visitDashboardMonth(router: DashboardRouter, overviewBaseUrl: string, month: string, view: DashboardView, categoryId: number | null, callbacks: DashboardVisitOptions = {}): void {
+    router.visit(dashboardMonthUrl(overviewBaseUrl, month, view, categoryId), {
         replace: true,
         preserveState: true,
         preserveScroll: true,
@@ -39,13 +50,17 @@ export function visitDashboardMonth(router: DashboardRouter, month: string, view
     });
 }
 
-export function dashboardNavigationUrls(month: string, view: DashboardView, categoryId: number | null = null): DashboardNavigationUrls {
+export function dashboardNavigationUrls(bases: DashboardNavigationBases, month: string, view: DashboardView, categoryId: number | null = null): DashboardNavigationUrls {
+    const params = new URLSearchParams({ month, view });
+
     return {
-        balances: `/balances?month=${month}&view=${view}`,
-        analysis: `/analysis?month=${month}&view=${view}`,
-        purchasesInvoice: `/purchases?month=${month}&view=invoice`,
-        purchasesCalendar: `/purchases?month=${month}&view=calendar`,
-        overview: dashboardMonthUrl(month, view, categoryId),
-        receipt: `/receipts/create?month=${month}`,
+        balances: `${bases.balances}?${params.toString()}`,
+        analysis: `${bases.analysis}?${params.toString()}`,
+        analysisSalary: `${bases.analysis}?month=${encodeURIComponent(month)}#salary`,
+        purchasesInvoice: `${bases.purchases}?month=${encodeURIComponent(month)}&view=invoice`,
+        purchasesCalendar: `${bases.purchases}?month=${encodeURIComponent(month)}&view=calendar`,
+        overview: dashboardMonthUrl(bases.overview, month, view, categoryId),
+        receipt: `${bases.receipt}?month=${encodeURIComponent(month)}`,
+        purchaseCreate: bases.purchaseCreate,
     };
 }

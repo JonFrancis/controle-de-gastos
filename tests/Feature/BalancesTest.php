@@ -45,6 +45,9 @@ class BalancesTest extends TestCase
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Balances/Index')
+                ->where('navigationBases.overview', route('dashboard', [], false))
+                ->where('navigationBases.balances', route('balances', [], false))
+                ->where('navigationBases.receipt', route('receipts.create', [], false))
                 ->where('summary.ownConsumptionCents', 6000)
                 ->where('summary.paidForOthersCents', 6000)
                 ->where('summary.owedToOthersCents', 2000)

@@ -28,6 +28,10 @@ class AnalysisController extends Controller
             'view' => $view,
             'salaryCents' => AppSetting::query()->find(1)?->monthly_salary_cents,
             'flash' => ['success' => session('success'), 'openai' => session('openai')],
+            'navigationBases' => [
+                'overview' => route('dashboard', [], false),
+                'analysis' => route('analysis', [], false),
+            ],
             ...$service->analyze($selectedMonth, $view),
         ]);
     }

@@ -6,6 +6,19 @@ export type InvoiceContext = {
     closingDay?: number | null;
 };
 
+export type PurchaseNavigationBases = {
+    overview: string;
+    purchases: string;
+    create: string;
+};
+
+export type PurchaseNavigationUrls = {
+    overview: string;
+    create: string;
+    calendar: string;
+    invoice: string;
+};
+
 type PurchaseQuery = {
     month: string;
     view: PurchaseView;
@@ -26,8 +39,8 @@ export type PurchaseVisitOptions = {
     onFinish?: () => void;
 };
 
-export function visitPurchaseMonth(router: PurchaseRouter, month: string, view: PurchaseView, currentMonth: string, invoiceContext: InvoiceContext | null, callbacks: PurchaseVisitOptions = {}): void {
-    router.get('/purchases', purchaseQuery(month, view, currentMonth, invoiceContext), {
+export function visitPurchaseMonth(router: PurchaseRouter, purchasesBaseUrl: string, month: string, view: PurchaseView, currentMonth: string, invoiceContext: InvoiceContext | null, callbacks: PurchaseVisitOptions = {}): void {
+    router.get(purchasesBaseUrl, purchaseQuery(month, view, currentMonth, invoiceContext), {
         replace: true,
         preserveState: true,
         preserveScroll: true,
@@ -35,10 +48,21 @@ export function visitPurchaseMonth(router: PurchaseRouter, month: string, view: 
     });
 }
 
-export function purchaseNavigationUrl(month: string, view: PurchaseView, invoiceContext: InvoiceContext | null = null): string {
+export function purchaseNavigationUrl(purchasesBaseUrl: string, month: string, view: PurchaseView, invoiceContext: InvoiceContext | null = null): string {
     const query = purchaseQuery(month, view, month, invoiceContext);
 
-    return `/purchases?${new URLSearchParams(stringifyQuery(query)).toString()}`;
+    return `${purchasesBaseUrl}?${new URLSearchParams(stringifyQuery(query)).toString()}`;
+}
+
+export function purchaseNavigationUrls(bases: PurchaseNavigationBases, month: string, view: PurchaseView, invoiceContext: InvoiceContext | null = null): PurchaseNavigationUrls {
+    const overviewQuery = new URLSearchParams({ month, view });
+
+    return {
+        overview: `${bases.overview}?${overviewQuery.toString()}`,
+        create: bases.create,
+        calendar: purchaseNavigationUrl(bases.purchases, month, 'calendar'),
+        invoice: purchaseNavigationUrl(bases.purchases, month, 'invoice', invoiceContext),
+    };
 }
 
 function purchaseQuery(month: string, view: PurchaseView, currentMonth: string, invoiceContext: InvoiceContext | null): PurchaseQuery {

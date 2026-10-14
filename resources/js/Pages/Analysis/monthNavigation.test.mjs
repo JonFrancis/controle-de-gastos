@@ -3,16 +3,21 @@ import test from 'node:test';
 import { createRecoverableNavigationHandler } from '../recoverableNavigationFailure.ts';
 import { analysisMonthVisit, analysisNavigationUrls, visitAnalysisMonth } from './monthNavigation.mjs';
 
+const bases = {
+    overview: '/custom-dashboard',
+    analysis: '/custom-analysis',
+};
+
 test('changes the calendar analysis month without changing its active view or browser history', () => {
-    assert.deepEqual(analysisMonthVisit('2026-11', 'calendar'), {
-        url: '/analysis?month=2026-11&view=calendar',
+    assert.deepEqual(analysisMonthVisit(bases.analysis, '2026-11', 'calendar'), {
+        url: '/custom-analysis?month=2026-11&view=calendar',
         options: { replace: true, preserveState: true, preserveScroll: true },
     });
 });
 
 test('changes the invoice analysis month without changing its active view or browser history', () => {
-    assert.deepEqual(analysisMonthVisit('2026-11', 'invoice'), {
-        url: '/analysis?month=2026-11&view=invoice',
+    assert.deepEqual(analysisMonthVisit(bases.analysis, '2026-11', 'invoice'), {
+        url: '/custom-analysis?month=2026-11&view=invoice',
         options: { replace: true, preserveState: true, preserveScroll: true },
     });
 });
@@ -28,7 +33,7 @@ test('forwards visit failure handlers so a failed analysis month can be retried'
 
     let request = [];
 
-    visitAnalysisMonth({ visit: (...args) => { request = args; } }, '2026-11', 'invoice', callbacks);
+    visitAnalysisMonth({ visit: (...args) => { request = args; } }, bases.analysis, '2026-11', 'invoice', callbacks);
 
     assert.strictEqual(request[1].onSuccess, callbacks.onSuccess);
     assert.strictEqual(request[1].onError, callbacks.onError);
@@ -40,10 +45,10 @@ test('forwards visit failure handlers so a failed analysis month can be retried'
 });
 
 test('keeps the locally selected month in Analysis navigation after a failed visit', () => {
-    assert.deepEqual(analysisNavigationUrls('2026-11', 'invoice'), {
-        overview: '/?month=2026-11&view=invoice',
-        calendar: '/analysis?month=2026-11&view=calendar',
-        invoice: '/analysis?month=2026-11&view=invoice',
+    assert.deepEqual(analysisNavigationUrls(bases, '2026-11', 'invoice'), {
+        overview: '/custom-dashboard?month=2026-11&view=invoice',
+        calendar: '/custom-analysis?month=2026-11&view=calendar',
+        invoice: '/custom-analysis?month=2026-11&view=invoice',
     });
 });
 

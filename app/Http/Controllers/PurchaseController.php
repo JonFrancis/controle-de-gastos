@@ -60,6 +60,11 @@ class PurchaseController extends Controller
             'occurrences' => $view === 'calendar' ? $occurrences->map(fn ($occurrence): array => $purchaseListingService->occurrenceData($occurrence, $selfId))->values() : [],
             'invoiceGroups' => $invoiceGroups,
             'flash' => ['success' => session('success')],
+            'navigationBases' => [
+                'overview' => route('dashboard', [], false),
+                'purchases' => route('purchases.index', [], false),
+                'create' => route('purchases.create', [], false),
+            ],
         ]);
     }
 
