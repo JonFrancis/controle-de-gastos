@@ -47,7 +47,7 @@ export default function Balances({ selectedMonth, view, summary, participants, r
             <Head title="Saldos e recebimentos" />
             <main aria-busy={isLoading} className="min-h-screen bg-slate-950 px-5 py-6 text-white sm:px-8 lg:px-12 lg:py-10">
                 <div className="mx-auto max-w-7xl">
-                    <Link href="/" className="text-sm text-emerald-300">← Voltar para visão geral</Link>
+                    <Link href={`/?month=${month}&view=${view}`} className="text-sm text-emerald-300">← Voltar para visão geral</Link>
                     <header className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
                         <div>
                             <p className="text-sm font-medium text-emerald-300">Fechamento financeiro</p>
