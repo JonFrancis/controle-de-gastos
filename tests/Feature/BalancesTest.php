@@ -124,6 +124,27 @@ class BalancesTest extends TestCase
                 ->where('participants.0.receivableCents', 8000));
     }
 
+    public function test_balances_keep_the_requested_month_and_active_view_for_calendar_and_invoice_queries(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $debit = PaymentMethod::create(['name' => 'Débito', 'type' => PaymentMethod::TYPE_DEBIT]);
+        $card = PaymentMethod::query()->where('type', PaymentMethod::TYPE_CREDIT)->firstOrFail();
+        $this->purchase('2026-10-15', 8000, $self, [[$maria, 8000]], $debit->id);
+        $this->purchase('2026-09-06', 5000, $self, [[$maria, 5000]], $card->id);
+
+        $this->get('/balances?month=2026-10&view=calendar')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-10')
+                ->where('view', 'calendar')
+                ->where('summary.paidForOthersCents', 8000));
+
+        $this->get('/balances?month=2026-10&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-10')
+                ->where('view', 'invoice')
+                ->where('summary.paidForOthersCents', 5000));
+    }
+
     public function test_billing_summary_uses_outstanding_amounts_after_historical_applications(): void
     {
         [$self, $maria] = $this->catalogs();
