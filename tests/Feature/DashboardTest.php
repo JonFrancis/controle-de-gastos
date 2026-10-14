@@ -259,6 +259,41 @@ class DashboardTest extends TestCase
             );
     }
 
+    public function test_dashboard_uses_the_selected_month_with_the_active_view_and_category_filter(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $pix = PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]);
+        $food = Category::create(['name' => 'Alimentação']);
+
+        Purchase::create([
+            'purchased_at' => '2026-10-10',
+            'description' => 'Compra do mês anterior',
+            'amount_cents' => 1000,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+            'category_id' => $food->id,
+        ]);
+        Purchase::create([
+            'purchased_at' => '2026-11-10',
+            'description' => 'Compra do mês consultado',
+            'amount_cents' => 2500,
+            'participant_id' => $self->id,
+            'payment_method_id' => $pix->id,
+            'category_id' => $food->id,
+        ]);
+
+        $this->get('/?month=2026-11&view=calendar&category='.$food->id)
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-11')
+                ->where('view', 'calendar')
+                ->where('summary.ownConsumptionCents', 2500)
+                ->where('charts.selectedCategoryId', $food->id)
+                ->where('charts.movement', [
+                    ['week' => 2, 'label' => 'Semana 2', 'amountCents' => 2500],
+                ])
+            );
+    }
+
     public function test_dashboard_does_not_serialize_purchase_listing_data(): void
     {
         $this->get('/?view=invoice&month=2026-10')
