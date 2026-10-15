@@ -30,7 +30,9 @@ Every implementation change must end with the local application synchronized to 
 2. Rebuild frontend assets with `pnpm run build` whenever PHP, React, Inertia, CSS, routes, or other browser-served runtime code changes can affect the UI.
 3. Restart or relaunch the local Laravel/NativePHP application so it loads the new PHP code and generated assets.
 4. Verify the running application, not only the source tree: confirm its served asset manifest/hash or runtime version corresponds to the current commit and check the changed route or screen.
-5. Do not finish by saying that manual testing is ready until the application is demonstrably serving the new version. If the agent cannot restart the user-facing process, it must state that clearly and provide the exact restart/build action still required.
+5. Generate the Windows NativePHP executable with `php artisan native:build win x64 --no-interaction` for every implementation change, even when the change is frontend-only. Confirm that a new `.exe` artifact exists under `nativephp/electron/dist/` and corresponds to the current build.
+6. Use `php artisan native:publish win x64 --no-interaction` only when the user explicitly requests publishing or distribution; building the executable is always mandatory, publishing is not.
+7. Do not finish by saying that manual testing is ready until the application and executable are demonstrably updated. If the agent cannot restart the user-facing process or build the executable, it must state that clearly and provide the exact remaining action instead of claiming delivery is complete.
 
 <laravel-boost-guidelines>
 === foundation rules ===
