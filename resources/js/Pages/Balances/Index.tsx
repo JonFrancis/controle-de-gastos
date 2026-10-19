@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Form, Head, Link, router } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import { createRecoverableNavigationHandler } from '../recoverableNavigationFailure';
 import { balanceNavigationUrls, visitBalanceMonth, type BalanceNavigationBases } from './monthSelection';
@@ -90,13 +90,13 @@ export default function Balances({ selectedMonth, view, summary, participants, r
                         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                             <div>
                                 <h2 className="font-semibold">Recebimentos do período</h2>
-                                <p className="mt-1 text-sm text-slate-400">Consulte os valores registrados ou ajuste a aplicação de um recebimento existente.</p>
+                                <p className="mt-1 text-sm text-slate-400">Consulte, ajuste ou exclua permanentemente um recebimento.</p>
                             </div>
                             <Link href={navigationUrls.receipt} className="text-sm font-semibold text-emerald-300">+ Registrar recebimento</Link>
                         </div>
                         <div className="mt-5 flex flex-col gap-3">
                             {receipts.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Nenhum recebimento registrado.</p>}
-                            {receipts.map((receipt) => <div key={receipt.id} className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-slate-200">{receipt.participant} · {formatDate(receipt.receivedAt)}</p><p className="mt-1 text-xs text-slate-500">{receipt.note ?? 'Sem observação'} · aplicado {formatMoney(receipt.appliedCents)}{receipt.creditCents > 0 ? ` · crédito ${formatMoney(receipt.creditCents)}` : ''}</p></div><Link href={`/receipts/${receipt.id}/edit?month=${month}`} className="text-xs font-semibold text-emerald-300">Ajustar aplicação</Link></div>)}
+                            {receipts.map((receipt) => <div key={receipt.id} className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-slate-200">{receipt.participant} · {formatDate(receipt.receivedAt)}</p><p className="mt-1 text-xs text-slate-500">{receipt.note ?? 'Sem observação'} · recebido {formatMoney(receipt.amountCents)} · aplicado {formatMoney(receipt.appliedCents)}{receipt.creditCents > 0 ? ` · crédito ${formatMoney(receipt.creditCents)}` : ''}</p></div><div className="flex items-center gap-4"><Link href={`/receipts/${receipt.id}/edit?month=${month}&view=${view}`} className="text-xs font-semibold text-emerald-300">Ajustar aplicação</Link><Form action={`/receipts/${receipt.id}?month=${month}&view=${view}`} method="delete" onBefore={() => window.confirm(`Excluir permanentemente o recebimento de ${receipt.participant} em ${formatDate(receipt.receivedAt)} no valor de ${formatMoney(receipt.amountCents)}? As aplicações serão removidas e os saldos recalculados.`)}><button type="submit" className="text-xs font-semibold text-rose-300">Excluir</button></Form></div></div>)}
                         </div>
                     </section>
                 </div>

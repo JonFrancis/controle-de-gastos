@@ -95,6 +95,16 @@ class ReceiptController extends Controller
         return to_route('balances', array_filter(['month' => $request->query('month'), 'view' => $request->query('view')]))->with('success', 'Aplicações do recebimento ajustadas.');
     }
 
+    public function destroy(Request $request, Receipt $receipt, BalanceService $service): RedirectResponse
+    {
+        $service->deleteReceipt($receipt);
+
+        return to_route('balances', [
+            'month' => $this->validMonth($request->query('month')),
+            'view' => $this->view($request),
+        ])->with('success', 'Recebimento excluído permanentemente e saldos recalculados.');
+    }
+
     private function moneyToCents(string|int $value): int
     {
         $normalized = str_replace(',', '.', trim((string) $value));
