@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -99,12 +100,14 @@ class ReceiptController extends Controller
     {
         $oldValues = $receipt->getAttributes();
         $receiptApplicationIds = $receipt->applicationHistory()->pluck('id')->map(fn (int|string $id): int => (int) $id)->all();
-        $service->deleteReceipt($receipt);
-        $audit->record(AuditLog::ACTION_DELETE, $receipt, oldValues: $oldValues, metadata: [
-            'type' => 'receipt_deletion',
-            'deleted_receipt_application_ids' => $receiptApplicationIds,
-            'balances_reconciled' => true,
-        ]);
+        DB::transaction(function () use ($receipt, $service, $audit, $oldValues, $receiptApplicationIds): void {
+            $service->deleteReceipt($receipt);
+            $audit->record(AuditLog::ACTION_DELETE, $receipt, oldValues: $oldValues, metadata: [
+                'type' => 'receipt_deletion',
+                'deleted_receipt_application_ids' => $receiptApplicationIds,
+                'balances_reconciled' => true,
+            ]);
+        });
 
         return to_route('balances', [
             'month' => $this->validMonth($request->query('month')),
