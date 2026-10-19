@@ -52,6 +52,7 @@ Route::get('/receipts/create', [ReceiptController::class, 'create'])->name('rece
 Route::post('/receipts', [ReceiptController::class, 'store'])->name('receipts.store');
 Route::get('/receipts/{receipt}/edit', [ReceiptController::class, 'edit'])->name('receipts.edit');
 Route::put('/receipts/{receipt}/applications', [ReceiptController::class, 'updateApplications'])->name('receipts.applications.update');
+Route::delete('/receipts/{receipt}', [ReceiptController::class, 'destroy'])->name('receipts.destroy');
 
 Route::get('/purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');
 Route::get('/purchases/create/simple', [PurchaseController::class, 'createSimple'])->name('purchases.create.simple');
