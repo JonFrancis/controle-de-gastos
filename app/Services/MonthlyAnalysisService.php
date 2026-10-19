@@ -60,6 +60,7 @@ class MonthlyAnalysisService
         $chargeableItems = $items->reject(fn (array $item): bool => $this->isPending($item))->values();
         $selfId = $this->selfId();
         $participants = $this->participantRows($chargeableItems, $selfId, $periodStart, $periodEnd);
+        $ownSummary = $this->ownSummary($items, $selfId);
         $movementCategories = $this->movementCategories($chargeableItems, $selfId);
         $selectedMovementCategoryId = $movementCategoryId !== null && Category::query()->whereKey($movementCategoryId)->exists()
             ? $movementCategoryId
@@ -69,6 +70,7 @@ class MonthlyAnalysisService
             'summary' => $this->summary($chargeableItems, $selfId),
             'participantExpenses' => $this->participantTotals($chargeableItems),
             'participants' => $participants,
+            'ownSummary' => $ownSummary,
             'fullMessage' => $this->fullMessage($participants),
             'categories' => $this->groupOwnRows($chargeableItems, $selfId, 'categoryName'),
             'paymentMethods' => $this->groupOwnRows($chargeableItems, $selfId, 'paymentMethodName'),
@@ -155,6 +157,37 @@ class MonthlyAnalysisService
 
             return [...$row, 'message' => $this->participantMessage($row)];
         })->filter(fn (array $row): bool => $row['grossCents'] > 0 || $row['abatementsCents'] > 0)->values()->all();
+    }
+
+    /** @param Collection<int, array<string, mixed>> $items
+     *  @return array{id: int, name: string, grossCents: int, items: list<array<string, mixed>>, message: string}|null
+     */
+    private function ownSummary(Collection $items, int $selfId): ?array
+    {
+        $participantItems = $items->filter(fn (array $item): bool => $item['participantId'] === $selfId);
+        if ($participantItems->isEmpty()) {
+            return null;
+        }
+
+        $summaryItems = $participantItems->map(fn (array $item): array => [
+            'date' => $item['date'],
+            'description' => $item['description'],
+            'cardName' => $item['cardName'],
+            'origin' => $item['origin'],
+            'amountCents' => $item['amountCents'],
+            'abatementCents' => 0,
+            'finalCents' => $item['amountCents'],
+        ])->values()->all();
+        $grossCents = (int) $participantItems->sum('amountCents');
+        $name = (string) Participant::query()->whereKey($selfId)->value('name');
+
+        return [
+            'id' => $selfId,
+            'name' => $name,
+            'grossCents' => $grossCents,
+            'items' => $summaryItems,
+            'message' => "Resumo das suas compras no período — {$name}:\n".$this->messageDetails($summaryItems)."\n\nTotal: ".$this->formatMoney($grossCents),
+        ];
     }
 
     /** @param list<array<string, mixed>> $participants */
