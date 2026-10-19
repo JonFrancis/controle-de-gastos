@@ -126,6 +126,11 @@ O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura,
 82. Como usuário, quero saber por que um saldo foi calculado daquela forma.
 83. Como usuário, quero corrigir dados sem perder o histórico anterior.
 
+### Alterações aprovadas após a especificação inicial
+
+84. Como usuário, quero que meus gastos apareçam no resumo por pessoa e em uma única mensagem com todas as minhas compras, sem gerar cobrança para mim.
+85. Como usuário, quero excluir permanentemente um Recebimento incorreto, remover suas aplicações, recalcular os saldos e registrar a exclusão no histórico.
+
 ## Implementation Decisions
 
 - O sistema será um aplicativo local para um único usuário na primeira versão.
@@ -147,7 +152,7 @@ O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura,
 - Saldos mostrarão valores brutos, abatimentos, Saldo líquido e créditos.
 - Recebimentos serão aplicados automaticamente aos saldos mais antigos, com ajuste manual.
 - Pessoas não identificadas, duplicidades suspeitas e dados incompletos irão para a Fila de revisão.
-- Exclusões serão representadas por Arquivamento.
+- Compras, Rateios e Ocorrências serão arquivados em vez de excluídos permanentemente. Recebimentos podem ser excluídos permanentemente por ação explícita e confirmada, com remoção das aplicações, reconciliação dos saldos e registro de auditoria.
 - O aplicativo armazenará valores em centavos e exibirá reais brasileiros no fuso `America/Sao_Paulo`.
 - O fechamento não impedirá alterações, mas poderá ser reaberto e recalculado.
 - A análise mensal será gerada sem depender de IA.
@@ -166,6 +171,7 @@ O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura,
 - Os testes deverão cobrir Recorrências, Parcelamentos, Ocorrências ajustadas e cálculo de Fatura pelo dia de fechamento.
 - Os testes deverão cobrir mês calendário, Fatura, Débito, Pix, Dinheiro e Crédito.
 - Os testes deverão cobrir Saldos líquidos, Compensação, Recebimentos, Créditos de participantes e pagamentos excedentes.
+- Os testes deverão cobrir exclusão permanente de Recebimentos, aplicações removidas, reconciliação e registro de auditoria.
 - Os testes deverão cobrir importação com preview, mapeamento, Ambiguidades, duplicidades e Fila de revisão.
 - Os testes deverão conferir a Análise mensal contra cálculos independentes dos mesmos dados.
 - Os testes deverão validar mensagens editáveis, cópia para área de transferência e exportações CSV, Excel, Markdown e prompt.
@@ -184,7 +190,7 @@ O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura,
 - Envio automático de mensagens pelo WhatsApp.
 - Vencimento de fatura nesta primeira versão.
 - Recomendações financeiras, previsões e metas inteligentes.
-- Exclusão permanente de Compras, Rateios, Ocorrências ou Recebimentos.
+- Exclusão permanente de Compras, Rateios ou Ocorrências.
 - Publicação da planilha real ou de dados pessoais no GitHub.
 
 ## Further Notes

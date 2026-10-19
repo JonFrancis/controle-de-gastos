@@ -95,9 +95,16 @@ class ReceiptController extends Controller
         return to_route('balances', array_filter(['month' => $request->query('month'), 'view' => $request->query('view')]))->with('success', 'Aplicações do recebimento ajustadas.');
     }
 
-    public function destroy(Request $request, Receipt $receipt, BalanceService $service): RedirectResponse
+    public function destroy(Request $request, Receipt $receipt, BalanceService $service, AuditService $audit): RedirectResponse
     {
+        $oldValues = $receipt->getAttributes();
+        $receiptApplicationIds = $receipt->applicationHistory()->pluck('id')->map(fn (int|string $id): int => (int) $id)->all();
         $service->deleteReceipt($receipt);
+        $audit->record(AuditLog::ACTION_DELETE, $receipt, oldValues: $oldValues, metadata: [
+            'type' => 'receipt_deletion',
+            'deleted_receipt_application_ids' => $receiptApplicationIds,
+            'balances_reconciled' => true,
+        ]);
 
         return to_route('balances', [
             'month' => $this->validMonth($request->query('month')),
