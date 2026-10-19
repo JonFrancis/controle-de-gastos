@@ -166,6 +166,16 @@ class BalanceService
         });
     }
 
+    public function deleteReceipt(Receipt $receipt): void
+    {
+        DB::transaction(function () use ($receipt): void {
+            $participantId = $receipt->participant_id;
+
+            $receipt->delete();
+            $this->reconcileParticipant($participantId);
+        });
+    }
+
     public function reconcileAll(): void
     {
         Receipt::query()->whereNull('archived_at')->pluck('participant_id')->unique()->each(fn (int $participantId) => $this->reconcileParticipant($participantId));

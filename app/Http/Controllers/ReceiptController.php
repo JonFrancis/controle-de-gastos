@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -93,6 +94,26 @@ class ReceiptController extends Controller
         $audit->record(AuditLog::ACTION_UPDATE, $receipt, oldValues: ['applications' => $oldApplications], newValues: ['applications' => $receipt->fresh()->applications()->get()->toArray()], metadata: ['type' => 'receipt_applications']);
 
         return to_route('balances', array_filter(['month' => $request->query('month'), 'view' => $request->query('view')]))->with('success', 'Aplicações do recebimento ajustadas.');
+    }
+
+    public function destroy(Request $request, Receipt $receipt, BalanceService $service, AuditService $audit): RedirectResponse
+    {
+        $oldValues = $receipt->getAttributes();
+        $receiptApplications = $receipt->applicationHistory()->get()->map(fn (ReceiptApplication $application): array => $application->getAttributes())->all();
+        DB::transaction(function () use ($receipt, $service, $audit, $oldValues, $receiptApplications): void {
+            $service->deleteReceipt($receipt);
+            $audit->record(AuditLog::ACTION_DELETE, $receipt, oldValues: $oldValues, metadata: [
+                'type' => 'receipt_deletion',
+                'deleted_receipt_applications' => $receiptApplications,
+                'participant_id' => $receipt->participant_id,
+                'balances_reconciled' => true,
+            ]);
+        });
+
+        return to_route('balances', [
+            'month' => $this->validMonth($request->query('month')),
+            'view' => $this->view($request),
+        ])->with('success', 'Recebimento excluído permanentemente e saldos recalculados.');
     }
 
     private function moneyToCents(string|int $value): int

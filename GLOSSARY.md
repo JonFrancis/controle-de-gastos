@@ -111,7 +111,7 @@ Estado de uma compra ou ocorrência que deixa de participar dos cálculos ativos
 _Evitar_: exclusão lógica quando estiver falando com o usuário.
 
 **Exclusão permanente**:
-Remoção definitiva de um parcelamento e das ocorrências que formam sua série, sem preservação do histórico do parcelamento.
+Remoção definitiva de um Parcelamento e das Ocorrências que formam sua série, ou de um Recebimento e suas aplicações. A exclusão de um Recebimento reconcilia os saldos e registra a operação no histórico de auditoria.
 _Evitar_: arquivamento, encerramento.
 
 **Fila de revisão**:

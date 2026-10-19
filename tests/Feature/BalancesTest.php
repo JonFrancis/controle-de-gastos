@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Installment;
 use App\Models\Participant;
@@ -84,6 +85,38 @@ class BalancesTest extends TestCase
         $this->get('/balances?month=2026-10')->assertInertia(fn (Assert $page) => $page
             ->where('participants.0.receivableCents', 6000)
             ->where('participants.0.creditCents', 0));
+    }
+
+    public function test_receipt_can_be_permanently_deleted_with_applications_audited_and_balances_reconciled(): void
+    {
+        [$self, $maria] = $this->catalogs();
+        $allocation = $this->purchase('2026-10-01', 10000, $self, [[$maria, 10000]])->allocations()->firstOrFail();
+        $receipt = Receipt::create(['participant_id' => $maria->id, 'received_at' => '2026-10-03', 'amount_cents' => 4000]);
+        $application = ReceiptApplication::create([
+            'receipt_id' => $receipt->id,
+            'source_type' => 'purchase_allocation',
+            'source_id' => $allocation->id,
+            'purchase_allocation_id' => $allocation->id,
+            'amount_cents' => 4000,
+            'source' => 'manual',
+        ]);
+
+        $this->delete("/receipts/{$receipt->id}?month=2026-10&view=calendar")
+            ->assertRedirect(route('balances', ['month' => '2026-10', 'view' => 'calendar'], false))
+            ->assertSessionHas('success', 'Recebimento excluído permanentemente e saldos recalculados.');
+
+        $this->assertDatabaseMissing('receipts', ['id' => $receipt->id]);
+        $this->assertDatabaseMissing('receipt_applications', ['id' => $application->id]);
+        $audit = AuditLog::query()->where('action', AuditLog::ACTION_DELETE)->where('auditable_type', Receipt::class)->where('auditable_id', $receipt->id)->firstOrFail();
+
+        $this->assertSame($application->id, $audit->metadata['deleted_receipt_applications'][0]['id']);
+        $this->assertTrue($audit->metadata['balances_reconciled']);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => AuditLog::ACTION_DELETE,
+            'auditable_type' => Receipt::class,
+            'auditable_id' => $receipt->id,
+        ]);
+        $this->assertSame(10000, app(BalanceService::class)->participantBalances(Carbon::parse('2026-10-31'), Carbon::parse('2026-10-01'))[0]['receivableCents']);
     }
 
     public function test_receipt_application_screen_receives_a_date_only_value(): void
