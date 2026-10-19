@@ -107,6 +107,10 @@ class BalancesTest extends TestCase
 
         $this->assertDatabaseMissing('receipts', ['id' => $receipt->id]);
         $this->assertDatabaseMissing('receipt_applications', ['id' => $application->id]);
+        $audit = AuditLog::query()->where('action', AuditLog::ACTION_DELETE)->where('auditable_type', Receipt::class)->where('auditable_id', $receipt->id)->firstOrFail();
+
+        $this->assertSame($application->id, $audit->metadata['deleted_receipt_applications'][0]['id']);
+        $this->assertTrue($audit->metadata['balances_reconciled']);
         $this->assertDatabaseHas('audit_logs', [
             'action' => AuditLog::ACTION_DELETE,
             'auditable_type' => Receipt::class,

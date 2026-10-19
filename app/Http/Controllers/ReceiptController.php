@@ -99,12 +99,13 @@ class ReceiptController extends Controller
     public function destroy(Request $request, Receipt $receipt, BalanceService $service, AuditService $audit): RedirectResponse
     {
         $oldValues = $receipt->getAttributes();
-        $receiptApplicationIds = $receipt->applicationHistory()->pluck('id')->map(fn (int|string $id): int => (int) $id)->all();
-        DB::transaction(function () use ($receipt, $service, $audit, $oldValues, $receiptApplicationIds): void {
+        $receiptApplications = $receipt->applicationHistory()->get()->map(fn (ReceiptApplication $application): array => $application->getAttributes())->all();
+        DB::transaction(function () use ($receipt, $service, $audit, $oldValues, $receiptApplications): void {
             $service->deleteReceipt($receipt);
             $audit->record(AuditLog::ACTION_DELETE, $receipt, oldValues: $oldValues, metadata: [
                 'type' => 'receipt_deletion',
-                'deleted_receipt_application_ids' => $receiptApplicationIds,
+                'deleted_receipt_applications' => $receiptApplications,
+                'participant_id' => $receipt->participant_id,
                 'balances_reconciled' => true,
             ]);
         });
