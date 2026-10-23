@@ -34,19 +34,17 @@ type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStar
 
 const navigation = (navigationBases: DashboardNavigationBases, month: string, view: 'calendar' | 'invoice', categoryId: number | null) => {
     const urls = dashboardNavigationUrls(navigationBases, month, view, categoryId);
+    const overviewUrl = dashboardNavigationUrls(navigationBases, month, 'calendar', categoryId).overview;
 
     return [
-        ['Faturas', urls.purchasesInvoice],
-        ['Movimentações', urls.purchasesCalendar],
-        ['Visão geral', urls.overview],
-        ['Compras', urls.purchasesInvoice],
-        ['Parcelamentos', '/installments'],
-        ['Recorrentes', '/recurrences'],
-        ['Saldos', urls.balances],
-        ['Análise', urls.analysis],
-        ['Exportações', '/exports'],
-        ['Pessoas', '#pessoas'],
-        ['Configurações', '/settings/catalogs'],
+        { label: 'Visão Geral', href: overviewUrl, icon: '⌂', isActive: view === 'calendar' },
+        { label: 'Compras', href: urls.purchasesInvoice, icon: 'R$', isActive: view === 'invoice' },
+        { label: 'Parcelamentos', href: '/installments', icon: '∑', isActive: false },
+        { label: 'Recorrentes', href: '/recurrences', icon: '↻', isActive: false },
+        { label: 'Saldos', href: urls.balances, icon: '±', isActive: false },
+        { label: 'Análise', href: urls.analysis, icon: '◎', isActive: false },
+        { label: 'Exportações', href: '/exports', icon: '↗', isActive: false },
+        { label: 'Configurações', href: '/settings/catalogs', icon: '⚙', isActive: false },
     ];
 };
 
@@ -103,13 +101,13 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
                         </div>
                     </div>
                     <nav className="mt-10 space-y-2">
-                        {navigation(navigationBases, month, view, localCategoryId).map(([label, href], index) => (
+                        {navigation(navigationBases, month, view, localCategoryId).map(({ label, href, icon, isActive }) => (
                             <Link
                                 key={label}
                                 href={href}
-                                className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${index === 0 ? 'bg-emerald-400/10 font-semibold text-emerald-300' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+                                className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${isActive ? 'bg-emerald-400/10 font-semibold text-emerald-300' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
                             >
-                                <span className="w-5 text-center text-xs">{['⌂', '＋', '◫', '↻', '∑', '▤', '⇩', '◎', '⚙'][index]}</span>
+                                <span aria-hidden="true" className="w-5 text-center text-xs">{icon}</span>
                                 {label}
                             </Link>
                         ))}
