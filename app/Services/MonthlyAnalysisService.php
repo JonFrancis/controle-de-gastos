@@ -119,8 +119,9 @@ class MonthlyAnalysisService
     /** @param Collection<int, array<string, mixed>> $items */
     private function participantRows(Collection $items, int $selfId, ?CarbonInterface $periodStart, ?CarbonInterface $periodEnd): array
     {
-        $sourceKeysByType = $items->pluck('key')->map(fn (string $sourceKey): array => explode(':', $sourceKey, 2))->groupBy(fn (array $parts): string => $parts[0])->map(fn (Collection $parts): array => $parts->pluck(1)->map(fn (string $id): int => (int) $id)->all());
-        $itemsByParticipant = $items->filter(fn (array $item): bool => $item['payerId'] === $selfId)->groupBy('participantId');
+        $billableItems = $items->filter(fn (array $item): bool => $item['payerId'] === $selfId);
+        $sourceKeysByType = $billableItems->pluck('key')->map(fn (string $sourceKey): array => explode(':', $sourceKey, 2))->groupBy(fn (array $parts): string => $parts[0])->map(fn (Collection $parts): array => $parts->pluck(1)->map(fn (string $id): int => (int) $id)->all());
+        $itemsByParticipant = $billableItems->groupBy('participantId');
         $applicationsQuery = ReceiptApplication::query()->whereNull('superseded_at')
             ->whereHas('receipt', function ($query) use ($periodStart, $periodEnd): void {
                 $query->whereNull('archived_at')
@@ -134,14 +135,29 @@ class MonthlyAnalysisService
                 }
             });
         }
-        $appliedBySource = $applicationsQuery->get()
+        $applications = $sourceKeysByType->isEmpty() ? collect() : $applicationsQuery->with('receipt')->orderBy('receipt_id')->get();
+        $appliedBySource = $applications
             ->groupBy(fn (ReceiptApplication $application): string => $application->source_type.':'.$application->source_id)
             ->map(fn (Collection $rows): int => (int) $rows->sum('amount_cents'));
+        $abatementsByParticipant = $applications
+            ->groupBy(fn (ReceiptApplication $application): string => $application->receipt->participant_id.':'.$application->receipt_id)
+            ->map(function (Collection $rows): array {
+                $receipt = $rows->first()->receipt;
 
-        return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($itemsByParticipant, $appliedBySource): array {
+                return [
+                    'participantId' => $receipt->participant_id,
+                    'date' => $receipt->received_at->format('Y-m-d'),
+                    'amountCents' => (int) $rows->sum('amount_cents'),
+                ];
+            })
+            ->groupBy('participantId')
+            ->map(fn (Collection $rows): array => $rows->map(fn (array $abatement): array => ['date' => $abatement['date'], 'amountCents' => $abatement['amountCents']])->sortBy('date')->values()->all());
+
+        return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($itemsByParticipant, $appliedBySource, $abatementsByParticipant): array {
             $participantItems = $itemsByParticipant->get($participant->id, collect());
             $gross = (int) $participantItems->sum('amountCents');
             $abatements = (int) $participantItems->sum(fn (array $item): int => min($item['amountCents'], $appliedBySource[$item['key']] ?? 0));
+            $participantAbatements = $abatementsByParticipant->get($participant->id, []);
             $items = $participantItems->map(fn (array $item): array => [
                 'date' => $item['date'],
                 'description' => $item['description'],
@@ -153,14 +169,14 @@ class MonthlyAnalysisService
             ])->values()->all();
             $final = $gross - $abatements;
             $status = $final > 0 ? 'chargeable' : 'settled';
-            $row = ['id' => $participant->id, 'name' => $participant->name, 'grossCents' => $gross, 'abatementsCents' => $abatements, 'finalCents' => $final, 'status' => $status, 'items' => $items];
+            $row = ['id' => $participant->id, 'name' => $participant->name, 'grossCents' => $gross, 'abatementsCents' => $abatements, 'abatements' => $participantAbatements, 'finalCents' => $final, 'status' => $status, 'items' => $items];
 
             return [...$row, 'message' => $this->participantMessage($row)];
         })->filter(fn (array $row): bool => $row['grossCents'] > 0 || $row['abatementsCents'] > 0)->values()->all();
     }
 
     /** @param Collection<int, array<string, mixed>> $items
-     *  @return array{id: int, name: string, grossCents: int, items: list<array<string, mixed>>, message: string}|null
+     * @return array{id: int, name: string, grossCents: int, items: list<array<string, mixed>>, message: string}|null
      */
     private function ownSummary(Collection $items, int $selfId): ?array
     {
@@ -201,7 +217,7 @@ class MonthlyAnalysisService
                 : "Nenhuma cobrança a enviar neste período.\n\nQuitados ou sem cobrança: ".$settled->implode(', ').'.';
         }
 
-        $sections = $chargeable->map(fn (array $participant): string => $participant['name'].":\n".$this->messageDetails($participant['items'])."\nTotal bruto: ".$this->formatMoney($participant['grossCents'])."\nAbatimentos: ".$this->formatMoney($participant['abatementsCents'])."\nValor líquido: ".$this->formatMoney($participant['finalCents']))->implode("\n\n");
+        $sections = $chargeable->map(fn (array $participant): string => $participant['name'].":\n".$this->messageDetails($participant['items']).$this->messageAbatements($participant['abatements'])."\nTotal bruto: ".$this->formatMoney($participant['grossCents'])."\nAbatimentos: ".$this->formatMoney($participant['abatementsCents'])."\nValor líquido: ".$this->formatMoney($participant['finalCents']))->implode("\n\n");
 
         if ($settled->isNotEmpty()) {
             $sections .= "\n\nQuitados ou sem cobrança: ".$settled->implode(', ').'.';
@@ -217,20 +233,25 @@ class MonthlyAnalysisService
             return "Olá, {$participant['name']}!\n\nSua conta está quitada neste período. Nenhuma cobrança a enviar.";
         }
 
-        return "Olá, {$participant['name']}!\n\nSegue o resumo das suas compras no período:\n".$this->messageDetails($participant['items'])."\n\nTotal bruto: ".$this->formatMoney($participant['grossCents'])."\nAbatimentos: ".$this->formatMoney($participant['abatementsCents'])."\nValor líquido: ".$this->formatMoney($participant['finalCents']);
+        return "Olá, {$participant['name']}!\n\nSegue o resumo das suas compras no período:\n".$this->messageDetails($participant['items']).$this->messageAbatements($participant['abatements'])."\n\nTotal bruto: ".$this->formatMoney($participant['grossCents'])."\nAbatimentos: ".$this->formatMoney($participant['abatementsCents'])."\nValor líquido: ".$this->formatMoney($participant['finalCents']);
     }
 
     /** @param list<array<string, mixed>> $items */
     private function messageDetails(array $items): string
     {
-        return collect($items)->map(function (array $item): string {
-            $line = '- '.$item['description'].' ('.Carbon::parse($item['date'])->format('d/m/Y').'): '.$this->formatMoney($item['finalCents']);
-            if ($item['abatementCents'] > 0) {
-                $line .= ' (abatimento '.$this->formatMoney($item['abatementCents']).')';
-            }
+        return collect($items)->map(fn (array $item): string => '- '.$item['description'].' ('.Carbon::parse($item['date'])->format('d/m/Y').'): '.$this->formatMoney($item['amountCents']))->implode("\n");
+    }
 
-            return $line;
-        })->implode("\n");
+    /** @param list<array{date: string, amountCents: int}> $abatements */
+    private function messageAbatements(array $abatements): string
+    {
+        if ($abatements === []) {
+            return '';
+        }
+
+        return "\n\nAbatimentos recebidos:\n".collect($abatements)
+            ->map(fn (array $abatement): string => '- ('.Carbon::parse($abatement['date'])->format('d/m/Y').'): '.$this->formatMoney($abatement['amountCents']))
+            ->implode("\n");
     }
 
     private function formatMoney(int $cents): string
