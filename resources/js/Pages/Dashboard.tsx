@@ -34,9 +34,10 @@ type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStar
 
 const navigation = (navigationBases: DashboardNavigationBases, month: string, view: 'calendar' | 'invoice', categoryId: number | null) => {
     const urls = dashboardNavigationUrls(navigationBases, month, view, categoryId);
+    const overviewUrl = dashboardNavigationUrls(navigationBases, month, 'calendar', categoryId).overview;
 
     return [
-        { label: 'Visão Geral', href: urls.overview, icon: '⌂', isActive: view === 'calendar' },
+        { label: 'Visão Geral', href: overviewUrl, icon: '⌂', isActive: view === 'calendar' },
         { label: 'Compras', href: urls.purchasesInvoice, icon: 'R$', isActive: view === 'invoice' },
         { label: 'Parcelamentos', href: '/installments', icon: '∑', isActive: false },
         { label: 'Recorrentes', href: '/recurrences', icon: '↻', isActive: false },
