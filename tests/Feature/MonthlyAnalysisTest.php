@@ -192,7 +192,15 @@ class MonthlyAnalysisTest extends TestCase
         ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $oldAllocation->id, 'purchase_allocation_id' => $oldAllocation->id, 'amount_cents' => 4000, 'source' => 'manual']);
         ReceiptApplication::create(['receipt_id' => $receipt->id, 'source_type' => 'purchase_allocation', 'source_id' => $currentAllocation->id, 'purchase_allocation_id' => $currentAllocation->id, 'amount_cents' => 4000, 'source' => 'manual']);
 
-        $this->get('/analysis?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page->where('participants.0.grossCents', 7000)->where('participants.0.abatementsCents', 4000)->where('participants.0.finalCents', 3000));
+        $this->get('/analysis?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.grossCents', 7000)
+            ->where('participants.0.abatementsCents', 4000)
+            ->where('participants.0.abatements.0.date', '2026-10-20')
+            ->where('participants.0.abatements.0.amountCents', 4000)
+            ->where('participants.0.items.0.amountCents', 7000)
+            ->where('participants.0.finalCents', 3000)
+            ->where('participants.0.message', rtrim(file_get_contents(base_path('tests/Fixtures/MonthlyAnalysis/abatement-individual-message.txt')), "\r\n"))
+            ->where('fullMessage', rtrim(file_get_contents(base_path('tests/Fixtures/MonthlyAnalysis/abatement-full-message.txt')), "\r\n")));
     }
 
     public function test_quitado_participant_is_flagged_without_a_charge_message(): void
