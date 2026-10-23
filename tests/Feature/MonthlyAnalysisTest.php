@@ -199,8 +199,8 @@ class MonthlyAnalysisTest extends TestCase
             ->where('participants.0.abatements.0.amountCents', 4000)
             ->where('participants.0.items.0.amountCents', 7000)
             ->where('participants.0.finalCents', 3000)
-            ->where('participants.0.message', "Olá, Maria!\n\nSegue o resumo das suas compras no período:\n- Dívida atual (12/10/2026): R$ 70,00\n\nAbatimentos recebidos:\n- (20/10/2026): R$ 40,00\n\nTotal bruto: R$ 70,00\nAbatimentos: R$ 40,00\nValor líquido: R$ 30,00")
-            ->where('fullMessage', "Cobranças do período:\n\nMaria:\n- Dívida atual (12/10/2026): R$ 70,00\n\nAbatimentos recebidos:\n- (20/10/2026): R$ 40,00\nTotal bruto: R$ 70,00\nAbatimentos: R$ 40,00\nValor líquido: R$ 30,00"));
+            ->where('participants.0.message', rtrim(file_get_contents(base_path('tests/Fixtures/MonthlyAnalysis/abatement-individual-message.txt')), "\r\n"))
+            ->where('fullMessage', rtrim(file_get_contents(base_path('tests/Fixtures/MonthlyAnalysis/abatement-full-message.txt')), "\r\n")));
     }
 
     public function test_quitado_participant_is_flagged_without_a_charge_message(): void

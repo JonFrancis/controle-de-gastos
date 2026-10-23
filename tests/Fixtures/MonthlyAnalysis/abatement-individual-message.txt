@@ -1,0 +1,11 @@
+Olá, Maria!
+
+Segue o resumo das suas compras no período:
+- Dívida atual (12/10/2026): R$ 70,00
+
+Abatimentos recebidos:
+- (20/10/2026): R$ 40,00
+
+Total bruto: R$ 70,00
+Abatimentos: R$ 40,00
+Valor líquido: R$ 30,00
