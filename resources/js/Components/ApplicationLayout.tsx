@@ -24,7 +24,7 @@ export default function ApplicationLayout({ children }: { children: ReactNode })
             </Link>
             <nav className="mt-8 space-y-1.5 lg:mt-10 lg:space-y-2" aria-label="Navegação principal">
                 {navigationItems.map(({ label, href, icon }) => {
-                    const isActive = pathname === href || (href !== '/' && pathname.startsWith(href));
+                    const isActive = pathname === href || (href !== '/' && pathname.startsWith(href)) || (href === '/settings/catalogs' && pathname.startsWith('/settings/'));
 
                     return <Link key={href} href={href} aria-label={label} aria-current={isActive ? 'page' : undefined} title={label} className={`flex items-center justify-center gap-3 rounded-2xl px-2 py-3 text-sm transition lg:justify-start lg:px-3 ${isActive ? 'bg-[#e0edd9] font-semibold text-[#24452b] shadow-[inset_3px_0_0_#3BD936]' : 'text-[#776d60] hover:bg-white/70 hover:text-[#302b24]'}`}>
                         <span aria-hidden="true" className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl text-base ${isActive ? 'bg-white/75 text-[#315b37]' : 'bg-[#e9e1d4] text-[#594c43]'}`}>{icon}</span>
