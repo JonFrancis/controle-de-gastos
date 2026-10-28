@@ -102,30 +102,25 @@ export default function Dashboard({ selectedMonth, view, tab, pendingReview, pen
         <>
             <Head title={tab === 'personal' ? 'Gastos Pessoais' : view === 'invoice' ? 'Faturas' : 'Visão geral'} />
             <div className="dashboard-dark min-h-screen bg-[#f6f1e8] text-[#302b24]">
-                <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 border-r border-[#594c43]/15 bg-[#f1ebdf] px-5 py-6 shadow-[8px_0_28px_rgba(65,48,34,0.04)] lg:block">
-                    <div className="flex items-center gap-3 px-2">
-                        <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#3BD936] font-black tracking-tight text-[#17351e] shadow-[0_8px_18px_rgba(59,217,54,0.2)]">CG</div>
-                        <div>
+                <aside className="fixed inset-y-0 left-0 z-20 block w-16 border-r border-[#594c43]/15 bg-[#f1ebdf] px-2 py-5 shadow-[8px_0_28px_rgba(65,48,34,0.04)] lg:w-64 lg:px-5 lg:py-6">
+                    <div className="flex items-center justify-center gap-3 px-1 lg:justify-start lg:px-2">
+                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#3BD936] font-black tracking-tight text-[#17351e] shadow-[0_8px_18px_rgba(59,217,54,0.2)]">CG</div>
+                        <div className="hidden lg:block">
                             <p className="font-semibold text-[#302b24]">Controle de Gastos</p>
                             <p className="text-xs text-[#766b5d]">seu dinheiro, mais claro</p>
                         </div>
                     </div>
-                    <nav className="mt-10 space-y-2" aria-label="Navegação principal">
+                    <nav className="mt-8 space-y-1.5 lg:mt-10 lg:space-y-2" aria-label="Navegação principal">
                         {navigation(navigationBases, month, view, localCategoryId).map(({ label, href, icon, isActive }) => (
-                            <Link key={label} href={href} aria-current={isActive ? 'page' : undefined} className={`flex items-center gap-3 rounded-2xl px-3 py-3 text-sm transition ${isActive ? 'bg-[#e0edd9] font-semibold text-[#24452b] shadow-[inset_3px_0_0_#3BD936]' : 'text-[#776d60] hover:bg-white/70 hover:text-[#302b24]'}`}>
+                            <Link key={label} href={href} aria-label={label} title={label} aria-current={isActive ? 'page' : undefined} className={`flex items-center justify-center gap-3 rounded-2xl px-2 py-3 text-sm transition lg:justify-start lg:px-3 ${isActive ? 'bg-[#e0edd9] font-semibold text-[#24452b] shadow-[inset_3px_0_0_#3BD936]' : 'text-[#776d60] hover:bg-white/70 hover:text-[#302b24]'}`}>
                                 <span aria-hidden="true" className={`grid h-8 w-8 place-items-center rounded-xl text-base ${isActive ? 'bg-white/75 text-[#315b37]' : 'bg-[#e9e1d4] text-[#594c43]'}`}>{icon}</span>
-                                {label}
+                                <span className="hidden lg:inline">{label}</span>
                             </Link>
                         ))}
                     </nav>
-                    <div className="absolute inset-x-5 bottom-6 overflow-hidden rounded-2xl border border-[#4F844D]/20 bg-[#e8eddf] p-4">
-                        <div aria-hidden="true" className="mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-[#3BD936] text-lg text-[#23452c]">✳</div>
-                        <p className="font-serif text-lg font-semibold leading-tight text-[#294a30]">Organização para uma vida mais leve.</p>
-                        <div className="mt-3 h-1 w-12 rounded-full bg-[#D97B36]" />
-                    </div>
                 </aside>
 
-                <main className="min-h-screen lg:pl-64">
+                <main className="min-h-screen pl-16 lg:pl-64">
                     <div className="mx-auto max-w-[1480px] px-5 py-6 sm:px-8 lg:px-10 lg:py-8">
                         <header className="flex flex-col justify-between gap-5 xl:flex-row xl:items-center">
                             <div>
