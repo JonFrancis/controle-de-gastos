@@ -41,6 +41,18 @@ class MonthlyAnalysisService
         return $this->buildAnalysis($this->items($periodStart, $periodEnd), $periodStart, $periodEnd);
     }
 
+    /** @return list<array{name: string, amountCents: int}> */
+    public function invoiceCategoryTotals(string $selectedMonth): array
+    {
+        $month = Carbon::createFromFormat('!Y-m', $selectedMonth);
+        $range = $this->invoiceCycleService->sourceRangeForInvoiceMonth($month);
+        $items = $this->items($range['start'], $range['end'])
+            ->filter(fn (array $item): bool => $this->inInvoice($item, $selectedMonth));
+        $chargeableItems = $items->reject(fn (array $item): bool => $this->isPending($item))->values();
+
+        return $this->groupOwnRows($chargeableItems, $this->selfId(), 'categoryName');
+    }
+
     /** @param Collection<int, array<string, mixed>> $items */
     private function participantTotals(Collection $items): array
     {

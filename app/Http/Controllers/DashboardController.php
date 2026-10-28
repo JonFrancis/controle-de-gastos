@@ -65,6 +65,7 @@ class DashboardController extends Controller
                 'movement' => $budgetAnalysis['weeklyMovement'],
                 'categories' => $budgetAnalysis['movementCategories'],
                 'selectedCategoryId' => $budgetAnalysis['selectedMovementCategoryId'],
+                'invoiceCategoryTotals' => $monthlyAnalysisService->invoiceCategoryTotals($selectedMonth),
             ],
             'pendingReview' => $pendingReview,
             'pendingReviewUrl' => $pendingReview > 0 ? route('imports.queue', [], false) : null,

@@ -18,16 +18,16 @@ type Props = {
     invoiceGroups: InvoiceGroup[];
     charts: {
         paymentMethodTotals: ChartRow[];
-        movement: MovementRow[];
+        movement: { week: number; label: string; amountCents: number }[];
         categories: { id: number; name: string }[];
         selectedCategoryId: number | null;
+        invoiceCategoryTotals: ChartRow[];
     };
     personChart: PersonChartData;
     flash?: { success?: string };
     navigationBases: DashboardNavigationBases;
 };
 type ChartRow = { name: string; amountCents: number };
-type MovementRow = { week: number; label: string; amountCents: number };
 type PersonChartItem = { id: number; name: string; amountCents: number; netCents?: number; creditCents?: number; status?: 'chargeable' | 'settled' };
 type PersonChartData = { expenses: PersonChartItem[]; balances: PersonChartItem[] };
 type InvoiceGroup = { paymentMethodId: number; paymentMethod: string; periodStart: string; periodEnd: string; closingDate: string; dueDate: string | null; totalCents: number; purchases: { id: number }[]; detailsUrl: string };
@@ -142,7 +142,7 @@ export default function Dashboard({ selectedMonth, view, pendingReview, pendingR
                                 <SalarySummaryCard salaryCents={summary.salaryCents} remainingCents={summary.salaryRemainingCents} salaryUrl={localNavigationUrls.analysisSalary} />
                             </section>
 
-                            <MovementChart selectedMonth={month} movement={charts.movement} categories={charts.categories} selectedCategoryId={localCategoryId} onCategoryChange={setLocalCategoryId} />
+                            <InvoiceCategoryChart selectedMonth={month} rows={charts.invoiceCategoryTotals} />
 
                             <PaymentMethodChart rows={charts.paymentMethodTotals} />
 
@@ -172,11 +172,10 @@ function InvoiceOverview({ groups, selectedMonth, totalCents, invoiceListUrl }: 
     </section>;
 }
 
-function MovementChart({ selectedMonth, movement, categories, selectedCategoryId, onCategoryChange }: { selectedMonth: string; movement: MovementRow[]; categories: { id: number; name: string }[]; selectedCategoryId: number | null; onCategoryChange: (categoryId: number | null) => void }) {
-    const maximum = Math.max(...movement.map((row) => row.amountCents), 0);
-    const selectedCategoryIsMissing = selectedCategoryId !== null && !categories.some((category) => category.id === selectedCategoryId);
+function InvoiceCategoryChart({ selectedMonth, rows }: { selectedMonth: string; rows: ChartRow[] }) {
+    const maximum = Math.max(...rows.map((row) => row.amountCents), 0);
 
-    return <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><h2 className="font-semibold text-white">Movimentação do mês</h2><p className="mt-1 text-sm text-slate-400">Consumo próprio por semana</p></div><form method="get" action="/" className="flex items-center gap-2"><input type="hidden" name="month" value={selectedMonth} /><label htmlFor="movement-category" className="sr-only">Filtrar movimentação por categoria</label><select id="movement-category" name="category" value={selectedCategoryId ?? ''} onChange={(event) => onCategoryChange(event.currentTarget.value === '' ? null : Number(event.currentTarget.value))} className="max-w-48 rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white"><option value="">Todas as categorias</option>{selectedCategoryIsMissing && <option value={selectedCategoryId}>Categoria selecionada</option>}{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><button className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">Filtrar</button></form></div>{movement.length === 0 ? <p className="mt-8 rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Ainda não há consumo próprio neste mês para movimentar.</p> : <div className="mt-8 flex h-48 items-end justify-between gap-3 px-2" aria-label="Movimentação semanal"><div className="sr-only">{movement.map((row) => `${row.label}: ${formatMoney(row.amountCents)}`).join(', ')}</div>{movement.map((row) => <div key={row.week} className="flex min-w-0 flex-1 flex-col items-center gap-2"><div className="flex h-40 w-full flex-col items-center justify-end gap-1"><span className="whitespace-nowrap text-[11px] font-semibold text-emerald-200">{formatMoney(row.amountCents)}</span><div className="w-full rounded-t-lg bg-gradient-to-t from-emerald-500/40 to-emerald-300" style={{ height: `${(row.amountCents / maximum) * 100}%` }} title={`${row.label}: ${formatMoney(row.amountCents)}`} /></div><span className="text-center text-[10px] text-slate-500">{row.label}</span></div>)}</div>}</section>;
+    return <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6"><div><h2 className="font-semibold text-white">Gastos por categoria da fatura</h2><p className="mt-1 text-sm text-slate-400">Consumo próprio na fatura com vencimento em {formatMonth(selectedMonth)}</p></div>{rows.length === 0 ? <p className="mt-6 rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500">Ainda não há gastos próprios nesta fatura.</p> : <div className="mt-6 space-y-4" role="list" aria-label="Gastos por categoria da fatura">{rows.map((row) => <div key={row.name} role="listitem"><div className="mb-2 flex items-center justify-between gap-3 text-sm"><span className="truncate text-slate-300">{row.name === 'Sem informação' ? 'Sem categoria' : row.name}</span><strong className="shrink-0 text-emerald-300">{formatMoney(row.amountCents)}</strong></div><div className="h-3 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500/60 to-emerald-300" style={{ width: `${(row.amountCents / maximum) * 100}%` }} /></div></div>)}</div>}</section>;
 }
 
 function PaymentMethodChart({ rows }: { rows: ChartRow[] }) {
