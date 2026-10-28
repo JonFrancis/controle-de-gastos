@@ -35,8 +35,12 @@ export function dashboardCategoryIdForResponse(localCategoryId: number | null, r
     return preserveLocalSelection && responseCategoryId === null ? localCategoryId : responseCategoryId;
 }
 
-export function dashboardMonthUrl(overviewBaseUrl: string, month: string, view: DashboardView, categoryId: number | null): string {
+export function dashboardMonthUrl(overviewBaseUrl: string, month: string, view: DashboardView, categoryId: number | null, tab: 'overview' | 'personal' = 'overview'): string {
     const params = new URLSearchParams({ month, view });
+
+    if (tab === 'personal') {
+        params.set('tab', tab);
+    }
 
     if (view === 'calendar' && categoryId !== null) {
         params.set('category', String(categoryId));
@@ -45,8 +49,8 @@ export function dashboardMonthUrl(overviewBaseUrl: string, month: string, view: 
     return `${overviewBaseUrl}?${params.toString()}`;
 }
 
-export function visitDashboardMonth(router: DashboardRouter, overviewBaseUrl: string, month: string, view: DashboardView, categoryId: number | null, callbacks: DashboardVisitOptions = {}): void {
-    router.visit(dashboardMonthUrl(overviewBaseUrl, month, view, categoryId), {
+export function visitDashboardMonth(router: DashboardRouter, overviewBaseUrl: string, month: string, view: DashboardView, categoryId: number | null, callbacks: DashboardVisitOptions = {}, tab: 'overview' | 'personal' = 'overview'): void {
+    router.visit(dashboardMonthUrl(overviewBaseUrl, month, view, categoryId, tab), {
         replace: true,
         preserveState: true,
         preserveScroll: true,

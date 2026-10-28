@@ -6,4 +6,104 @@
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+    --color-brand-lime: #3BD936;
+    --color-brand-orange: #D97B36;
+    --color-brand-purple: #5036D9;
+    --color-brand-olive: #4F844D;
+    --color-brand-brown: #594C43;
+}
+
+.dashboard-dark {
+    color-scheme: dark;
+    background-color: #151a15 !important;
+    color: #e8e5d8 !important;
+}
+
+.dashboard-dark aside {
+    background-color: #1a2119 !important;
+    border-color: rgb(190 203 178 / 12%) !important;
+    box-shadow: 8px 0 28px rgb(0 0 0 / 18%) !important;
+}
+
+.dashboard-dark [class*="bg-[#f6f1e8]"],
+.dashboard-dark [class*="bg-[#f1ebdf]"] {
+    background-color: #151a15 !important;
+}
+
+.dashboard-dark [class*="bg-[#fffdf8]"],
+.dashboard-dark [class*="bg-white/65"],
+.dashboard-dark [class*="bg-white/70"],
+.dashboard-dark [class*="bg-white/75"],
+.dashboard-dark [class*="bg-[#f8f4ec]"],
+.dashboard-dark [class*="bg-[#f7f3eb]"] {
+    background-color: #20271f !important;
+}
+
+.dashboard-dark [class*="bg-[#eee7db]"],
+.dashboard-dark [class*="bg-[#e9e1d4]"],
+.dashboard-dark [class*="bg-[#e8eddf]"],
+.dashboard-dark [class*="bg-[#e0edd9]"],
+.dashboard-dark [class*="bg-[#e6efdf]"],
+.dashboard-dark [class*="bg-[#e3f0dc]"],
+.dashboard-dark [class*="bg-[#eee8dd]"] {
+    background-color: #293429 !important;
+}
+
+.dashboard-dark [class*="bg-[#f8e8d7]"],
+.dashboard-dark [class*="bg-[#f1e8db]"],
+.dashboard-dark [class*="bg-[#fff9f2]"] {
+    background-color: #35281f !important;
+}
+
+.dashboard-dark [class*="text-[#302b24]"],
+.dashboard-dark [class*="text-[#263b2b]"] {
+    color: #e8e5d8 !important;
+}
+
+.dashboard-dark [class*="text-[#766b5d]"],
+.dashboard-dark [class*="text-[#8b8072]"],
+.dashboard-dark [class*="text-[#776d60]"] {
+    color: #aaa392 !important;
+}
+
+.dashboard-dark [class*="text-[#24452b]"],
+.dashboard-dark [class*="text-[#294a30]"],
+.dashboard-dark [class*="text-[#315b37]"],
+.dashboard-dark [class*="text-[#23452c]"],
+.dashboard-dark [class*="text-[#254b2d]"] {
+    color: #a8d29b !important;
+}
+
+.dashboard-dark [class*="text-[#594c43]"],
+.dashboard-dark [class*="text-[#71411f]"] {
+    color: #d1b99f !important;
+}
+
+.dashboard-dark [class*="text-[#96501f]"],
+.dashboard-dark [class*="text-[#8e4a24]"],
+.dashboard-dark [class*="text-[#a44e24]"] {
+    color: #efaa71 !important;
+}
+
+.dashboard-dark [class*="border-[#594c43]"],
+.dashboard-dark [class*="border-[#4F844D]"],
+.dashboard-dark [class*="border-[#D97B36]"] {
+    border-color: rgb(190 203 178 / 15%) !important;
+}
+
+.dashboard-dark [class*="divide-[#594c43]"] > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgb(190 203 178 / 12%) !important;
+}
+
+.dashboard-dark tr:hover {
+    background-color: #293429 !important;
+}
+
+.dashboard-dark svg line {
+    stroke: #a7b49d !important;
+    stroke-opacity: 0.18 !important;
+}
+
+.dashboard-dark svg circle[fill="#fffdf8"] {
+    fill: #20271f !important;
 }

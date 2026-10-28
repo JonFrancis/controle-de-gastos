@@ -91,7 +91,7 @@ class MonthlyAnalysisService
             'movementCategories' => $movementCategories,
             'selectedMovementCategoryId' => $selectedMovementCategoryId,
             'origins' => $this->origins($chargeableItems),
-            'purchaseReview' => $items->groupBy('sourceKey')->map(function (Collection $rows): array {
+            'purchaseReview' => $items->groupBy('sourceKey')->map(function (Collection $rows) use ($selfId): array {
                 $item = $rows->first();
                 $participants = $rows->pluck('participantName')->filter()->unique()->join(', ');
 
@@ -99,11 +99,13 @@ class MonthlyAnalysisService
                     'key' => $item['key'],
                     'date' => $item['date'],
                     'description' => $item['description'],
+                    'categoryName' => $item['categoryName'],
                     'cardName' => $item['cardName'],
                     'amountCents' => $item['sourceAmountCents'],
                     'origin' => $item['origin'],
                     'paymentMethodName' => $item['paymentMethodName'],
                     'participantName' => $participants !== '' ? $participants : $item['participantName'],
+                    'isOwn' => $rows->contains(fn (array $row): bool => $row['participantId'] === $selfId),
                     'pending' => $item['paymentMethodId'] === null,
                 ];
             })->values()->all(),

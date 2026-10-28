@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Participant;
+use App\Models\Receipt;
 use App\Models\SpreadsheetImportRow;
 use App\Services\BalanceService;
 use App\Services\MonthlyAnalysisService;
@@ -19,11 +20,54 @@ class DashboardController extends Controller
     {
         $selectedMonth = $this->validMonth($request->query('month'));
         $view = $request->query('view') === 'invoice' ? 'invoice' : 'calendar';
+        $tab = $request->query('tab') === 'personal' ? 'personal' : 'overview';
         $month = Carbon::createFromFormat('Y-m', $selectedMonth);
         $recurrenceService->ensureOccurrencesForRange($month->copy()->startOfMonth(), $month->copy()->endOfMonth());
         $movementCategoryId = $request->integer('category') ?: null;
         $budgetAnalysis = $monthlyAnalysisService->analyze($selectedMonth, $view, $movementCategoryId);
+        $personalAnalysis = $monthlyAnalysisService->analyze($selectedMonth, 'calendar');
         $budgetSummary = $budgetAnalysis['summary'];
+        $totalReceiptsCents = (int) Receipt::query()
+            ->whereNull('archived_at')
+            ->whereBetween('received_at', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()])
+            ->sum('amount_cents');
+        $recentReceipts = Receipt::query()
+            ->whereNull('archived_at')
+            ->with('participant:id,name')
+            ->whereBetween('received_at', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()])
+            ->orderByDesc('received_at')
+            ->limit(8)
+            ->get()
+            ->map(fn (Receipt $receipt): array => [
+                'key' => 'receipt:'.$receipt->id,
+                'date' => $receipt->received_at->toDateString(),
+                'description' => $receipt->note ?: 'Recebimento',
+                'categoryName' => null,
+                'amountCents' => $receipt->amount_cents,
+                'kind' => 'receipt',
+                'paymentMethodName' => null,
+                'participantName' => $receipt->participant?->name,
+                'isOwn' => false,
+                'pending' => false,
+            ]);
+        $recentMovements = collect($budgetAnalysis['purchaseReview'])
+            ->map(fn (array $purchase): array => [
+                'key' => $purchase['key'],
+                'date' => $purchase['date'],
+                'description' => $purchase['description'],
+                'categoryName' => $purchase['categoryName'],
+                'amountCents' => $purchase['amountCents'],
+                'kind' => 'expense',
+                'paymentMethodName' => $purchase['paymentMethodName'],
+                'participantName' => $purchase['participantName'],
+                'isOwn' => $purchase['isOwn'],
+                'pending' => $purchase['pending'],
+            ])
+            ->concat($recentReceipts)
+            ->sortByDesc('date')
+            ->take(6)
+            ->values()
+            ->all();
         $pendingReviewQuery = SpreadsheetImportRow::query()->where('status', 'pending_review');
         $pendingReview = (clone $pendingReviewQuery)->count();
         $personBalances = collect($balanceService->participantBalances($month->copy()->endOfMonth(), $month->copy()->startOfMonth()))
@@ -55,7 +99,14 @@ class DashboardController extends Controller
         return Inertia::render('Dashboard', [
             'selectedMonth' => $selectedMonth,
             'view' => $view,
-            'summary' => $budgetSummary,
+            'tab' => $tab,
+            'summary' => [
+                ...$budgetSummary,
+                'totalReceiptsCents' => $totalReceiptsCents,
+                'monthBalanceCents' => $totalReceiptsCents - $budgetSummary['totalDisbursedCents'],
+            ],
+            'personalSummary' => $personalAnalysis['summary'],
+            'ownSummary' => $personalAnalysis['ownSummary'],
             'personChart' => [
                 'expenses' => $budgetAnalysis['participantExpenses'],
                 'balances' => $personBalances,
@@ -70,6 +121,7 @@ class DashboardController extends Controller
             'pendingReview' => $pendingReview,
             'pendingReviewUrl' => $pendingReview > 0 ? route('imports.queue', [], false) : null,
             'invoiceGroups' => $invoiceGroups,
+            'recentMovements' => $recentMovements,
             'navigationBases' => [
                 'overview' => route('dashboard', [], false),
                 'analysis' => route('analysis', [], false),
