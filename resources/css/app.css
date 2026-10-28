@@ -107,3 +107,69 @@
 .dashboard-dark svg circle[fill="#fffdf8"] {
     fill: #20271f !important;
 }
+
+.app-content {
+    color-scheme: dark;
+    background-color: #151a15 !important;
+    color: #e8e5d8 !important;
+}
+
+.app-content .app-sidebar {
+    background-color: #1a2119 !important;
+    border-color: rgb(190 203 178 / 12%) !important;
+    box-shadow: 8px 0 28px rgb(0 0 0 / 18%) !important;
+}
+
+.app-content .app-sidebar nav,
+.dashboard-dark aside nav {
+    max-height: calc(100vh - 6.5rem);
+    overflow-y: auto;
+    scrollbar-color: rgb(168 210 155 / 35%) transparent;
+    scrollbar-width: thin;
+}
+
+.app-content main h1 {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+}
+
+.app-content [class~="bg-slate-950"] { background-color: #151a15 !important; }
+.app-content [class~="bg-slate-950/30"],
+.app-content [class~="bg-slate-950/40"],
+.app-content [class~="bg-slate-950/60"],
+.app-content [class~="bg-slate-950/70"] { background-color: #171d17 !important; }
+.app-content [class~="bg-slate-900/70"] { background-color: #20271f !important; }
+.app-content [class~="bg-slate-900/60"] { background-color: #20271f !important; }
+.app-content [class~="bg-slate-800"] { background-color: #293429 !important; }
+.app-content [class~="bg-slate-700"] { background-color: #344034 !important; }
+.app-content [class~="bg-white/5"],
+.app-content [class~="bg-white/10"],
+.app-content [class~="bg-white/[0.05]"] { background-color: rgb(190 203 178 / 7%) !important; }
+.app-content [class~="bg-white/[0.03]"],
+.app-content [class~="bg-white/[0.02]"],
+.app-content [class~="bg-white/[0.01]"] { background-color: rgb(190 203 178 / 4%) !important; }
+.app-content [class~="bg-emerald-300/10"],
+.app-content [class~="bg-emerald-300/5"],
+.app-content [class~="bg-emerald-400/10"] { background-color: rgb(78 132 77 / 18%) !important; }
+.app-content [class~="text-white"],
+.app-content [class~="text-slate-100"],
+.app-content [class~="text-slate-200"] { color: #e8e5d8 !important; }
+.app-content [class~="text-slate-300"] { color: #d1d3c8 !important; }
+.app-content [class~="text-slate-400"] { color: #aaa392 !important; }
+.app-content [class~="text-slate-500"] { color: #8b8e82 !important; }
+.app-content [class~="text-slate-600"] { color: #72796e !important; }
+.app-content [class~="text-emerald-200"],
+.app-content [class~="text-emerald-300"],
+.app-content [class~="text-emerald-400"] { color: #a8d29b !important; }
+.app-content [class~="bg-emerald-400"] { background-color: #3BD936 !important; }
+.app-content [class~="border-emerald-300"],
+.app-content [class~="border-emerald-300/20"],
+.app-content [class~="border-emerald-300/30"],
+.app-content [class~="border-emerald-300/40"],
+.app-content [class~="border-emerald-300/50"] { border-color: rgb(168 210 155 / 35%) !important; }
+.app-content [class~="border-white/10"],
+.app-content [class~="border-white/5"],
+.app-content [class~="border-white/[0.05]"] { border-color: rgb(190 203 178 / 14%) !important; }
+.app-content [class~="divide-white/5"] > :not([hidden]) ~ :not([hidden]) { border-color: rgb(190 203 178 / 10%) !important; }
+.app-content tr:hover { background-color: #293429 !important; }
