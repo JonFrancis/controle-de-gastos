@@ -293,6 +293,25 @@ class MonthlyAnalysisTest extends TestCase
             );
     }
 
+    public function test_analysis_final_matches_the_dashboard_net_balance_for_each_person(): void
+    {
+        [$self, $maria, $pix] = $this->catalogs();
+        $purchaseMaria = Purchase::create(['purchased_at' => '2026-10-12', 'description' => 'Compra para Maria', 'amount_cents' => 7000, 'payer_id' => $self->id, 'payment_method_id' => $pix->id]);
+        PurchaseAllocation::create(['purchase_id' => $purchaseMaria->id, 'participant_id' => $maria->id, 'amount_cents' => 7000]);
+        $purchase = Purchase::create(['purchased_at' => '2026-10-15', 'description' => 'Compra paga por Maria', 'amount_cents' => 2000, 'payer_id' => $maria->id, 'participant_id' => $self->id, 'payment_method_id' => $pix->id]);
+        PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $self->id, 'amount_cents' => 2000]);
+
+        $this->get('/analysis?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page
+            ->where('participants.0.grossCents', 7000)
+            ->where('participants.0.payableItems.0.description', 'Compra paga por Maria')
+            ->where('participants.0.payableItems.0.outstandingCents', 2000)
+            ->where('participants.0.finalCents', 5000));
+
+        $this->get('/?month=2026-10&view=calendar')->assertInertia(fn (Assert $page) => $page
+            ->where('personChart.balances.0.name', 'Maria')
+            ->where('personChart.balances.0.amountCents', 5000));
+    }
+
     public function test_invoice_analysis_keeps_cycle_classification_without_an_obsolete_badge(): void
     {
         $self = Participant::query()->where('is_default', true)->firstOrFail();
