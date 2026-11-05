@@ -7,7 +7,7 @@ import { analysisNavigationUrls, visitAnalysisMonth } from './monthNavigation.mj
 type AnalysisNavigationBases = { overview: string; analysis: string };
 type Summary = { ownConsumptionCents: number; paidForOthersCents: number; totalDisbursedCents: number; salaryRemainingCents: number | null };
 type MessageItem = { date: string; description: string; cardName: string | null; origin: string; amountCents: number; abatementCents: number; finalCents: number };
-type Participant = { id: number; name: string; grossCents: number; abatementsCents: number; abatements: { date: string; amountCents: number }[]; finalCents: number; status: 'chargeable' | 'settled'; items: MessageItem[]; message: string };
+type Participant = { id: number; name: string; grossCents: number; abatementsCents: number; abatements: { date: string; amountCents: number }[]; payableCents: number; payableAppliedCents: number; payableItems: { date: string; description: string; amountCents: number; outstandingCents: number }[]; finalCents: number; status: 'chargeable' | 'settled' | 'payable'; items: MessageItem[]; message: string };
 type OwnSummary = { id: number; name: string; grossCents: number; items: MessageItem[]; message: string } | null;
 type Breakdown = { name: string; amountCents: number };
 type Origin = { amountCents: number; count: number };
@@ -74,11 +74,13 @@ export default function Analysis({ selectedMonth, view, summary, salaryCents, fl
     const generateGroupMessage = () => {
         const selected = participants.filter((participant) => selectedPeople.includes(participant.id));
         const chargeable = selected.filter((participant) => participant.status === 'chargeable');
-        const settled = selected.filter((participant) => participant.status === 'settled');
+        const settled = selected.filter((participant) => participant.status !== 'chargeable');
+        const payable = selected.filter((participant) => participant.status === 'payable');
         const title = groupName.trim() ? `${groupName.trim()} — cobranças do período:` : 'Cobranças do período:';
-        const sections = chargeable.map((participant) => `${participant.name}:\n${formatMessageDetails(participant.items)}${formatMessageAbatements(participant.abatements)}\nTotal bruto: ${formatMoney(participant.grossCents)}\nAbatimentos: ${formatMoney(participant.abatementsCents)}\nValor líquido: ${formatMoney(participant.finalCents)}`);
-        const settledNote = settled.length > 0 ? `\n\nQuitados ou sem cobrança: ${settled.map((participant) => participant.name).join(', ')}.` : '';
-        setGroupMessage(chargeable.length > 0 ? `${title}\n\n${sections.join('\n\n')}${settledNote}` : `${title}\n\nNenhuma cobrança a enviar para as pessoas selecionadas.${settledNote}`);
+        const sections = chargeable.map((participant) => `${participant.name}:\n${formatMessageDetails(participant.items)}${formatMessageAbatements(participant.abatements)}${formatPayableItems(participant.payableItems)}\nTotal bruto: ${formatMoney(participant.grossCents)}\nAbatimentos: ${formatMoney(participant.abatementsCents)}\nCompras suas pagas por ${participant.name}: ${formatMoney(participant.payableCents)}\nValor líquido: ${formatMoney(participant.finalCents)}`);
+        const settledNote = settled.length > 0 ? `\n\nQuitados ou sem cobrança: ${settled.filter((participant) => participant.status === 'settled').map((participant) => participant.name).join(', ')}.` : '';
+        const payableNote = payable.length > 0 ? `\n\nVocê deve: ${payable.map((participant) => `${participant.name} (${formatMoney(Math.abs(participant.finalCents))})`).join(', ')}.` : '';
+        setGroupMessage(chargeable.length > 0 ? `${title}\n\n${sections.join('\n\n')}${settledNote}${payableNote}` : `${title}\n\nNenhuma cobrança a enviar para as pessoas selecionadas.${settledNote}${payableNote}`);
     };
     const sendMonthlyAnalysis = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -123,6 +125,7 @@ function MessageSection({ participants, ownSummary, messages, updateMessage, cop
 
 function formatMessageDetails(items: MessageItem[]): string { return items.map((item) => `- ${item.description} (${formatDate(item.date)}): ${formatMoney(item.amountCents)}`).join('\n'); }
 function formatMessageAbatements(abatements: Participant['abatements']): string { return abatements.length > 0 ? `\n\nAbatimentos recebidos:\n${abatements.map((abatement) => `- (${formatDate(abatement.date)}): ${formatMoney(abatement.amountCents)}`).join('\n')}\n` : ''; }
+function formatPayableItems(items: Participant['payableItems']): string { return items.length > 0 ? `\n\nCompras suas pagas por mim (abatidas do saldo):\n${items.map((item) => `- ${item.description} (${formatDate(item.date)}): ${formatMoney(item.outstandingCents)}`).join('\n')}` : ''; }
 function formatMoney(cents: number): string { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100); }
 function formatDate(value: string): string { return new Intl.DateTimeFormat('pt-BR').format(new Date(`${value}T12:00:00`)); }
 function SummaryCard({ label, cents, note }: { label: string; cents: number; note: string }) { return <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-5"><p className="text-sm text-slate-400">{label}</p><p className="mt-5 text-2xl font-bold text-white">{formatMoney(cents)}</p><p className="mt-2 text-xs text-slate-500">{note}</p></div>; }
