@@ -82,7 +82,6 @@
         "cross-env": "^10.1.0",
         "electron": "^45.0.0",
         "electron-builder": "^26.8.1",
-        "electron-chromedriver": "^45.0.0",
         "electron-vite": "^4.0.1",
         "eslint": "^9.39.4",
         "eslint-config-prettier": "^10.1.8",
@@ -107,7 +106,8 @@
     "overrides": {
         "extract-zip": {
             "yauzl": "^3.4.0"
-        }
+        },
+        "minimatch": "^11.0.4"
     },
     "exports": "./electron-plugin/dist/index.js",
     "imports": {
