@@ -7,8 +7,10 @@ use App\Models\InstallmentAllocation;
 use App\Models\InstallmentOccurrence;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
+use App\Models\ReceiptApplication;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -69,6 +71,31 @@ class InstallmentService
             ]]);
 
             return $installment;
+        });
+    }
+
+    /** @return array{occurrence_ids: list<int>, allocation_ids: list<int>, receipt_application_ids: list<int>} */
+    public function delete(Installment $installment): array
+    {
+        return DB::transaction(function () use ($installment): array {
+            $occurrenceIds = $installment->occurrences()->pluck('id')->map(fn (int $id): int => $id)->all();
+            $allocationIds = $occurrenceIds === []
+                ? []
+                : InstallmentAllocation::query()->whereIn('installment_occurrence_id', $occurrenceIds)->pluck('id')->map(fn (int $id): int => $id)->all();
+            $receiptApplications = $this->receiptApplicationsFor($occurrenceIds, $allocationIds);
+            $receiptApplicationIds = $receiptApplications->pluck('id')->map(fn (int $id): int => $id)->all();
+
+            if ($receiptApplicationIds !== []) {
+                ReceiptApplication::query()->whereKey($receiptApplicationIds)->delete();
+            }
+
+            $installment->delete();
+
+            return [
+                'occurrence_ids' => $occurrenceIds,
+                'allocation_ids' => $allocationIds,
+                'receipt_application_ids' => $receiptApplicationIds,
+            ];
         });
     }
 
@@ -318,6 +345,30 @@ class InstallmentService
             ]))
             ->values()
             ->all();
+    }
+
+    /** @param list<int> $occurrenceIds @param list<int> $allocationIds */
+    private function receiptApplicationsFor(array $occurrenceIds, array $allocationIds): Collection
+    {
+        if ($occurrenceIds === [] && $allocationIds === []) {
+            return collect();
+        }
+
+        return ReceiptApplication::query()
+            ->where(function (Builder $query) use ($occurrenceIds, $allocationIds): void {
+                if ($occurrenceIds !== []) {
+                    $query->where(function (Builder $query) use ($occurrenceIds): void {
+                        $query->where('source_type', 'installment_occurrence')->whereIn('source_id', $occurrenceIds);
+                    });
+                }
+
+                if ($allocationIds !== []) {
+                    $query->orWhere(function (Builder $query) use ($allocationIds): void {
+                        $query->where('source_type', 'installment_allocation')->whereIn('source_id', $allocationIds);
+                    });
+                }
+            })
+            ->get(['id']);
     }
 
     private function invoiceImpactLabel(InstallmentOccurrence $occurrence): string

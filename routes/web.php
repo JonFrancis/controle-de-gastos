@@ -70,6 +70,7 @@ Route::get('/installments/create', [InstallmentController::class, 'create'])->na
 Route::post('/installments', [InstallmentController::class, 'store'])->name('installments.store');
 Route::patch('/installments/{installment}/schedule', [InstallmentController::class, 'updateSchedule'])->name('installments.schedule.update');
 Route::patch('/installments/{installment}/archive', [InstallmentController::class, 'archive'])->name('installments.archive');
+Route::delete('/installments/{installment}', [InstallmentController::class, 'destroy'])->name('installments.destroy');
 Route::get('/installment-occurrences/{installmentOccurrence}/edit', [InstallmentOccurrenceController::class, 'edit'])->name('installment-occurrences.edit');
 Route::patch('/installment-occurrences/{installmentOccurrence}', [InstallmentOccurrenceController::class, 'update'])->name('installment-occurrences.update');
 Route::get('/recurrences', [RecurrenceController::class, 'index'])->name('recurrences.index');
