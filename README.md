@@ -43,15 +43,36 @@ Boost provides your agent 15+ tools and skills that help agents build Laravel ap
 
 ## Contributing
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Create a branch from `main` for each change and submit it as a pull request. Changes must pass the required GitHub Actions checks before they can be merged into `main`.
+
+## Dependency security
+
+GitHub Dependabot checks Composer, frontend (pnpm), Electron (npm), and GitHub Actions dependencies weekly. It can open pull requests with safe dependency updates. Repository security alerts and automatic security updates are enabled so newly published advisories are reported and patched dependency updates can be proposed.
+
+Every pull request to `main`, every push to `main`, and the scheduled weekly run execute the dependency security workflow. All three audits must pass:
+
+- `Composer vulnerability audit`: `composer audit --locked`
+- `Frontend vulnerability audit`: `pnpm audit --audit-level=low`
+- `Electron vulnerability audit`: `npm audit --package-lock-only --audit-level=low`
+
+Any vulnerability at low severity or above fails its check. Update the affected dependency and commit the corresponding manifest and lockfile changes. Do not merge or push directly to `main` while a required check is failing. The `main` branch must require all three checks to pass before merge; administrator bypass should be disabled.
+
+Run the audits locally before opening a pull request:
+
+```bash
+composer audit --locked
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm audit --audit-level=low
+npm audit --package-lock-only --audit-level=low --prefix nativephp/electron
+```
+
+## Reporting a security issue
+
+Please report security vulnerabilities privately to the repository maintainers instead of opening a public issue with exploit details.
 
 ## Code of Conduct
 
 In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
 
 ## License
 
