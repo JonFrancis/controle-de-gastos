@@ -12,6 +12,7 @@ use App\Models\ReceiptApplication;
 use App\Models\RecurrenceOccurrence;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 class MonthlyAnalysisService
@@ -30,7 +31,9 @@ class MonthlyAnalysisService
             : ['start' => $month->copy()->startOfMonth(), 'end' => $month->copy()->endOfMonth()];
         $periodStart = $range['start'];
         $periodEnd = $range['end'];
-        $items = $this->items($periodStart, $periodEnd)->filter(fn (array $item): bool => $view !== 'invoice' || $this->inInvoice($item, $selectedMonth))->values();
+        $items = $this->items($periodStart, $periodEnd, $view === 'invoice' ? $selectedMonth : null)
+            ->filter(fn (array $item): bool => $view !== 'invoice' || $this->inInvoice($item, $selectedMonth))
+            ->values();
 
         return $this->buildAnalysis($items, $periodStart, $periodEnd, $movementCategoryId);
     }
@@ -46,7 +49,7 @@ class MonthlyAnalysisService
     {
         $month = Carbon::createFromFormat('!Y-m', $selectedMonth);
         $range = $this->invoiceCycleService->sourceRangeForInvoiceMonth($month);
-        $items = $this->items($range['start'], $range['end'])
+        $items = $this->items($range['start'], $range['end'], $selectedMonth)
             ->filter(fn (array $item): bool => $this->inInvoice($item, $selectedMonth));
         $chargeableItems = $items->reject(fn (array $item): bool => $this->isPending($item))->values();
 
@@ -362,15 +365,14 @@ class MonthlyAnalysisService
     }
 
     /** @return Collection<int, array<string, mixed>> */
-    private function items(?CarbonInterface $start, ?CarbonInterface $end): Collection
+    private function items(?CarbonInterface $start, ?CarbonInterface $end, ?string $invoiceMonth = null): Collection
     {
         $items = collect();
         $selfId = $this->selfId();
         $participantNames = Participant::query()->pluck('name', 'id');
         $paymentMethods = PaymentMethod::query()->with('invoiceSettings')->get(['id', 'name', 'type', 'closing_day'])->keyBy('id');
         $purchases = Purchase::query()->active()->with(['allocations.category', 'paymentMethod', 'category'])
-            ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
-            ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
+            ->where(fn ($query) => $this->applyPeriodBounds($query, 'purchased_at', $start, $end, $invoiceMonth))
             ->orderBy('purchased_at')->orderBy('id')->get();
         foreach ($purchases as $purchase) {
             $allocations = $purchase->allocations;
@@ -381,6 +383,7 @@ class MonthlyAnalysisService
                     'sourceId' => $purchase->id,
                     'sourceKey' => 'purchase:'.$purchase->id,
                     'date' => $purchase->purchased_at,
+                    'dueDate' => $purchase->due_date,
                     'description' => $purchase->description,
                     'cardName' => $purchase->card_name,
                     'amountCents' => $purchase->amount_cents,
@@ -401,6 +404,7 @@ class MonthlyAnalysisService
                     'sourceId' => $allocation->id,
                     'sourceKey' => 'purchase:'.$purchase->id,
                     'date' => $purchase->purchased_at,
+                    'dueDate' => $purchase->due_date,
                     'description' => $purchase->description,
                     'cardName' => $purchase->card_name,
                     'amountCents' => $allocation->amount_cents,
@@ -414,8 +418,7 @@ class MonthlyAnalysisService
             }
         }
         foreach (InstallmentOccurrence::query()->whereNull('archived_at')->with(['installment', 'paymentMethod', 'category', 'allocations.participant', 'allocations.category'])
-            ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
-            ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
+            ->where(fn ($query) => $this->applyPeriodBounds($query, 'purchased_at', $start, $end, $invoiceMonth))
             ->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
             if ($occurrence->allocations->isEmpty()) {
                 $items->push($this->row([
@@ -424,6 +427,7 @@ class MonthlyAnalysisService
                     'sourceId' => $occurrence->id,
                     'sourceKey' => 'installment_occurrence:'.$occurrence->id,
                     'date' => $occurrence->purchased_at,
+                    'dueDate' => $occurrence->due_date,
                     'description' => $occurrence->description,
                     'cardName' => $occurrence->card_name,
                     'amountCents' => $occurrence->amount_cents,
@@ -445,6 +449,7 @@ class MonthlyAnalysisService
                     'sourceId' => $allocation->id,
                     'sourceKey' => 'installment_occurrence:'.$occurrence->id,
                     'date' => $occurrence->purchased_at,
+                    'dueDate' => $occurrence->due_date,
                     'description' => $occurrence->description,
                     'cardName' => $occurrence->card_name,
                     'amountCents' => $allocation->amount_cents,
@@ -458,8 +463,7 @@ class MonthlyAnalysisService
             }
         }
         foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->with(['recurrence', 'paymentMethod', 'category'])
-            ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
-            ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
+            ->where(fn ($query) => $this->applyPeriodBounds($query, 'purchased_at', $start, $end, $invoiceMonth))
             ->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
             $items->push($this->row([
                 'origin' => 'recurrence',
@@ -467,6 +471,7 @@ class MonthlyAnalysisService
                 'sourceId' => $occurrence->id,
                 'sourceKey' => 'recurrence_occurrence:'.$occurrence->id,
                 'date' => $occurrence->purchased_at,
+                'dueDate' => $occurrence->due_date,
                 'description' => $occurrence->description,
                 'cardName' => $occurrence->card_name,
                 'amountCents' => $occurrence->amount_cents,
@@ -482,6 +487,25 @@ class MonthlyAnalysisService
         return $items->sortBy([['date', 'asc'], ['key', 'asc']])->values();
     }
 
+    /**
+     * @param  Builder<Purchase>|Builder<InstallmentOccurrence>|Builder<RecurrenceOccurrence>  $query
+     */
+    private function applyPeriodBounds(Builder $query, string $dateColumn, ?CarbonInterface $start, ?CarbonInterface $end, ?string $invoiceMonth): void
+    {
+        $query->where(function ($query) use ($dateColumn, $start, $end, $invoiceMonth): void {
+            $query->where(function ($query) use ($dateColumn, $start, $end): void {
+                $query->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate($dateColumn, '>=', $periodStart))
+                    ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate($dateColumn, '<=', $periodEnd));
+            });
+
+            if ($invoiceMonth !== null) {
+                $invoiceStart = Carbon::createFromFormat('!Y-m', $invoiceMonth)->startOfMonth();
+                $invoiceEnd = $invoiceStart->copy()->endOfMonth();
+                $query->orWhereBetween('due_date', [$invoiceStart->toDateString(), $invoiceEnd->toDateString()]);
+            }
+        });
+    }
+
     /** @param array<string, mixed> $item */
     private function inInvoice(array $item, string $selectedMonth): bool
     {
@@ -489,7 +513,7 @@ class MonthlyAnalysisService
     }
 
     /**
-     * @param  array{origin: string, sourceType: string, sourceId: int, sourceKey: string, date: CarbonInterface, description: string, cardName: ?string, amountCents: int, sourceAmountCents: int, payerId: int, participantId: ?int, categoryId: ?int, categoryName: ?string, paymentMethodId: ?int}  $data
+     * @param  array{origin: string, sourceType: string, sourceId: int, sourceKey: string, date: CarbonInterface, dueDate: ?CarbonInterface, description: string, cardName: ?string, amountCents: int, sourceAmountCents: int, payerId: int, participantId: ?int, categoryId: ?int, categoryName: ?string, paymentMethodId: ?int}  $data
      * @param  Collection<int|string, string>  $participantNames
      * @param  Collection<int|string, PaymentMethod>  $paymentMethods
      * @return array<string, mixed>
@@ -501,7 +525,9 @@ class MonthlyAnalysisService
             ? $this->invoiceSettings->detailsFor($paymentMethod, $data['date'])
             : null;
 
-        return ['key' => $data['sourceType'].':'.$data['sourceId'], 'sourceKey' => $data['sourceKey'], 'origin' => $data['origin'], 'date' => $data['date']->toDateString(), 'description' => $data['description'], 'cardName' => $data['cardName'], 'amountCents' => $data['amountCents'], 'sourceAmountCents' => $data['sourceAmountCents'], 'payerId' => $data['payerId'], 'participantId' => $data['participantId'], 'participantName' => $participantNames->get($data['participantId']), 'categoryId' => $data['categoryId'], 'categoryName' => $data['categoryName'], 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $data['paymentMethodId'], 'paymentType' => $paymentMethod?->type, 'closingDay' => $invoiceDetails === null ? null : $invoiceDetails['closingDate']->day, 'dueDay' => $invoiceDetails === null ? null : $invoiceDetails['dueDate']?->day, 'invoiceMonth' => ($invoiceDetails['dueDate'] ?? $invoiceDetails['closingDate'] ?? null)?->format('Y-m')];
+        $dueDate = $paymentMethod?->type === PaymentMethod::TYPE_LOAN ? $data['dueDate'] : ($invoiceDetails['dueDate'] ?? $invoiceDetails['closingDate'] ?? null);
+
+        return ['key' => $data['sourceType'].':'.$data['sourceId'], 'sourceKey' => $data['sourceKey'], 'origin' => $data['origin'], 'date' => $data['date']->toDateString(), 'description' => $data['description'], 'cardName' => $data['cardName'], 'amountCents' => $data['amountCents'], 'sourceAmountCents' => $data['sourceAmountCents'], 'payerId' => $data['payerId'], 'participantId' => $data['participantId'], 'participantName' => $participantNames->get($data['participantId']), 'categoryId' => $data['categoryId'], 'categoryName' => $data['categoryName'], 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $data['paymentMethodId'], 'paymentType' => $paymentMethod?->type, 'closingDay' => $invoiceDetails === null ? null : $invoiceDetails['closingDate']->day, 'dueDay' => $invoiceDetails === null ? null : $invoiceDetails['dueDate']?->day, 'invoiceMonth' => $dueDate?->format('Y-m')];
     }
 
     private function selfId(): int

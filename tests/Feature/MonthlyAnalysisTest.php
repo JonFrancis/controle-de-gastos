@@ -52,6 +52,33 @@ class MonthlyAnalysisTest extends TestCase
             );
     }
 
+    public function test_invoice_analysis_includes_old_loan_purchase_when_due_in_selected_month(): void
+    {
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
+        $sister = Participant::create(['name' => 'Irmã']);
+        $loan = PaymentMethod::create(['name' => 'Empréstimo', 'type' => PaymentMethod::TYPE_LOAN]);
+        $purchase = Purchase::create([
+            'purchased_at' => '2026-09-01',
+            'due_date' => '2026-12-30',
+            'description' => 'Empréstimo',
+            'amount_cents' => 108000,
+            'payer_id' => $self->id,
+            'payment_method_id' => $loan->id,
+        ]);
+        PurchaseAllocation::create(['purchase_id' => $purchase->id, 'participant_id' => $sister->id, 'amount_cents' => 108000]);
+
+        $this->get('/analysis?month=2026-12&view=invoice')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedMonth', '2026-12')
+                ->where('purchaseReview.0.date', '2026-09-01')
+                ->where('participants.0.name', 'Irmã')
+                ->where('participants.0.grossCents', 108000)
+                ->where('participants.0.items.0.description', 'Empréstimo')
+                ->where('participants.0.items.0.date', '2026-09-01')
+                ->where('purchaseReview.0.description', 'Empréstimo')
+                ->where('summary.totalDisbursedCents', 108000));
+    }
+
     public function test_direct_analysis_url_preserves_the_requested_month_and_invoice_view(): void
     {
         $this->get(route('analysis', ['month' => '2026-12', 'view' => 'invoice']))
