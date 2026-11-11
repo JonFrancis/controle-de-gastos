@@ -15,14 +15,6 @@ Aplicativo desktop local para registrar compras, organizar despesas compartilhad
 - Mantém histórico de alterações e permite criar, configurar e restaurar backups locais.
 - Permite cadastrar pessoas, categorias e formas de pagamento.
 
-## Privacidade e uso seguro
-
-O aplicativo foi feito para uso pessoal no desktop. As rotas da aplicação não têm autenticação de usuário; use o NativePHP localmente e **não exponha o servidor a uma rede ou à internet**. Não execute o servidor com um endereço público ou `0.0.0.0` sem antes implementar autenticação e autorização.
-
-O banco de dados e os backups podem conter informações financeiras pessoais. Não os adicione ao Git. O arquivo `.env` também deve permanecer local e nunca deve conter chaves em arquivos versionados. A opção `DESKTOP_INCLUDE_SOURCE_DATABASE` fica desativada por padrão no `.env.example` para evitar incluir o banco de desenvolvimento em um executável.
-
-O aplicativo não envia dados a serviços de IA. O prompt pode ser copiado ou baixado para uso externo, após sua revisão.
-
 ## Tecnologias
 
 - PHP 8.4.27 ou superior e Laravel 13
@@ -111,5 +103,3 @@ composer test                  # testes PHP
 pnpm run test:frontend          # testes de interface
 php artisan native:build win x64 --no-interaction  # pacote desktop para Windows x64
 ```
-
-Antes de distribuir um executável, confirme que `DESKTOP_INCLUDE_SOURCE_DATABASE=false` e que nenhum segredo esteja configurado para ser incorporado ao pacote.
