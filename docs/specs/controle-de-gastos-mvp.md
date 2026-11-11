@@ -12,7 +12,7 @@ Construir um aplicativo local com Laravel e SQLite no backend e React, TypeScrip
 
 O aplicativo terá uma Compra principal com valor total, descrição interna, nome exibido no cartão/fatura, Pagador opcional, Forma de pagamento, categoria opcional, data e Origem do gasto. Pagador e Participante vazios representam o usuário, sem exigir que ele seja cadastrado como pessoa. Cada Compra terá um ou mais Rateios por Participante. Recorrências e Parcelamentos serão regras que geram Ocorrências por período; cada ocorrência poderá receber ajuste pontual sem alterar a regra original.
 
-O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura, fechamento mensal, análise mensal, mensagens editáveis de cobrança, importação revisável da planilha, exportação para análise externa, backup local e integração opcional com OpenAI mediante ação explícita do usuário.
+O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura, fechamento mensal, análise mensal, mensagens editáveis de cobrança, importação revisável da planilha, exportação para análise externa e backup local.
 
 ## User Stories
 
@@ -102,7 +102,7 @@ O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura,
 64. Como usuário, quero enviar dados incompletos para uma Fila de revisão.
 65. Como usuário, quero corrigir itens da Fila de revisão e incluí-los nos cálculos somente depois da confirmação.
 
-### Exportação, IA e backup
+### Exportação, análise externa e backup
 
 66. Como usuário, quero exportar o período selecionado ou o histórico completo.
 67. Como usuário, quero exportar CSVs separados de Compras, Rateios, Recebimentos, Recorrências e Parcelamentos.
@@ -110,26 +110,24 @@ O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura,
 69. Como usuário, quero exportar a Análise mensal em Markdown.
 70. Como usuário, quero exportar um prompt preenchido para análise por IA.
 71. Como usuário, quero manter um modelo de prompt editável e salvar versões personalizadas.
-72. Como usuário, quero chamar a OpenAI somente quando solicitar explicitamente.
-73. Como usuário, quero configurar a chave da API sem salvá-la no repositório.
-74. Como usuário, quero usar exportação e análise sem depender da API de IA.
-75. Como usuário, quero criar um backup manual completo do banco local.
-76. Como usuário, quero restaurar um backup manual.
-77. Como usuário, quero ativar exportação automática opcional de backup.
+72. Como usuário, quero usar exportação e análise sem depender de uma API de IA.
+73. Como usuário, quero criar um backup manual completo do banco local.
+74. Como usuário, quero restaurar um backup manual.
+75. Como usuário, quero ativar exportação automática opcional de backup.
 
 ### Auditoria e integridade
 
-78. Como usuário, quero que os valores sejam calculados em centavos para evitar erros de arredondamento.
-79. Como usuário, quero visualizar valores em reais brasileiros.
-80. Como usuário, quero usar o fuso `America/Sao_Paulo` em datas e fechamentos.
-81. Como usuário, quero consultar o histórico de criação, edição, arquivamento e restauração.
-82. Como usuário, quero saber por que um saldo foi calculado daquela forma.
-83. Como usuário, quero corrigir dados sem perder o histórico anterior.
+76. Como usuário, quero que os valores sejam calculados em centavos para evitar erros de arredondamento.
+77. Como usuário, quero visualizar valores em reais brasileiros.
+78. Como usuário, quero usar o fuso `America/Sao_Paulo` em datas e fechamentos.
+79. Como usuário, quero consultar o histórico de criação, edição, arquivamento e restauração.
+80. Como usuário, quero saber por que um saldo foi calculado daquela forma.
+81. Como usuário, quero corrigir dados sem perder o histórico anterior.
 
 ### Alterações aprovadas após a especificação inicial
 
-84. Como usuário, quero que meus gastos apareçam no resumo por pessoa e em uma única mensagem com todas as minhas compras, sem gerar cobrança para mim.
-85. Como usuário, quero excluir permanentemente um Recebimento incorreto, remover suas aplicações, recalcular os saldos e registrar a exclusão no histórico.
+82. Como usuário, quero que meus gastos apareçam no resumo por pessoa e em uma única mensagem com todas as minhas compras, sem gerar cobrança para mim.
+83. Como usuário, quero excluir permanentemente um Recebimento incorreto, remover suas aplicações, recalcular os saldos e registrar a exclusão no histórico.
 
 ## Implementation Decisions
 
@@ -156,12 +154,12 @@ O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura,
 - O aplicativo armazenará valores em centavos e exibirá reais brasileiros no fuso `America/Sao_Paulo`.
 - O fechamento não impedirá alterações, mas poderá ser reaberto e recalculado.
 - A análise mensal será gerada sem depender de IA.
-- A integração prioritária de IA será OpenAI, acionada somente pelo usuário.
+- O aplicativo não fará chamadas a serviços de IA; prompts poderão ser editados, copiados e exportados para análise externa.
 - Mensagens de cobrança serão editáveis e copiadas, nunca enviadas automaticamente.
 - Exportações incluirão CSVs separados, Excel consolidado, Markdown e prompt para IA.
 - Backups serão manuais por padrão, com exportação automática opcional.
 - O repositório público conterá somente código, documentação e dados fictícios.
-- A planilha original, banco local, backups e chaves de API ficarão fora do Git.
+- A planilha original, banco local e backups ficarão fora do Git.
 
 ## Testing Decisions
 
@@ -175,7 +173,6 @@ O sistema oferecerá cadastro rápido, dashboard por mês calendário ou Fatura,
 - Os testes deverão cobrir importação com preview, mapeamento, Ambiguidades, duplicidades e Fila de revisão.
 - Os testes deverão conferir a Análise mensal contra cálculos independentes dos mesmos dados.
 - Os testes deverão validar mensagens editáveis, cópia para área de transferência e exportações CSV, Excel, Markdown e prompt.
-- Os testes deverão confirmar que a chamada de IA só ocorre após ação explícita e que a aplicação continua funcionando sem API configurada.
 - Os testes deverão validar backup, restauração, Arquivamento, restauração de registros e histórico de alterações.
 - Os testes deverão incluir limites de mês, fechamento no último dia do mês, valores de centavos, rateios iguais e diferenças de arredondamento.
 - O cadastro simples terá testes de Compra própria sem pessoa “Eu”, compra para outra pessoa, nome no cartão/fatura e categoria condicionada ao consumo próprio.
