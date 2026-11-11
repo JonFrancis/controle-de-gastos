@@ -645,7 +645,7 @@ class InstallmentsTest extends TestCase
         ])->assertSessionHasErrors('allocations.0');
     }
 
-    public function test_rateio_row_requires_the_participant_id_key_even_when_the_value_is_null(): void
+    public function test_rateio_row_requires_an_explicit_participant_selection(): void
     {
         $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 2);
 
@@ -665,7 +665,7 @@ class InstallmentsTest extends TestCase
             'allocation_mode' => 'amount',
             'allocations' => [['participant_id' => null, 'amount' => '100,00']],
             'confirmation' => '1',
-        ])->assertRedirect('/installments')->assertSessionHasNoErrors();
+        ])->assertSessionHasErrors('allocations.0.participant_id');
     }
 
     public function test_complete_rateio_edit_propagates_new_rule_and_preserves_adjusted_occurrence_and_receipt_history(): void
@@ -982,6 +982,7 @@ class InstallmentsTest extends TestCase
     public function test_complete_rule_edit_audits_rule_occurrence_and_invoice_impact(): void
     {
         $installment = $this->createInstallment(PaymentMethod::create(['name' => 'Pix', 'type' => PaymentMethod::TYPE_PIX]), '2026-10-12', 3);
+        $self = Participant::query()->where('is_default', true)->firstOrFail();
 
         $this->patch("/installments/{$installment->id}/schedule", [
             'start_date' => '2026-11-12',
@@ -989,7 +990,7 @@ class InstallmentsTest extends TestCase
             'description' => 'Descrição auditada',
             'total' => '100,00',
             'allocation_mode' => 'percentage',
-            'allocations' => [['participant_id' => null, 'percentage' => '100,00']],
+            'allocations' => [['participant_id' => $self->id, 'participant_id_is_null' => true, 'percentage' => '100,00']],
             'confirmation' => '1',
         ])->assertRedirect('/installments');
 

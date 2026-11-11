@@ -43,13 +43,13 @@ test('clears the legacy null marker when Eu changes to another participant', () 
     assert.equal(updateAllocationParticipant(row, '1', '1').participant_id_is_null, true);
 });
 
-test('Edit contract preserves every Rateio mode and serializes participant data', () => {
+test('Edit contract leaves legacy self allocations unselected in every Rateio mode', () => {
     for (const mode of ['equal', 'amount', 'percentage']) {
-        const rows = allocationRowsForEdit([{ participantId: null, categoryId: 2, amountCents: 6000, percentageBasisPoints: mode === 'percentage' ? 6000 : null }], '1');
+        const rows = allocationRowsForEdit([{ participantId: null, categoryId: 2, amountCents: 6000, percentageBasisPoints: mode === 'percentage' ? 6000 : null }]);
 
         assert.equal(serializeAllocationRule(mode, rows).allocation_mode, mode);
         assert.deepEqual(serializeAllocationRule(mode, rows).allocations[0], {
-            participant_id: '1',
+            participant_id: '',
             participant_id_is_null: true,
             category_id: '2',
             amount: '60.00',
