@@ -26,7 +26,7 @@ class ExportController extends Controller
             'summary' => $data['summary'],
             'counts' => $data['counts'],
             'prompt' => $service->prompt($selection, $data),
-            'flash' => ['success' => session('success'), 'openai' => session('openai')],
+            'flash' => ['success' => session('success')],
         ]);
     }
 
