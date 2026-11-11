@@ -12,6 +12,7 @@ use App\Models\ReceiptApplication;
 use App\Models\RecurrenceOccurrence;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 class MonthlyAnalysisService
@@ -30,7 +31,9 @@ class MonthlyAnalysisService
             : ['start' => $month->copy()->startOfMonth(), 'end' => $month->copy()->endOfMonth()];
         $periodStart = $range['start'];
         $periodEnd = $range['end'];
-        $items = $this->items($periodStart, $periodEnd)->filter(fn (array $item): bool => $view !== 'invoice' || $this->inInvoice($item, $selectedMonth))->values();
+        $items = $this->items($periodStart, $periodEnd, $view === 'invoice' ? $selectedMonth : null)
+            ->filter(fn (array $item): bool => $view !== 'invoice' || $this->inInvoice($item, $selectedMonth))
+            ->values();
 
         return $this->buildAnalysis($items, $periodStart, $periodEnd, $movementCategoryId);
     }
@@ -46,7 +49,7 @@ class MonthlyAnalysisService
     {
         $month = Carbon::createFromFormat('!Y-m', $selectedMonth);
         $range = $this->invoiceCycleService->sourceRangeForInvoiceMonth($month);
-        $items = $this->items($range['start'], $range['end'])
+        $items = $this->items($range['start'], $range['end'], $selectedMonth)
             ->filter(fn (array $item): bool => $this->inInvoice($item, $selectedMonth));
         $chargeableItems = $items->reject(fn (array $item): bool => $this->isPending($item))->values();
 
@@ -71,7 +74,7 @@ class MonthlyAnalysisService
     {
         $chargeableItems = $items->reject(fn (array $item): bool => $this->isPending($item))->values();
         $selfId = $this->selfId();
-        $participants = $this->participantRows($chargeableItems, $selfId, $periodStart, $periodEnd);
+        $participants = $this->participantRows($chargeableItems, $selfId, $periodEnd);
         $ownSummary = $this->ownSummary($items, $selfId);
         $movementCategories = $this->movementCategories($chargeableItems, $selfId);
         $selectedMovementCategoryId = $movementCategoryId !== null && Category::query()->whereKey($movementCategoryId)->exists()
@@ -131,17 +134,13 @@ class MonthlyAnalysisService
     }
 
     /** @param Collection<int, array<string, mixed>> $items */
-    private function participantRows(Collection $items, int $selfId, ?CarbonInterface $periodStart, ?CarbonInterface $periodEnd): array
+    private function participantRows(Collection $items, int $selfId, ?CarbonInterface $balanceUntil): array
     {
         $billableItems = $items->filter(fn (array $item): bool => $item['payerId'] === $selfId);
         $sourceKeysByType = $billableItems->pluck('key')->map(fn (string $sourceKey): array => explode(':', $sourceKey, 2))->groupBy(fn (array $parts): string => $parts[0])->map(fn (Collection $parts): array => $parts->pluck(1)->map(fn (string $id): int => (int) $id)->all());
         $itemsByParticipant = $billableItems->groupBy('participantId');
         $applicationsQuery = ReceiptApplication::query()->whereNull('superseded_at')
-            ->whereHas('receipt', function ($query) use ($periodStart, $periodEnd): void {
-                $query->whereNull('archived_at')
-                    ->when($periodStart, fn ($query, CarbonInterface $start) => $query->whereDate('received_at', '>=', $start))
-                    ->when($periodEnd, fn ($query, CarbonInterface $end) => $query->whereDate('received_at', '<=', $end));
-            });
+            ->whereHas('receipt', fn ($query) => $query->whereNull('archived_at')->when($balanceUntil, fn ($query, CarbonInterface $until) => $query->whereDate('received_at', '<=', $until)));
         if ($sourceKeysByType->isNotEmpty()) {
             $applicationsQuery->where(function ($query) use ($sourceKeysByType): void {
                 foreach ($sourceKeysByType as $sourceType => $sourceIds) {
@@ -167,10 +166,25 @@ class MonthlyAnalysisService
             ->groupBy('participantId')
             ->map(fn (Collection $rows): array => $rows->map(fn (array $abatement): array => ['date' => $abatement['date'], 'amountCents' => $abatement['amountCents']])->sortBy('date')->values()->all());
 
-        return Participant::query()->where('id', '!=', $selfId)->orderBy('name')->get()->map(function (Participant $participant) use ($itemsByParticipant, $appliedBySource, $abatementsByParticipant): array {
+        $participantIds = $items->pluck('participantId')
+            ->merge($items->pluck('payerId'))
+            ->filter(fn (?int $id): bool => $id !== null && $id !== $selfId)
+            ->unique();
+
+        return Participant::query()->whereIn('id', $participantIds)->orderBy('name')->get()->map(function (Participant $participant) use ($items, $itemsByParticipant, $appliedBySource, $abatementsByParticipant, $selfId): array {
             $participantItems = $itemsByParticipant->get($participant->id, collect());
             $gross = (int) $participantItems->sum('amountCents');
             $abatements = (int) $participantItems->sum(fn (array $item): int => min($item['amountCents'], $appliedBySource[$item['key']] ?? 0));
+            $payableCents = (int) $items->filter(fn (array $item): bool => $item['payerId'] === $participant->id && $item['participantId'] === $selfId)->sum('amountCents');
+            $payableItems = $items->filter(fn (array $item): bool => $item['payerId'] === $participant->id && $item['participantId'] === $selfId);
+            $payableAppliedCents = (int) $payableItems->sum(fn (array $item): int => min($item['amountCents'], $appliedBySource[$item['key']] ?? 0));
+            $payableDetails = $payableItems->map(fn (array $item): array => [
+                'date' => $item['date'],
+                'description' => $item['description'],
+                'amountCents' => $item['amountCents'],
+                'outstandingCents' => max(0, $item['amountCents'] - ($appliedBySource[$item['key']] ?? 0)),
+            ])->values()->all();
+            $netFinal = $gross - $abatements - ($payableCents - $payableAppliedCents);
             $participantAbatements = $abatementsByParticipant->get($participant->id, []);
             $items = $participantItems->map(fn (array $item): array => [
                 'date' => $item['date'],
@@ -181,12 +195,12 @@ class MonthlyAnalysisService
                 'abatementCents' => min($item['amountCents'], $appliedBySource[$item['key']] ?? 0),
                 'finalCents' => max(0, $item['amountCents'] - ($appliedBySource[$item['key']] ?? 0)),
             ])->values()->all();
-            $final = $gross - $abatements;
-            $status = $final > 0 ? 'chargeable' : 'settled';
-            $row = ['id' => $participant->id, 'name' => $participant->name, 'grossCents' => $gross, 'abatementsCents' => $abatements, 'abatements' => $participantAbatements, 'finalCents' => $final, 'status' => $status, 'items' => $items];
+            $final = $netFinal;
+            $status = $final > 0 ? 'chargeable' : ($final < 0 ? 'payable' : 'settled');
+            $row = ['id' => $participant->id, 'name' => $participant->name, 'grossCents' => $gross, 'abatementsCents' => $abatements, 'abatements' => $participantAbatements, 'payableCents' => $payableCents, 'payableAppliedCents' => $payableAppliedCents, 'payableItems' => $payableDetails, 'finalCents' => $final, 'status' => $status, 'items' => $items];
 
             return [...$row, 'message' => $this->participantMessage($row)];
-        })->filter(fn (array $row): bool => $row['grossCents'] > 0 || $row['abatementsCents'] > 0)->values()->all();
+        })->filter(fn (array $row): bool => $row['grossCents'] > 0 || $row['abatementsCents'] > 0 || $row['finalCents'] !== 0)->values()->all();
     }
 
     /** @param Collection<int, array<string, mixed>> $items
@@ -224,20 +238,22 @@ class MonthlyAnalysisService
     private function fullMessage(array $participants): string
     {
         $chargeable = collect($participants)->filter(fn (array $participant): bool => $participant['status'] === 'chargeable');
-        $settled = collect($participants)->filter(fn (array $participant): bool => $participant['status'] === 'settled')->pluck('name');
+        $settled = collect($participants)->filter(fn (array $participant): bool => $participant['status'] !== 'chargeable')->pluck('name');
+        $payable = collect($participants)->filter(fn (array $participant): bool => $participant['status'] === 'payable');
+        $payableNote = $payable->isEmpty() ? '' : "\n\nVocê deve: ".$payable->map(fn (array $participant): string => $participant['name'].' ('.$this->formatMoney(abs($participant['finalCents'])).')')->implode(', ').'.';
         if ($chargeable->isEmpty()) {
             return $settled->isEmpty()
                 ? 'Nenhuma cobrança a enviar neste período.'
-                : "Nenhuma cobrança a enviar neste período.\n\nQuitados ou sem cobrança: ".$settled->implode(', ').'.';
+                : "Nenhuma cobrança a enviar neste período.\n\nQuitados ou sem cobrança: ".$settled->implode(', ').'.'.$payableNote;
         }
 
-        $sections = $chargeable->map(fn (array $participant): string => $participant['name'].":\n".$this->messageDetails($participant['items']).$this->messageAbatements($participant['abatements'])."\nTotal bruto: ".$this->formatMoney($participant['grossCents'])."\nAbatimentos: ".$this->formatMoney($participant['abatementsCents'])."\nValor líquido: ".$this->formatMoney($participant['finalCents']))->implode("\n\n");
+        $sections = $chargeable->map(fn (array $participant): string => $participant['name'].":\n".$this->messageDetails($participant['items']).$this->messageAbatements($participant['abatements']).$this->messagePayableItems($participant['payableItems'])."\nTotal bruto: ".$this->formatMoney($participant['grossCents'])."\nAbatimentos: ".$this->formatMoney($participant['abatementsCents']).($participant['payableCents'] > 0 ? "\nCompras suas pagas por {$participant['name']}: ".$this->formatMoney($participant['payableCents']) : '')."\nValor líquido: ".$this->formatMoney($participant['finalCents']))->implode("\n\n");
 
         if ($settled->isNotEmpty()) {
             $sections .= "\n\nQuitados ou sem cobrança: ".$settled->implode(', ').'.';
         }
 
-        return "Cobranças do período:\n\n".$sections;
+        return "Cobranças do período:\n\n".$sections.$payableNote;
     }
 
     /** @param array<string, mixed> $participant */
@@ -247,7 +263,11 @@ class MonthlyAnalysisService
             return "Olá, {$participant['name']}!\n\nSua conta está quitada neste período. Nenhuma cobrança a enviar.";
         }
 
-        return "Olá, {$participant['name']}!\n\nSegue o resumo das suas compras no período:\n".$this->messageDetails($participant['items']).$this->messageAbatements($participant['abatements'])."\n\nTotal bruto: ".$this->formatMoney($participant['grossCents'])."\nAbatimentos: ".$this->formatMoney($participant['abatementsCents'])."\nValor líquido: ".$this->formatMoney($participant['finalCents']);
+        if ($participant['status'] === 'payable') {
+            return "Olá, {$participant['name']}!\n\nNeste período, você deve ".$this->formatMoney(abs($participant['finalCents'])).'.';
+        }
+
+        return "Olá, {$participant['name']}!\n\nSegue o resumo das suas compras no período:\n".$this->messageDetails($participant['items']).$this->messageAbatements($participant['abatements']).$this->messagePayableItems($participant['payableItems'])."\n\nTotal bruto: ".$this->formatMoney($participant['grossCents'])."\nAbatimentos: ".$this->formatMoney($participant['abatementsCents']).($participant['payableCents'] > 0 ? "\nCompras suas pagas por você: ".$this->formatMoney($participant['payableCents']) : '')."\nValor líquido: ".$this->formatMoney($participant['finalCents']);
     }
 
     /** @param list<array<string, mixed>> $items */
@@ -265,6 +285,18 @@ class MonthlyAnalysisService
 
         return "\n\nAbatimentos recebidos:\n".collect($abatements)
             ->map(fn (array $abatement): string => '- ('.Carbon::parse($abatement['date'])->format('d/m/Y').'): '.$this->formatMoney($abatement['amountCents']))
+            ->implode("\n");
+    }
+
+    /** @param list<array{date: string, description: string, amountCents: int, outstandingCents: int}> $items */
+    private function messagePayableItems(array $items): string
+    {
+        if ($items === []) {
+            return '';
+        }
+
+        return "\n\nCompras suas pagas por mim (abatidas do saldo):\n".collect($items)
+            ->map(fn (array $item): string => '- '.$item['description'].' ('.Carbon::parse($item['date'])->format('d/m/Y').'): '.$this->formatMoney($item['outstandingCents']))
             ->implode("\n");
     }
 
@@ -333,15 +365,14 @@ class MonthlyAnalysisService
     }
 
     /** @return Collection<int, array<string, mixed>> */
-    private function items(?CarbonInterface $start, ?CarbonInterface $end): Collection
+    private function items(?CarbonInterface $start, ?CarbonInterface $end, ?string $invoiceMonth = null): Collection
     {
         $items = collect();
         $selfId = $this->selfId();
         $participantNames = Participant::query()->pluck('name', 'id');
         $paymentMethods = PaymentMethod::query()->with('invoiceSettings')->get(['id', 'name', 'type', 'closing_day'])->keyBy('id');
         $purchases = Purchase::query()->active()->with(['allocations.category', 'paymentMethod', 'category'])
-            ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
-            ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
+            ->where(fn ($query) => $this->applyPeriodBounds($query, 'purchased_at', $start, $end, $invoiceMonth))
             ->orderBy('purchased_at')->orderBy('id')->get();
         foreach ($purchases as $purchase) {
             $allocations = $purchase->allocations;
@@ -352,6 +383,7 @@ class MonthlyAnalysisService
                     'sourceId' => $purchase->id,
                     'sourceKey' => 'purchase:'.$purchase->id,
                     'date' => $purchase->purchased_at,
+                    'dueDate' => $purchase->due_date,
                     'description' => $purchase->description,
                     'cardName' => $purchase->card_name,
                     'amountCents' => $purchase->amount_cents,
@@ -372,6 +404,7 @@ class MonthlyAnalysisService
                     'sourceId' => $allocation->id,
                     'sourceKey' => 'purchase:'.$purchase->id,
                     'date' => $purchase->purchased_at,
+                    'dueDate' => $purchase->due_date,
                     'description' => $purchase->description,
                     'cardName' => $purchase->card_name,
                     'amountCents' => $allocation->amount_cents,
@@ -385,8 +418,7 @@ class MonthlyAnalysisService
             }
         }
         foreach (InstallmentOccurrence::query()->whereNull('archived_at')->with(['installment', 'paymentMethod', 'category', 'allocations.participant', 'allocations.category'])
-            ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
-            ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
+            ->where(fn ($query) => $this->applyPeriodBounds($query, 'purchased_at', $start, $end, $invoiceMonth))
             ->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
             if ($occurrence->allocations->isEmpty()) {
                 $items->push($this->row([
@@ -395,6 +427,7 @@ class MonthlyAnalysisService
                     'sourceId' => $occurrence->id,
                     'sourceKey' => 'installment_occurrence:'.$occurrence->id,
                     'date' => $occurrence->purchased_at,
+                    'dueDate' => $occurrence->due_date,
                     'description' => $occurrence->description,
                     'cardName' => $occurrence->card_name,
                     'amountCents' => $occurrence->amount_cents,
@@ -416,6 +449,7 @@ class MonthlyAnalysisService
                     'sourceId' => $allocation->id,
                     'sourceKey' => 'installment_occurrence:'.$occurrence->id,
                     'date' => $occurrence->purchased_at,
+                    'dueDate' => $occurrence->due_date,
                     'description' => $occurrence->description,
                     'cardName' => $occurrence->card_name,
                     'amountCents' => $allocation->amount_cents,
@@ -429,8 +463,7 @@ class MonthlyAnalysisService
             }
         }
         foreach (RecurrenceOccurrence::query()->whereNull('archived_at')->with(['recurrence', 'paymentMethod', 'category'])
-            ->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate('purchased_at', '>=', $periodStart))
-            ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate('purchased_at', '<=', $periodEnd))
+            ->where(fn ($query) => $this->applyPeriodBounds($query, 'purchased_at', $start, $end, $invoiceMonth))
             ->orderBy('purchased_at')->orderBy('id')->get() as $occurrence) {
             $items->push($this->row([
                 'origin' => 'recurrence',
@@ -438,6 +471,7 @@ class MonthlyAnalysisService
                 'sourceId' => $occurrence->id,
                 'sourceKey' => 'recurrence_occurrence:'.$occurrence->id,
                 'date' => $occurrence->purchased_at,
+                'dueDate' => $occurrence->due_date,
                 'description' => $occurrence->description,
                 'cardName' => $occurrence->card_name,
                 'amountCents' => $occurrence->amount_cents,
@@ -453,6 +487,25 @@ class MonthlyAnalysisService
         return $items->sortBy([['date', 'asc'], ['key', 'asc']])->values();
     }
 
+    /**
+     * @param  Builder<Purchase>|Builder<InstallmentOccurrence>|Builder<RecurrenceOccurrence>  $query
+     */
+    private function applyPeriodBounds(Builder $query, string $dateColumn, ?CarbonInterface $start, ?CarbonInterface $end, ?string $invoiceMonth): void
+    {
+        $query->where(function ($query) use ($dateColumn, $start, $end, $invoiceMonth): void {
+            $query->where(function ($query) use ($dateColumn, $start, $end): void {
+                $query->when($start, fn ($query, CarbonInterface $periodStart) => $query->whereDate($dateColumn, '>=', $periodStart))
+                    ->when($end, fn ($query, CarbonInterface $periodEnd) => $query->whereDate($dateColumn, '<=', $periodEnd));
+            });
+
+            if ($invoiceMonth !== null) {
+                $invoiceStart = Carbon::createFromFormat('!Y-m', $invoiceMonth)->startOfMonth();
+                $invoiceEnd = $invoiceStart->copy()->endOfMonth();
+                $query->orWhereBetween('due_date', [$invoiceStart->toDateString(), $invoiceEnd->toDateString()]);
+            }
+        });
+    }
+
     /** @param array<string, mixed> $item */
     private function inInvoice(array $item, string $selectedMonth): bool
     {
@@ -460,7 +513,7 @@ class MonthlyAnalysisService
     }
 
     /**
-     * @param  array{origin: string, sourceType: string, sourceId: int, sourceKey: string, date: CarbonInterface, description: string, cardName: ?string, amountCents: int, sourceAmountCents: int, payerId: int, participantId: ?int, categoryId: ?int, categoryName: ?string, paymentMethodId: ?int}  $data
+     * @param  array{origin: string, sourceType: string, sourceId: int, sourceKey: string, date: CarbonInterface, dueDate: ?CarbonInterface, description: string, cardName: ?string, amountCents: int, sourceAmountCents: int, payerId: int, participantId: ?int, categoryId: ?int, categoryName: ?string, paymentMethodId: ?int}  $data
      * @param  Collection<int|string, string>  $participantNames
      * @param  Collection<int|string, PaymentMethod>  $paymentMethods
      * @return array<string, mixed>
@@ -472,7 +525,9 @@ class MonthlyAnalysisService
             ? $this->invoiceSettings->detailsFor($paymentMethod, $data['date'])
             : null;
 
-        return ['key' => $data['sourceType'].':'.$data['sourceId'], 'sourceKey' => $data['sourceKey'], 'origin' => $data['origin'], 'date' => $data['date']->toDateString(), 'description' => $data['description'], 'cardName' => $data['cardName'], 'amountCents' => $data['amountCents'], 'sourceAmountCents' => $data['sourceAmountCents'], 'payerId' => $data['payerId'], 'participantId' => $data['participantId'], 'participantName' => $participantNames->get($data['participantId']), 'categoryId' => $data['categoryId'], 'categoryName' => $data['categoryName'], 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $data['paymentMethodId'], 'paymentType' => $paymentMethod?->type, 'closingDay' => $invoiceDetails === null ? null : $invoiceDetails['closingDate']->day, 'dueDay' => $invoiceDetails === null ? null : $invoiceDetails['dueDate']?->day, 'invoiceMonth' => ($invoiceDetails['dueDate'] ?? $invoiceDetails['closingDate'] ?? null)?->format('Y-m')];
+        $dueDate = $paymentMethod?->type === PaymentMethod::TYPE_LOAN ? $data['dueDate'] : ($invoiceDetails['dueDate'] ?? $invoiceDetails['closingDate'] ?? null);
+
+        return ['key' => $data['sourceType'].':'.$data['sourceId'], 'sourceKey' => $data['sourceKey'], 'origin' => $data['origin'], 'date' => $data['date']->toDateString(), 'description' => $data['description'], 'cardName' => $data['cardName'], 'amountCents' => $data['amountCents'], 'sourceAmountCents' => $data['sourceAmountCents'], 'payerId' => $data['payerId'], 'participantId' => $data['participantId'], 'participantName' => $participantNames->get($data['participantId']), 'categoryId' => $data['categoryId'], 'categoryName' => $data['categoryName'], 'paymentMethodName' => $paymentMethod?->name, 'paymentMethodId' => $data['paymentMethodId'], 'paymentType' => $paymentMethod?->type, 'closingDay' => $invoiceDetails === null ? null : $invoiceDetails['closingDate']->day, 'dueDay' => $invoiceDetails === null ? null : $invoiceDetails['dueDate']?->day, 'invoiceMonth' => $dueDate?->format('Y-m')];
     }
 
     private function selfId(): int
