@@ -146,7 +146,7 @@ class InstallmentAllocationService
         });
     }
 
-    /** @param list<array{participant_id: int|string|null, category_id?: int|string|null, amount?: int|string|null, percentage?: int|string|null}> $allocations @return list<array{participant_id: int|null, category_id: int|null, amount_cents: int, percentage_basis_points: int|null}> */
+    /** @param list<array{participant_id: int|string|null, participant_id_is_null?: bool, category_id?: int|string|null, amount?: int|string|null, percentage?: int|string|null}> $allocations @return list<array{participant_id: int|null, category_id: int|null, amount_cents: int, percentage_basis_points: int|null}> */
     private function ruleRows(int $totalCents, string $mode, array $allocations): array
     {
         if (! in_array($mode, self::MODES, true) || count($allocations) === 0) {
@@ -155,7 +155,9 @@ class InstallmentAllocationService
 
         $selfId = (int) Participant::query()->where('is_default', true)->value('id');
         $rows = collect($allocations)->map(fn (array $allocation): array => [
-            'participant_id' => $allocation['participant_id'] === null || $allocation['participant_id'] === '' ? null : (int) $allocation['participant_id'],
+            'participant_id' => ($allocation['participant_id_is_null'] ?? false) || $allocation['participant_id'] === null || $allocation['participant_id'] === ''
+                ? null
+                : (int) $allocation['participant_id'],
             'category_id' => $allocation['category_id'] ?? null,
             'amount_cents' => $this->moneyToCents($allocation['amount'] ?? '0'),
             'percentage_basis_points' => $this->percentageToBasisPoints($allocation['percentage'] ?? '0'),

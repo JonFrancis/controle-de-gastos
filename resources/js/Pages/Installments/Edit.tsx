@@ -21,7 +21,7 @@ const selectClass = 'w-full rounded-xl border border-white/10 bg-slate-800 px-3 
 
 export default function InstallmentsEdit({ installment, schedulePreview, participants, categories, paymentMethods }: Props) {
     const selfId = participants.find((participant) => participant.is_default)?.id.toString() ?? '';
-    const initialAllocationRows = allocationRowsForEdit(installment.allocations, selfId);
+    const initialAllocationRows = allocationRowsForEdit(installment.allocations);
     const initialAllocationData = serializeAllocationRule(installment.allocationMode, initialAllocationRows);
     const form = useForm<FormData>({
         start_date: installment.startDate,
@@ -70,7 +70,7 @@ export default function InstallmentsEdit({ installment, schedulePreview, partici
     ].filter((field): field is string => field !== null);
     const newValues = buildNewValues(schedulePreview, form.data.start_date, form.data.due_date, count, totalCents, totalChanged || quantityChanged);
     const newImpacts = buildInvoiceImpacts(newValues, form.data.payment_method_id, paymentMethods);
-    const isOwn = form.data.participant_id === '' || form.data.participant_id === selfId;
+    const isOwn = form.data.participant_id === selfId;
     const submit = (event: FormEvent) => { event.preventDefault(); if (!form.data.confirmation) return; form.patch(`/installments/${installment.id}/schedule`); };
 
     return <>
@@ -92,8 +92,8 @@ export default function InstallmentsEdit({ installment, schedulePreview, partici
                         <Field label="Valor total"><input required inputMode="decimal" value={form.data.total} onChange={(event) => form.setData('total', event.target.value)} className={inputClass} />{form.errors.total && <Error text={form.errors.total} />}</Field>
                         <Field label="Forma de pagamento"><select required value={form.data.payment_method_id} onChange={(event) => form.setData('payment_method_id', event.target.value)} className={selectClass}><option value="">Selecione a forma</option>{paymentMethods.map((method) => <option key={method.id} value={method.id}>{method.name}</option>)}</select>{form.errors.payment_method_id && <Error text={form.errors.payment_method_id} />}</Field>
                         {isLoan && <Field label="Vencimento do empréstimo"><input required type="date" value={form.data.due_date} onChange={(event) => form.setData('due_date', event.target.value)} className={inputClass} />{form.errors.due_date && <Error text={form.errors.due_date} />}</Field>}
-                        <Field label="Pagador"><select value={form.data.payer_id} onChange={(event) => form.setData('payer_id', event.target.value)} className={selectClass}><option value="">Eu (sem cadastro)</option>{participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}</select>{form.errors.payer_id && <Error text={form.errors.payer_id} />}</Field>
-                        <Field label="Participante"><select value={form.data.participant_id} onChange={(event) => form.setData('participant_id', event.target.value)} className={selectClass}><option value="">Eu (sem cadastro)</option>{participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}</select>{form.errors.participant_id && <Error text={form.errors.participant_id} />}</Field>
+                        <Field label="Pagador"><select required value={form.data.payer_id} onChange={(event) => form.setData('payer_id', event.target.value)} className={selectClass}><option value="">Selecione o pagador</option>{participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}</select>{form.errors.payer_id && <Error text={form.errors.payer_id} />}</Field>
+                        <Field label="Participante"><select required value={form.data.participant_id} onChange={(event) => form.setData('participant_id', event.target.value)} className={selectClass}><option value="">Selecione o participante</option>{participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}</select>{form.errors.participant_id && <Error text={form.errors.participant_id} />}</Field>
                         {isOwn && <Field label="Categoria do consumo próprio"><select value={form.data.category_id} onChange={(event) => form.setData('category_id', event.target.value)} className={selectClass}><option value="">Sem categoria</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>{form.errors.category_id && <Error text={form.errors.category_id} />}</Field>}
                         <InstallmentAllocationFields participants={participants} categories={categories} mode={form.data.allocation_mode} rows={form.data.allocations} onModeChange={(mode) => form.setData('allocation_mode', mode)} onRowsChange={(allocations) => form.setData('allocations', allocations)} error={form.errors.allocations} />
                     </div>
