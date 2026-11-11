@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151a15">
+  <meta name="description" content="Conheça o Controle de Gastos: aplicativo desktop local para organizar despesas, rateios e o fechamento do mês.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Controle de Gastos — seu mês, sem perder a conta">
+  <meta property="og:description" content="Organize despesas compartilhadas em um app desktop local. Veja os recursos e aprenda a executar no seu computador.">
+  <meta property="og:url" content="https://jonfrancis.github.io/controle-de-gastos/">
+  <title>Controle de Gastos — seu mês, sem perder a conta</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Pular para o conteúdo</a>
+  <header class="header"><div class="wrap nav">
+    <a class="brand" href="#inicio"><span class="logo">CG</span> Controle <i>de Gastos</i></a>
+    <nav aria-label="Navegação"><a href="#recursos">Recursos</a><a href="#privacidade">Privacidade</a><a href="#comece">Como começar</a></nav>
+    <a class="outline" href="https://github.com/JonFrancis/controle-de-gastos" target="_blank" rel="noreferrer">Ver no GitHub ↗</a>
+  </div></header>
+  <main id="main">
+    <section class="hero" id="inicio"><div class="grid"></div><div class="wrap hero-layout">
+      <div class="copy"><p class="eyebrow"><b></b> APP DESKTOP PARA A VIDA REAL</p><h1>Seu mês,<br>sem perder<br><em>a conta.</em></h1><p class="lede">Registre despesas, divida compras e acompanhe quem pagou o quê — em um só lugar, no seu computador.</p><div class="actions"><a class="button lime" href="#comece">Quero experimentar ↓</a><a class="quiet" href="https://github.com/JonFrancis/controle-de-gastos" target="_blank" rel="noreferrer">Explorar o código ↗</a></div><div class="meta">DESKTOP <b>·</b> SQLITE LOCAL <b>·</b> PROJETO ABERTO</div></div>
+      <div class="preview"><p class="caption"><b></b> CAPTURA DO APP · DADOS FICTÍCIOS</p><div class="window">
+        <img class="dashboard-shot" src="assets/dashboard-demo-wide.jpg" alt="Tela inicial real do Controle de Gastos, com gastos fictícios por forma de pagamento e por pessoa">
+      </div></div>
+    </div><div class="wrap strip"><span>ORGANIZAÇÃO NO SEU RITMO</span><i></i><span>SEM CONTA ONLINE. SEM SINCRONIZAÇÃO.</span></div></section>
+
+    <section class="intro section"><div class="wrap intro-grid"><p class="index">01 / A IDEIA</p><div><h2>O combinado fica<br><em>mais fácil de acompanhar.</em></h2><p>Uma compra no cartão, uma conta dividida, um Pix que alguém adiantou. O app reúne os detalhes e ajuda a enxergar o fechamento do mês sem depender de várias planilhas.</p></div><div class="stamp">ORGANIZAÇÃO<br>NO SEU RITMO<br><b>↗</b></div></div></section>
+
+    <section class="features section" id="recursos"><div class="wrap"><div class="section-head"><div><p class="index">02 / O QUE DÁ PARA FAZER</p><h2>As contas do mês,<br><em>em perspectiva.</em></h2></div><p>Do primeiro lançamento ao fechamento, acompanhe despesas compartilhadas em um só lugar.</p></div>
+      <div class="cards"><article class="card dark-card"><span class="num">01</span><b class="icon">↗</b><h3>Divida sem confusão</h3><p>Registre quem pagou, para quem foi a compra e como o valor será dividido.</p><div class="split"><small>COMPRA COMPARTILHADA</small><div><i></i><i></i><i></i></div><small>Eu · Teste 1 · Teste 2</small></div></article>
+        <article class="card"><span class="num">02</span><b class="icon blue-bg">▤</b><h3>Cartões e ciclos</h3><p>Acompanhe fechamento, vencimento e o mês em que cada compra entra na fatura.</p></article>
+        <article class="card"><span class="num">03</span><b class="icon peach-bg">⟳</b><h3>Parcelas e recorrências</h3><p>Veja cobranças repetidas e parcelas futuras, com ajustes por ocorrência.</p></article>
+        <article class="card"><span class="num">04</span><b class="icon violet-bg">⇄</b><h3>Recebimentos e saldos</h3><p>Associe valores recebidos aos rateios e entenda os saldos entre pessoas.</p></article>
+        <article class="card wide-card"><span class="num">05</span><b class="icon sand-bg">▦</b><div><h3>Importe, analise e exporte</h3><p>Revise importações CSV e Excel, consulte análises mensais e exporte dados.</p></div><b class="formats">CSV　 XLSX　 MD</b></article>
+      </div></div></section>
+
+    <section class="privacy section" id="privacidade"><div class="wrap privacy-grid"><div><p class="index">03 / SEUS DADOS</p><h2>Seu banco fica<br><em>no seu computador.</em></h2><p>O app usa SQLite local e não cria uma conta online nem sincroniza seus dados. Banco, backups e arquivo .env podem conter informações financeiras: não os envie ao GitHub.</p><a class="link-dark" href="https://github.com/JonFrancis/controle-de-gastos/blob/main/README.md#privacidade-e-uso-seguro">Leia os cuidados completos ↗</a></div><div class="points"><article><b>01</b><div><h3>Uso local</h3><p>As rotas não têm autenticação. Não exponha o servidor à rede ou à internet.</p></div></article><article><b>02</b><div><h3>Banco fora do Git</h3><p>SQLite e backups ficam locais; a base não entra no pacote por padrão.</p></div></article><article><b>03</b><div><h3>IA opcional</h3><p>Revise os dados antes de enviá-los ao endpoint configurado.</p></div></article></div></div></section>
+
+    <section class="start section" id="comece"><div class="wrap"><div class="section-head"><div><p class="index">04 / COMO COMEÇAR</p><h2>Traga o projeto<br><em>para o seu computador.</em></h2></div><p>O repositório oferece o código-fonte. Ainda não há instalador pronto para baixar.</p></div>
+      <div class="download"><span class="icon">⌘</span><div><h3>Baixe o código-fonte</h3><p>Use o Git ou clique em <b>Code → Download ZIP</b> no GitHub e extraia a pasta.</p></div><a class="button dark-button" href="https://github.com/JonFrancis/controle-de-gastos" target="_blank" rel="noreferrer">Abrir repositório ↗</a></div>
+      <div class="setup"><div class="setup-copy"><small>NO WINDOWS · POWERSHELL</small><h3>Instale uma vez.<br>Execute quando quiser.</h3><p>Requisitos: PHP 8.4.27+, Composer 2, Node.js 22+ e pnpm 11. Habilite pdo_sqlite no PHP.</p><a class="link-dark" href="https://github.com/JonFrancis/controle-de-gastos#requisitos-para-desenvolvimento">Ver requisitos completos ↗</a></div><div class="steps">
+        <article><h3><b>01</b> Baixe e entre na pasta</h3><pre><code>git clone https://github.com/JonFrancis/controle-de-gastos.git
+cd controle-de-gastos</code></pre></article>
+        <article><h3><b>02</b> Instale as dependências</h3><pre><code>composer install
+npm install --global pnpm@11
+pnpm install --frozen-lockfile</code></pre></article>
+        <article><h3><b>03</b> Prepare a configuração e o SQLite</h3><pre><code>Copy-Item .env.example .env
+New-Item -ItemType File database/database.sqlite
+php artisan key:generate
+php artisan migrate --force</code></pre></article>
+        <article><h3><b>04</b> Abra o app desktop</h3><pre><code>composer run native:dev</code></pre><p>A primeira execução pode levar alguns minutos para preparar o Electron.</p></article>
+      </div></div>
+      <aside class="demo"><b>✳</b><div><strong>Quer explorar telas com conteúdo?</strong><p>Em uma base recém-criada, carregue dados fictícios. Não rode o seeder no seu banco pessoal.</p><code>php artisan db:seed --class=VisualTestSeeder</code></div></aside>
+    </div></section>
+    <section class="closing"><div class="wrap closing-inner"><div><p class="index">UM PROJETO EM EVOLUÇÃO</p><h2>Organize melhor.<br><em>Entenda o seu mês.</em></h2></div><a class="button lime" href="https://github.com/JonFrancis/controle-de-gastos" target="_blank" rel="noreferrer">Acessar o GitHub ↗</a></div></section>
+  </main>
+  <footer><div class="wrap footer"><a class="brand" href="#inicio"><span class="logo">CG</span> Controle <i>de Gastos</i></a><p>Um app pessoal, desktop e local.</p><div><a href="https://github.com/JonFrancis/controle-de-gastos" target="_blank" rel="noreferrer">GitHub</a><a href="https://github.com/JonFrancis/controle-de-gastos/blob/main/README.md">README</a></div></div></footer>
+</body>
+</html>
