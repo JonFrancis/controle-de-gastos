@@ -1,79 +1,127 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Controle de Gastos
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Aplicativo desktop local para registrar compras, organizar despesas compartilhadas e acompanhar o fechamento financeiro do mês. Os dados ficam em um banco SQLite no computador; o aplicativo não oferece uma conta online nem sincronização entre dispositivos.
 
-## About Laravel
+## O que o aplicativo faz
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Mostra um painel mensal com despesas e navegação entre períodos.
+- Registra compras com pagador, participante, categoria e forma de pagamento. Uma compra pode ser rateada entre várias pessoas.
+- Organiza cartões de crédito por ciclo de fatura, com histórico das datas de fechamento e vencimento. Também permite Pix, débito, dinheiro e empréstimos.
+- Acompanha parcelamentos e despesas recorrentes, com ocorrências mensais que podem ser ajustadas sem alterar as demais.
+- Registra recebimentos e aplica valores recebidos às partes de compras atribuídas a outras pessoas.
+- Calcula saldos e apresenta a análise mensal por pessoa, categoria, forma de pagamento e origem dos lançamentos, com conferência dos totais.
+- Importa planilhas CSV e Excel em etapas: mapeamento de colunas, revisão dos lançamentos e confirmação da importação.
+- Exporta compras, rateios, recebimentos, recorrências, parcelamentos e análises em CSV, Excel e Markdown. Também gera um prompt que pode ser copiado ou enviado à integração opcional com a API de respostas da OpenAI.
+- Mantém histórico de alterações e permite criar, configurar e restaurar backups locais.
+- Permite cadastrar pessoas, categorias e formas de pagamento.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Privacidade e uso seguro
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+O aplicativo foi feito para uso pessoal no desktop. As rotas da aplicação não têm autenticação de usuário; use o NativePHP localmente e **não exponha o servidor a uma rede ou à internet**. Não execute o servidor com um endereço público ou `0.0.0.0` sem antes implementar autenticação e autorização.
 
-## Learning Laravel
+O banco de dados e os backups podem conter informações financeiras pessoais. Não os adicione ao Git. O arquivo `.env` também deve permanecer local e nunca deve conter chaves em arquivos versionados. A opção `DESKTOP_INCLUDE_SOURCE_DATABASE` fica desativada por padrão no `.env.example` para evitar incluir o banco de desenvolvimento em um executável.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+A integração com IA é opcional. Ao usá-la, o prompt e os dados da análise selecionada são enviados ao endpoint definido por `OPENAI_BASE_URL` (por padrão, a API da OpenAI). Configure sua própria chave em `OPENAI_API_KEY` no `.env` local e revise o conteúdo antes de enviar. A chave não deve ser colocada no código ou no README.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Tecnologias
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+- PHP 8.4.27 ou superior e Laravel 13
+- SQLite
+- React, TypeScript, Inertia e Tailwind CSS
+- NativePHP Desktop e Electron
+- Composer, Node.js e pnpm
 
-## Agentic Development
+## Requisitos para desenvolvimento
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+- PHP **8.4.27 ou superior**, com a extensão `pdo_sqlite` habilitada
+- Composer 2
+- Node.js 22 ou superior; Node.js 24 é usado nas verificações automatizadas do projeto
+- pnpm 11
+- Git
 
-```bash
-composer require laravel/boost --dev
+Confira as ferramentas antes de começar:
 
-php artisan boost:install
+```powershell
+php -v
+composer --version
+node --version
+pnpm --version
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+## Executar no computador
 
-## Contributing
+Os comandos abaixo usam PowerShell no Windows. No macOS ou Linux, os passos são os mesmos; use `cp .env.example .env` para copiar as configurações e `touch database/database.sqlite` para criar o banco vazio.
 
-Create a branch from `main` for each change and submit it as a pull request. Pull requests from branches in this repository are queued for automatic squash merge and enter `main` as soon as all required GitHub Actions checks pass. Draft pull requests and pull requests from forks are not auto-merged.
+1. Clone o repositório e entre na pasta:
 
-## Dependency security
+   ```powershell
+   git clone https://github.com/JonFrancis/controle-de-gastos.git
+   cd controle-de-gastos
+   ```
 
-GitHub Dependabot checks Composer, frontend (pnpm), Electron (npm), and GitHub Actions dependencies weekly. It can open pull requests with safe dependency updates. Repository security alerts and automatic security updates are enabled so newly published advisories are reported and patched dependency updates can be proposed.
+2. Instale as dependências PHP e JavaScript:
 
-Every pull request to `main`, every push to `main`, and the scheduled weekly run execute the dependency security workflow. All three audits must pass before automatic merge:
+   ```powershell
+   composer install
+   npm install --global pnpm@11
+   pnpm install --frozen-lockfile
+   ```
 
-- `Composer vulnerability audit`: `composer audit --locked`
-- `Frontend vulnerability audit`: `pnpm audit --audit-level=low`
-- `Electron vulnerability audit`: `npm audit --package-lock-only --audit-level=low`
+3. Crie a configuração local e o banco SQLite vazio:
 
-Any vulnerability at low severity or above fails its check. Update the affected dependency and commit the corresponding manifest and lockfile changes. Do not merge or push directly to `main` while a required check is failing. The `main` branch must require all three checks to pass before merge; administrator bypass should be disabled.
+   ```powershell
+   Copy-Item .env.example .env
+   New-Item -ItemType File -Path database/database.sqlite -Force | Out-Null
+   ```
 
-Run the audits locally before opening a pull request:
+   Confirme no `.env` que `DB_CONNECTION=sqlite` e `DESKTOP_INCLUDE_SOURCE_DATABASE=false`. O `.env` é ignorado pelo Git.
 
-```bash
-composer audit --locked
-pnpm install --frozen-lockfile --ignore-scripts
-pnpm audit --audit-level=low
-npm audit --package-lock-only --audit-level=low --prefix nativephp/electron
+4. Gere a chave local do Laravel e crie as tabelas:
+
+   ```powershell
+   php artisan key:generate
+   php artisan migrate --force
+   ```
+
+5. Inicie o aplicativo desktop com Vite:
+
+   ```powershell
+   composer run native:dev
+   ```
+
+   O comando prepara as dependências do Electron, inicia o servidor local do NativePHP e abre a janela do aplicativo. Encerre com `Ctrl+C` no terminal.
+
+### Dados demonstrativos
+
+Em um banco novo, carregue registros fictícios para explorar as telas:
+
+```powershell
+php artisan db:seed --class=VisualTestSeeder
 ```
 
-## Reporting a security issue
+Essa massa cria as pessoas `Eu`, `Teste 1` e `Teste 2`, com compras em Pix, crédito, débito e dinheiro, além de rateio, recebimento, parcelamento e recorrência. As datas acompanham o mês atual para que o painel já abra com dados visíveis. As descrições demonstrativas usam o prefixo `VISUAL TEST |`.
 
-Please report security vulnerabilities privately to the repository maintainers instead of opening a public issue with exploit details.
+O seeder é destinado a uma base limpa e não é idempotente. **Não o execute no banco com seus dados pessoais nem mais de uma vez na mesma base.** Para uma demonstração, use uma cópia separada do arquivo SQLite e mantenha seu banco pessoal em backup.
 
-## Code of Conduct
+### Integração opcional com OpenAI
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Para habilitar a análise por IA, preencha no `.env` local:
 
-## License
+```dotenv
+OPENAI_API_KEY=sua-chave
+OPENAI_MODEL=gpt-5
+OPENAI_BASE_URL=https://api.openai.com/v1
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Depois reinicie o aplicativo. Não compartilhe a chave nem a inclua em capturas de tela, issues ou commits.
+
+## Comandos úteis
+
+```powershell
+pnpm run build                 # compila os recursos de interface
+composer test                  # testes PHP
+pnpm run test:frontend          # testes de interface
+php artisan native:build win x64 --no-interaction  # pacote desktop para Windows x64
+```
+
+Antes de distribuir um executável, confirme que `DESKTOP_INCLUDE_SOURCE_DATABASE=false` e que nenhum segredo esteja configurado para ser incorporado ao pacote.
