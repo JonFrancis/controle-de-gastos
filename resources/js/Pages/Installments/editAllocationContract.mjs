@@ -1,6 +1,6 @@
-export function allocationRowsForEdit(allocations, euId) {
+export function allocationRowsForEdit(allocations) {
     return allocations.map((allocation) => ({
-        participant_id: allocation.participantId === null ? euId : allocation.participantId.toString(),
+        participant_id: allocation.participantId?.toString() ?? '',
         participant_id_is_null: allocation.participantId === null,
         category_id: allocation.categoryId?.toString() ?? '',
         amount: (allocation.amountCents / 100).toFixed(2),
