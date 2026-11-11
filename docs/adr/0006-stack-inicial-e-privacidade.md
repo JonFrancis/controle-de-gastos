@@ -1,6 +1,6 @@
 # Stack inicial e privacidade dos dados
 
-O aplicativo usará Laravel com SQLite local no backend e React com TypeScript, Inertia.js, Tailwind CSS e shadcn/ui no frontend. A primeira execução será local pelo navegador, sem autenticação e para um único usuário. A integração com IA será opcional e configurada pelo usuário, enquanto o repositório público conterá apenas código, documentação e dados fictícios; a planilha real, o banco local e chaves de API ficarão fora do Git.
+O aplicativo usará Laravel com SQLite local no backend e React com TypeScript, Inertia.js, Tailwind CSS e shadcn/ui no frontend. A primeira execução será local pelo navegador, sem autenticação e para um único usuário. O aplicativo não se integrará a serviços de IA, enquanto o repositório público conterá apenas código, documentação e dados fictícios; a planilha real e o banco local ficarão fora do Git.
 
 ## Consequências
 

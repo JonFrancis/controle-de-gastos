@@ -10,7 +10,6 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\InstallmentController;
 use App\Http\Controllers\InstallmentOccurrenceController;
-use App\Http\Controllers\OpenAiController;
 use App\Http\Controllers\ParticipantController;
 use App\Http\Controllers\PaymentMethodController;
 use App\Http\Controllers\PurchaseAllocationController;
@@ -32,7 +31,6 @@ Route::get('/exports/excel', [ExportController::class, 'excel'])->name('exports.
 Route::get('/exports/markdown', [ExportController::class, 'markdown'])->name('exports.markdown');
 Route::get('/exports/prompt', [ExportController::class, 'prompt'])->name('exports.prompt');
 Route::post('/exports/prompt-versions', [ExportController::class, 'savePromptVersion'])->name('exports.prompt-versions.store');
-Route::post('/openai/responses', OpenAiController::class)->middleware('throttle:openai')->name('openai.responses.store');
 Route::get('/history', [AuditLogController::class, 'index'])->name('history');
 Route::get('/settings/backups', [BackupController::class, 'index'])->name('settings.backups');
 Route::patch('/settings/backups', [BackupController::class, 'update'])->name('settings.backups.update');

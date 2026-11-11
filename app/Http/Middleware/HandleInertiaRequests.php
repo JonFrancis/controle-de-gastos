@@ -41,7 +41,6 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
-                'openai' => fn () => $request->session()->get('openai'),
             ],
             'lifecycle' => fn () => [
                 ...app(ApplicationLifecycleService::class)->status(),
