@@ -43,13 +43,13 @@ Boost provides your agent 15+ tools and skills that help agents build Laravel ap
 
 ## Contributing
 
-Create a branch from `main` for each change and submit it as a pull request. Changes must pass the required GitHub Actions checks before they can be merged into `main`.
+Create a branch from `main` for each change and submit it as a pull request. Pull requests from branches in this repository are queued for automatic squash merge and enter `main` as soon as all required GitHub Actions checks pass. Draft pull requests and pull requests from forks are not auto-merged.
 
 ## Dependency security
 
 GitHub Dependabot checks Composer, frontend (pnpm), Electron (npm), and GitHub Actions dependencies weekly. It can open pull requests with safe dependency updates. Repository security alerts and automatic security updates are enabled so newly published advisories are reported and patched dependency updates can be proposed.
 
-Every pull request to `main`, every push to `main`, and the scheduled weekly run execute the dependency security workflow. All three audits must pass:
+Every pull request to `main`, every push to `main`, and the scheduled weekly run execute the dependency security workflow. All three audits must pass before automatic merge:
 
 - `Composer vulnerability audit`: `composer audit --locked`
 - `Frontend vulnerability audit`: `pnpm audit --audit-level=low`
