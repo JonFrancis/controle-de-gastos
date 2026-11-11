@@ -11,7 +11,7 @@ Aplicativo desktop local para registrar compras, organizar despesas compartilhad
 - Registra recebimentos e aplica valores recebidos às partes de compras atribuídas a outras pessoas.
 - Calcula saldos e apresenta a análise mensal por pessoa, categoria, forma de pagamento e origem dos lançamentos, com conferência dos totais.
 - Importa planilhas CSV e Excel em etapas: mapeamento de colunas, revisão dos lançamentos e confirmação da importação.
-- Exporta compras, rateios, recebimentos, recorrências, parcelamentos e análises em CSV, Excel e Markdown. Também gera um prompt que pode ser copiado ou enviado à integração opcional com a API de respostas da OpenAI.
+- Exporta compras, rateios, recebimentos, recorrências, parcelamentos e análises em CSV, Excel e Markdown. Também gera um prompt para análise externa, que pode ser editado, copiado ou baixado.
 - Mantém histórico de alterações e permite criar, configurar e restaurar backups locais.
 - Permite cadastrar pessoas, categorias e formas de pagamento.
 
@@ -21,7 +21,7 @@ O aplicativo foi feito para uso pessoal no desktop. As rotas da aplicação não
 
 O banco de dados e os backups podem conter informações financeiras pessoais. Não os adicione ao Git. O arquivo `.env` também deve permanecer local e nunca deve conter chaves em arquivos versionados. A opção `DESKTOP_INCLUDE_SOURCE_DATABASE` fica desativada por padrão no `.env.example` para evitar incluir o banco de desenvolvimento em um executável.
 
-A integração com IA é opcional. Ao usá-la, o prompt e os dados da análise selecionada são enviados ao endpoint definido por `OPENAI_BASE_URL` (por padrão, a API da OpenAI). Configure sua própria chave em `OPENAI_API_KEY` no `.env` local e revise o conteúdo antes de enviar. A chave não deve ser colocada no código ou no README.
+O aplicativo não envia dados a serviços de IA. O prompt pode ser copiado ou baixado para uso externo, após sua revisão.
 
 ## Tecnologias
 
@@ -102,18 +102,6 @@ php artisan db:seed --class=VisualTestSeeder
 Essa massa cria as pessoas `Eu`, `Teste 1` e `Teste 2`, com compras em Pix, crédito, débito e dinheiro, além de rateio, recebimento, parcelamento e recorrência. As datas acompanham o mês atual para que o painel já abra com dados visíveis. As descrições demonstrativas usam o prefixo `VISUAL TEST |`.
 
 O seeder é destinado a uma base limpa e não é idempotente. **Não o execute no banco com seus dados pessoais nem mais de uma vez na mesma base.** Para uma demonstração, use uma cópia separada do arquivo SQLite e mantenha seu banco pessoal em backup.
-
-### Integração opcional com OpenAI
-
-Para habilitar a análise por IA, preencha no `.env` local:
-
-```dotenv
-OPENAI_API_KEY=sua-chave
-OPENAI_MODEL=gpt-5
-OPENAI_BASE_URL=https://api.openai.com/v1
-```
-
-Depois reinicie o aplicativo. Não compartilhe a chave nem a inclua em capturas de tela, issues ou commits.
 
 ## Comandos úteis
 
