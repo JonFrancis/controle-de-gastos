@@ -243,7 +243,7 @@ class BalanceService
         $billingMonth = CarbonImmutable::instance($month);
         $selfId = $this->selfId();
         $rows = $this->expenseRowsForBillingMonth($billingMonth);
-        $applications = $this->applicationsUntil($billingMonth->endOfMonth());
+        $applications = $this->applicationsUntil(CarbonImmutable::now());
 
         return [
             'ownConsumptionCents' => (int) $rows->filter(fn (array $row): bool => $row['participant_id'] === $selfId)->sum('amount_cents'),
@@ -281,11 +281,44 @@ class BalanceService
 
         return $this->participantBalancesFromRows(
             $this->expenseRowsForBillingMonth($billingMonth),
-            $billingMonth->endOfMonth(),
+            CarbonImmutable::now(),
             null,
             $selfId,
             $this->billableDebtItems()->pluck('key')->flip(),
         );
+    }
+
+    public function settleInvoiceForParticipant(int $participantId, CarbonInterface $month): Receipt
+    {
+        return DB::transaction(function () use ($participantId, $month): Receipt {
+            $debts = $this->debtItemsForBillingMonth($month)
+                ->filter(fn (array $debt): bool => $debt['participant_id'] === $participantId)
+                ->values();
+            $applications = $this->applicationsUntil(CarbonImmutable::now(), $debts->pluck('key')->flip());
+            $outstandingDebts = $debts
+                ->map(fn (array $debt): array => $this->itemWithOutstanding($debt, $applications))
+                ->filter(fn (array $debt): bool => $debt['outstanding_cents'] > 0)
+                ->values();
+            $amountCents = (int) $outstandingDebts->sum('outstanding_cents');
+
+            if ($amountCents <= 0) {
+                throw ValidationException::withMessages(['settlement' => 'Esta pessoa não tem valores pendentes nesta fatura.']);
+            }
+
+            $receipt = Receipt::create([
+                'participant_id' => $participantId,
+                'received_at' => CarbonImmutable::now()->toDateString(),
+                'amount_cents' => $amountCents,
+                'note' => 'Quitação integral da fatura '.$month->format('m/Y'),
+                'is_manually_adjusted' => true,
+            ]);
+
+            foreach ($outstandingDebts as $debt) {
+                $this->createApplication($receipt->id, $debt, $debt['outstanding_cents'], 'manual');
+            }
+
+            return $receipt;
+        });
     }
 
     /** @param Collection<int, ExpenseRow> $rows
@@ -320,9 +353,17 @@ class BalanceService
     }
 
     /** @return list<ReceiptRow> */
-    public function receipts(CarbonInterface $until): array
+    public function receipts(CarbonInterface $until, ?Collection $applicationKeys = null): array
     {
-        return Receipt::query()->whereNull('archived_at')->whereDate('received_at', '<=', $until)->with(['participant:id,name', 'applications' => function (HasMany $query): void {
+        $query = Receipt::query()->whereNull('archived_at')->whereDate('received_at', '<=', $until);
+
+        if ($applicationKeys !== null) {
+            $query->whereHas('applications', function (Builder $query) use ($applicationKeys): void {
+                $this->whereApplicationKeys($query, $applicationKeys);
+            });
+        }
+
+        return $query->with(['participant:id,name', 'applications' => function (HasMany $query): void {
             $query->whereNull('superseded_at');
         }])->orderByDesc('received_at')->orderByDesc('id')->get()->map(function (Receipt $receipt): array {
             $appliedCents = (int) $receipt->applications->sum('amount_cents');
