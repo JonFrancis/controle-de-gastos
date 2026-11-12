@@ -106,6 +106,9 @@ export default function Balances({ selectedMonth, view, summary, participants, r
 }
 
 function ParticipantCard({ participant, selectedMonth, invoiceView }: { participant: ParticipantBalance; selectedMonth: string; invoiceView: boolean }) {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const detailsId = `participant-balance-details-${participant.id}`;
+
     return (
         <article className="rounded-2xl border border-white/5 bg-white/[0.03] p-5">
             <div className="flex items-start justify-between gap-3">
@@ -113,29 +116,32 @@ function ParticipantCard({ participant, selectedMonth, invoiceView }: { particip
                     <h3 className="font-semibold text-white">{participant.name}</h3>
                     <p className="mt-1 text-xs text-slate-500">Saldo líquido: <span className={participant.netCents >= 0 ? 'text-emerald-300' : 'text-amber-300'}>{formatMoney(Math.abs(participant.netCents))} {participant.netCents >= 0 ? 'a receber' : 'a pagar'}</span></p>
                 </div>
-                {participant.creditCents > 0 && <span className="rounded-full bg-violet-300/10 px-2 py-1 text-[10px] font-semibold text-violet-300">Crédito {formatMoney(participant.creditCents)}</span>}
+                <button type="button" aria-expanded={isExpanded} aria-controls={detailsId} onClick={() => setIsExpanded((expanded) => !expanded)} className="shrink-0 text-xs font-semibold text-emerald-300 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300">{isExpanded ? 'Recolher detalhes' : 'Ver detalhes'}</button>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <Metric label="A receber" cents={participant.receivableCents} />
                 <Metric label="A pagar" cents={participant.payableCents} />
             </div>
-            {invoiceView && participant.receivableCents > 0 && (
-                <Form
-                    action={`/balances/invoices/${selectedMonth}/participants/${participant.id}/settle`}
-                    method="post"
-                    onBefore={() => window.confirm(`Registrar o recebimento integral de ${formatMoney(participant.receivableCents)} de ${participant.name} e quitar os valores pendentes da fatura ${formatMonth(selectedMonth)}?`)}
-                >
-                    {({ processing }) => (
-                        <button type="submit" disabled={processing} className="mt-4 rounded-xl bg-emerald-400 px-4 py-2 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
-                            {processing ? 'Registrando…' : 'Quitar fatura integralmente'}
-                        </button>
-                    )}
-                </Form>
-            )}
-            <div className="mt-4 grid gap-4 border-t border-white/5 pt-4 md:grid-cols-2">
-                <DetailList title="Itens a receber" items={participant.receivableItems} />
-                <DetailList title="Itens a pagar" items={participant.payableItems} />
-            </div>
+            {isExpanded && <div id={detailsId} className="mt-4 border-t border-white/5 pt-4">
+                {participant.creditCents > 0 && <p className="mb-4 inline-flex rounded-full bg-violet-300/10 px-3 py-1.5 text-xs font-semibold text-violet-300">Crédito de participante: {formatMoney(participant.creditCents)}</p>}
+                {invoiceView && participant.receivableCents > 0 && (
+                    <Form
+                        action={`/balances/invoices/${selectedMonth}/participants/${participant.id}/settle`}
+                        method="post"
+                        onBefore={() => window.confirm(`Registrar o recebimento integral de ${formatMoney(participant.receivableCents)} de ${participant.name} e quitar os valores pendentes da fatura ${formatMonth(selectedMonth)}?`)}
+                    >
+                        {({ processing }) => (
+                            <button type="submit" disabled={processing} className="mb-4 rounded-xl bg-emerald-400 px-4 py-2 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
+                                {processing ? 'Registrando…' : 'Quitar fatura integralmente'}
+                            </button>
+                        )}
+                    </Form>
+                )}
+                <div className="grid gap-4 md:grid-cols-2">
+                    <DetailList title="Itens a receber" items={participant.receivableItems} />
+                    <DetailList title="Itens a pagar" items={participant.payableItems} />
+                </div>
+            </div>}
         </article>
     );
 }

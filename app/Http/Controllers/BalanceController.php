@@ -23,7 +23,7 @@ class BalanceController extends Controller
             'summary' => $view === 'invoice' ? $service->summaryForBillingMonth($month) : $service->summary($until, $month->startOfMonth()),
             'participants' => $view === 'invoice' ? $service->participantBalancesForBillingMonth($month) : $service->participantBalances($until, $month->startOfMonth()),
             'receipts' => $view === 'invoice'
-                ? $service->receipts(Carbon::today(), $service->debtItemsForBillingMonth($month)->pluck('key')->flip())
+                ? $service->receipts(Carbon::today())
                 : $service->receipts($until),
             'navigationBases' => [
                 'overview' => route('dashboard', [], false),

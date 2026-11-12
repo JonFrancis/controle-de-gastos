@@ -1,6 +1,6 @@
 import { Form, Head, Link, router } from '@inertiajs/react';
 import { useState, type ChangeEvent } from 'react';
-import { purchaseNavigationUrls, visitPurchaseMonth, type InvoiceContext, type PurchaseNavigationBases } from './monthNavigation';
+import { purchaseNavigationUrl, purchaseNavigationUrls, visitPurchaseMonth, type InvoiceContext, type PurchaseNavigationBases } from './monthNavigation';
 
 type ExpenseItem = {
     id: number;
@@ -120,7 +120,7 @@ export default function PurchasesIndex({ monthLabel, selectedMonth, view, monthT
                             </div>
                         </div>
 
-                        {view === 'invoice' ? <InvoiceGroups groups={invoiceGroups} /> : <CalendarPurchases purchases={purchases} occurrences={occurrences} />}
+                        {view === 'invoice' ? <InvoiceGroups groups={invoiceGroups} month={month} invoiceContext={invoiceContext} navigationBases={navigationBases} /> : <CalendarPurchases purchases={purchases} occurrences={occurrences} />}
                     </section>
                 </div>
             </main>
@@ -139,10 +139,45 @@ function CalendarPurchases({ purchases, occurrences }: { purchases: ExpenseItem[
     );
 }
 
-function InvoiceGroups({ groups }: { groups: InvoiceGroup[] }) {
+function InvoiceGroups({ groups, month, invoiceContext, navigationBases }: { groups: InvoiceGroup[]; month: string; invoiceContext: InvoiceContext | null; navigationBases: PurchaseNavigationBases }) {
+    if (invoiceContext?.paymentMethodId !== null && invoiceContext?.paymentMethodId !== undefined) {
+        return (
+            <div className="mt-5">
+                <Link href={purchaseNavigationUrl(navigationBases.purchases, month, 'invoice')} className="text-sm font-semibold text-emerald-300">← Todos os cartões</Link>
+                <div className="mt-4 space-y-5"><InvoiceGroupCards groups={groups} /></div>
+            </div>
+        );
+    }
+
+    const cards = [...new Map(groups.map((group) => [group.paymentMethodId, {
+        paymentMethodId: group.paymentMethodId,
+        paymentMethod: group.paymentMethod,
+        groups: groups.filter((candidate) => candidate.paymentMethodId === group.paymentMethodId),
+    }])).values()];
+
     return (
-        <div className="mt-5 space-y-5">
-            {groups.length === 0 && <EmptyState text="Nenhuma fatura de cartão neste mês." />}
+        <div className="mt-5">
+            {cards.length === 0 && <EmptyState text="Nenhuma fatura de cartão neste mês." />}
+            {cards.length > 0 && <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{cards.map((card) => {
+                const totalCents = card.groups.reduce((total, group) => total + group.totalCents, 0);
+                const purchaseCount = card.groups.reduce((total, group) => total + group.purchases.length, 0);
+                const href = purchaseNavigationUrl(navigationBases.purchases, month, 'invoice', {
+                    paymentMethodId: card.paymentMethodId,
+                });
+
+                return <Link key={card.paymentMethodId} href={href} className="group rounded-2xl border border-white/10 bg-white/[0.03] p-5 transition hover:border-emerald-300/40 hover:bg-emerald-300/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">
+                    <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-white">{card.paymentMethod}</h3><p className="mt-1 text-xs text-slate-400">{purchaseCount} compra(s) · {card.groups.length} fatura(s)</p></div><span aria-hidden="true" className="text-lg text-emerald-300 transition group-hover:translate-x-0.5">→</span></div>
+                    <p className="mt-5 text-lg font-bold text-emerald-300">{formatMoney(totalCents)}</p>
+                    <p className="mt-1 text-xs text-slate-500">Abrir compras do cartão</p>
+                </Link>;
+            })}</div>}
+        </div>
+    );
+}
+
+function InvoiceGroupCards({ groups }: { groups: InvoiceGroup[] }) {
+    return <>
+            {groups.length === 0 && <EmptyState text="Nenhuma compra encontrada para este cartão." />}
             {groups.map((group) => (
                 <article key={`${group.paymentMethodId}-${group.closingDate}`} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
                     <div className="flex flex-col justify-between gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-center">
@@ -156,8 +191,7 @@ function InvoiceGroups({ groups }: { groups: InvoiceGroup[] }) {
                     <div className="mt-3 space-y-3">{group.purchases.map((purchase) => <PurchaseRow key={`${purchase.origin}-${purchase.id}`} purchase={purchase} />)}</div>
                 </article>
             ))}
-        </div>
-    );
+    </>;
 }
 
 function PurchaseRow({ purchase }: { purchase: ExpenseItem }) {
