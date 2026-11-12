@@ -86,6 +86,24 @@ class ReceiptController extends Controller
         return to_route('balances', array_filter(['month' => $request->query('month')]))->with('success', 'Recebimento registrado e aplicado aos saldos mais antigos.');
     }
 
+    public function settleInvoice(Request $request, string $month, Participant $participant, BalanceService $service, AuditService $audit): RedirectResponse
+    {
+        $selectedMonth = $this->validMonth($month);
+        $billingMonth = Carbon::createFromFormat('!Y-m', $selectedMonth);
+        DB::transaction(function () use ($participant, $billingMonth, $service, $audit): void {
+            $receipt = $service->settleInvoiceForParticipant((int) $participant->id, $billingMonth);
+            $audit->record(
+                AuditLog::ACTION_CREATE,
+                $receipt,
+                newValues: [...$receipt->getAttributes(), 'applications' => $receipt->applications()->get()->toArray()],
+                metadata: ['type' => 'invoice_settlement', 'billing_month' => $billingMonth->format('Y-m')],
+            );
+        });
+
+        return to_route('balances', ['month' => $selectedMonth, 'view' => 'invoice'])
+            ->with('success', 'Quitação integral de '.$participant->name.' registrada para a fatura de '.$billingMonth->format('m/Y').'.');
+    }
+
     public function updateApplications(UpdateReceiptApplicationsRequest $request, Receipt $receipt, BalanceService $service, AuditService $audit): RedirectResponse
     {
         $oldApplications = $receipt->applications()->get()->toArray();

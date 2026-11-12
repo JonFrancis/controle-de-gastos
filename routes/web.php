@@ -46,6 +46,9 @@ Route::patch('/imports/{import}/rows/{row}', [SpreadsheetImportController::class
 Route::post('/imports/{import}/confirm', [SpreadsheetImportController::class, 'confirm'])->name('imports.confirm');
 Route::patch('/settings/salary', [SalaryController::class, 'update'])->name('settings.salary.update');
 Route::get('/balances', BalanceController::class)->name('balances');
+Route::post('/balances/invoices/{month}/participants/{participant}/settle', [ReceiptController::class, 'settleInvoice'])
+    ->where(['month' => '\\d{4}-\\d{2}', 'participant' => '\\d+'])
+    ->name('balances.invoices.settle');
 Route::get('/receipts/create', [ReceiptController::class, 'create'])->name('receipts.create');
 Route::post('/receipts', [ReceiptController::class, 'store'])->name('receipts.store');
 Route::get('/receipts/{receipt}/edit', [ReceiptController::class, 'edit'])->name('receipts.edit');

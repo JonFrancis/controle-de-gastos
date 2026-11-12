@@ -83,14 +83,14 @@ export default function Balances({ selectedMonth, view, summary, participants, r
                         <p className="mt-1 text-sm text-slate-400">Os dois lados permanecem visíveis para conferência antes da compensação.</p>
                         <div className="mt-5 grid gap-4 lg:grid-cols-2">
                             {participants.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-slate-500 lg:col-span-2">Nenhum participante com saldo.</p>}
-                            {participants.map((participant) => <ParticipantCard key={participant.id} participant={participant} />)}
+                            {participants.map((participant) => <ParticipantCard key={participant.id} participant={participant} selectedMonth={selectedMonth} invoiceView={view === 'invoice'} />)}
                         </div>
                     </section>
                     <section className="mt-5 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
                         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                             <div>
-                                <h2 className="font-semibold">Recebimentos do período</h2>
-                                <p className="mt-1 text-sm text-slate-400">Consulte, ajuste ou exclua permanentemente um recebimento.</p>
+                                <h2 className="font-semibold">{view === 'invoice' ? 'Recebimentos desta fatura' : 'Recebimentos do período'}</h2>
+                                <p className="mt-1 text-sm text-slate-400">{view === 'invoice' ? 'Consulte os recebimentos aplicados aos itens desta fatura.' : 'Consulte, ajuste ou exclua permanentemente um recebimento.'}</p>
                             </div>
                             <Link href={navigationUrls.receipt} className="text-sm font-semibold text-emerald-300">+ Registrar recebimento</Link>
                         </div>
@@ -105,8 +105,39 @@ export default function Balances({ selectedMonth, view, summary, participants, r
     );
 }
 
-function ParticipantCard({ participant }: { participant: ParticipantBalance }) {
-    return <article className="rounded-2xl border border-white/5 bg-white/[0.03] p-5"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-white">{participant.name}</h3><p className="mt-1 text-xs text-slate-500">Saldo líquido: <span className={participant.netCents >= 0 ? 'text-emerald-300' : 'text-amber-300'}>{formatMoney(Math.abs(participant.netCents))} {participant.netCents >= 0 ? 'a receber' : 'a pagar'}</span></p></div>{participant.creditCents > 0 && <span className="rounded-full bg-violet-300/10 px-2 py-1 text-[10px] font-semibold text-violet-300">Crédito {formatMoney(participant.creditCents)}</span>}</div><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><Metric label="A receber" cents={participant.receivableCents} /><Metric label="A pagar" cents={participant.payableCents} /></div><div className="mt-4 grid gap-4 border-t border-white/5 pt-4 md:grid-cols-2"><DetailList title="Itens a receber" items={participant.receivableItems} /><DetailList title="Itens a pagar" items={participant.payableItems} /></div></article>;
+function ParticipantCard({ participant, selectedMonth, invoiceView }: { participant: ParticipantBalance; selectedMonth: string; invoiceView: boolean }) {
+    return (
+        <article className="rounded-2xl border border-white/5 bg-white/[0.03] p-5">
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <h3 className="font-semibold text-white">{participant.name}</h3>
+                    <p className="mt-1 text-xs text-slate-500">Saldo líquido: <span className={participant.netCents >= 0 ? 'text-emerald-300' : 'text-amber-300'}>{formatMoney(Math.abs(participant.netCents))} {participant.netCents >= 0 ? 'a receber' : 'a pagar'}</span></p>
+                </div>
+                {participant.creditCents > 0 && <span className="rounded-full bg-violet-300/10 px-2 py-1 text-[10px] font-semibold text-violet-300">Crédito {formatMoney(participant.creditCents)}</span>}
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <Metric label="A receber" cents={participant.receivableCents} />
+                <Metric label="A pagar" cents={participant.payableCents} />
+            </div>
+            {invoiceView && participant.receivableCents > 0 && (
+                <Form
+                    action={`/balances/invoices/${selectedMonth}/participants/${participant.id}/settle`}
+                    method="post"
+                    onBefore={() => window.confirm(`Registrar o recebimento integral de ${formatMoney(participant.receivableCents)} de ${participant.name} e quitar os valores pendentes da fatura ${formatMonth(selectedMonth)}?`)}
+                >
+                    {({ processing }) => (
+                        <button type="submit" disabled={processing} className="mt-4 rounded-xl bg-emerald-400 px-4 py-2 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
+                            {processing ? 'Registrando…' : 'Quitar fatura integralmente'}
+                        </button>
+                    )}
+                </Form>
+            )}
+            <div className="mt-4 grid gap-4 border-t border-white/5 pt-4 md:grid-cols-2">
+                <DetailList title="Itens a receber" items={participant.receivableItems} />
+                <DetailList title="Itens a pagar" items={participant.payableItems} />
+            </div>
+        </article>
+    );
 }
 
 function DetailList({ title, items }: { title: string; items: Item[] }) {
@@ -117,3 +148,4 @@ function Metric({ label, cents }: { label: string; cents: number }) { return <di
 function SummaryCard({ label, value, note }: { label: string; value: number; note: string }) { return <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-5"><p className="text-sm text-slate-400">{label}</p><p className="mt-5 text-2xl font-bold text-white">{formatMoney(value)}</p><p className="mt-2 text-xs text-slate-500">{note}</p></div>; }
 function formatMoney(cents: number): string { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100); }
 function formatDate(value: string): string { return new Intl.DateTimeFormat('pt-BR').format(new Date(`${value}T12:00:00`)); }
+function formatMonth(value: string): string { const [year, month] = value.split('-'); return `${month}/${year}`; }
