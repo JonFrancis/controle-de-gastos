@@ -8,7 +8,7 @@
         "test:frontend": "node --experimental-strip-types --test resources/js/Components/installmentAllocationRows.test.mjs resources/js/Pages/dashboardMonthNavigation.test.mjs resources/js/Pages/Analysis/monthNavigation.test.mjs resources/js/Pages/Balances/monthSelection.test.mjs resources/js/Pages/Purchases/monthNavigation.test.mjs"
     },
     "devDependencies": {
-        "@tailwindcss/vite": "^4.3.3",
+        "@tailwindcss/vite": "^4.3.5",
         "@types/react": "^19.3.0",
         "@types/react-dom": "^19.3.0",
         "@vitejs/plugin-react": "^6.2.1",
