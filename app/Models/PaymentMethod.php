@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'type', 'closing_day', 'active'])]
+#[Fillable(['name', 'type', 'closing_day', 'color', 'active'])]
 class PaymentMethod extends Model
 {
     public const TYPE_CREDIT = 'credit';

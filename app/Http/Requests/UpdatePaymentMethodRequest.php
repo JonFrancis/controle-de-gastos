@@ -27,6 +27,7 @@ class UpdatePaymentMethodRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:100', Rule::unique('payment_methods', 'name')->ignore($this->route('payment_method'))],
             'type' => ['required', Rule::in(PaymentMethod::types())],
+            'color' => ['required', 'string', 'hex_color'],
             'closing_day' => ['nullable', 'integer', 'between:1,31'],
             'due_day' => ['nullable', 'integer', 'between:1,31'],
             'effective_from' => ['nullable', 'date'],

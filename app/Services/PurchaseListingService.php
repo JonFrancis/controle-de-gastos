@@ -30,19 +30,19 @@ class PurchaseListingService
 
         $purchases = Purchase::query()
             ->active()
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'allocations.participant:id,name', 'allocations' => fn ($query) => $query->with('category:id,name')])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day,color', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'allocations.participant:id,name', 'allocations' => fn ($query) => $query->with('category:id,name')])
             ->whereBetween('purchased_at', [$periodStart, $periodEnd])
             ->orderByDesc('purchased_at')
             ->get();
         $installmentOccurrences = InstallmentOccurrence::query()
             ->whereNull('archived_at')
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'installment:id,installment_count', 'allocations.participant:id,name', 'allocations.category:id,name'])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day,color', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'installment:id,installment_count', 'allocations.participant:id,name', 'allocations.category:id,name'])
             ->whereBetween('purchased_at', [$periodStart, $periodEnd])
             ->orderByDesc('purchased_at')
             ->get();
         $recurrenceOccurrences = RecurrenceOccurrence::query()
             ->whereNull('archived_at')
-            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'recurrence:id'])
+            ->with(['payer:id,name', 'participant:id,name', 'paymentMethod:id,name,type,closing_day,color', 'paymentMethod.invoiceSettings:id,payment_method_id,closing_day,due_day,effective_from', 'category:id,name', 'recurrence:id'])
             ->whereBetween('purchased_at', [$periodStart, $periodEnd])
             ->orderByDesc('purchased_at')
             ->get();
@@ -75,6 +75,7 @@ class PurchaseListingService
                 return [
                     'paymentMethod' => $first['paymentMethod'],
                     'paymentMethodId' => $first['paymentMethodId'],
+                    'color' => $first['color'],
                     'periodStart' => $first['periodStart'],
                     'periodEnd' => $first['periodEnd'],
                     'closingDate' => $first['closingDate'],
@@ -159,6 +160,7 @@ class PurchaseListingService
         return [
             'paymentMethodId' => $item->payment_method_id,
             'paymentMethod' => $item->paymentMethod->name,
+            'color' => $item->paymentMethod->color,
             'periodStart' => $details['periodStart']->toDateString(),
             'periodEnd' => $details['periodEnd']->toDateString(),
             'closingDate' => $details['closingDate']->toDateString(),

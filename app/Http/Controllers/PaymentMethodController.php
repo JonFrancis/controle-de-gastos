@@ -40,6 +40,7 @@ class PaymentMethodController extends Controller
             $paymentMethod = PaymentMethod::create([
                 'name' => $data['name'],
                 'type' => $data['type'],
+                'color' => $data['color'],
                 'closing_day' => $data['type'] === PaymentMethod::TYPE_CREDIT ? ($data['closing_day'] ?? null) : null,
                 'active' => true,
             ]);
@@ -100,6 +101,7 @@ class PaymentMethodController extends Controller
             $paymentMethod->update([
                 'name' => $data['name'],
                 'type' => $data['type'],
+                'color' => $data['color'],
                 'closing_day' => $isCredit ? ($data['closing_day'] ?? null) : null,
                 'active' => $data['active'],
             ]);
