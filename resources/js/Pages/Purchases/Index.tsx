@@ -24,6 +24,7 @@ type ExpenseItem = {
 type InvoiceGroup = {
     paymentMethodId: number;
     paymentMethod: string;
+    color: string;
     periodStart: string;
     periodEnd: string;
     closingDate: string;
@@ -152,6 +153,7 @@ function InvoiceGroups({ groups, month, invoiceContext, navigationBases }: { gro
     const cards = [...new Map(groups.map((group) => [group.paymentMethodId, {
         paymentMethodId: group.paymentMethodId,
         paymentMethod: group.paymentMethod,
+        color: group.color,
         groups: groups.filter((candidate) => candidate.paymentMethodId === group.paymentMethodId),
     }])).values()];
 
@@ -165,36 +167,63 @@ function InvoiceGroups({ groups, month, invoiceContext, navigationBases }: { gro
                     paymentMethodId: card.paymentMethodId,
                 });
 
-                return <Link key={card.paymentMethodId} href={href} className="group rounded-2xl border border-white/10 bg-white/[0.03] p-5 transition hover:border-emerald-300/40 hover:bg-emerald-300/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">
-                    <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-white">{card.paymentMethod}</h3><p className="mt-1 text-xs text-slate-400">{purchaseCount} compra(s) · {card.groups.length} fatura(s)</p></div><span aria-hidden="true" className="text-lg text-emerald-300 transition group-hover:translate-x-0.5">→</span></div>
-                    <p className="mt-5 text-lg font-bold text-emerald-300">{formatMoney(totalCents)}</p>
-                    <p className="mt-1 text-xs text-slate-500">Abrir compras do cartão</p>
+                const colors = paymentMethodCardColors(card.color);
+
+                return <Link key={card.paymentMethodId} href={href} className="group rounded-2xl border p-5 transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300" style={{ backgroundColor: colors.background, borderColor: colors.border }}>
+                    <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold" style={{ color: colors.foreground }}>{card.paymentMethod}</h3><p className="mt-1 text-xs" style={{ color: colors.muted }}>{purchaseCount} compra(s) · {card.groups.length} fatura(s)</p></div><span aria-hidden="true" className="text-lg transition group-hover:translate-x-0.5" style={{ color: colors.accent }}>→</span></div>
+                    <p className="mt-5 text-lg font-bold" style={{ color: colors.accent }}>{formatMoney(totalCents)}</p>
+                    <p className="mt-1 text-xs" style={{ color: colors.muted }}>Abrir compras do cartão</p>
                 </Link>;
             })}</div>}
         </div>
     );
 }
 
+function paymentMethodCardColors(color: string): { background: string; border: string; foreground: string; muted: string; accent: string } {
+    const normalizedColor = /^#[0-9a-f]{6}$/i.test(color) ? color : '#64748B';
+
+    return {
+        background: mixColors(normalizedColor, '#0F172A', 0.68),
+        border: mixColors(normalizedColor, '#FFFFFF', 0.52),
+        foreground: '#F8FAFC',
+        muted: mixColors(normalizedColor, '#CBD5E1', 0.38),
+        accent: mixColors(normalizedColor, '#FFFFFF', 0.32),
+    };
+}
+
+function mixColors(color: string, otherColor: string, colorWeight: number): string {
+    const channels = [1, 3, 5].map((index) => {
+        const first = Number.parseInt(color.slice(index, index + 2), 16);
+        const second = Number.parseInt(otherColor.slice(index, index + 2), 16);
+
+        return Math.round(first * colorWeight + second * (1 - colorWeight));
+    });
+
+    return `#${channels.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+}
+
 function InvoiceGroupCards({ groups }: { groups: InvoiceGroup[] }) {
     return <>
             {groups.length === 0 && <EmptyState text="Nenhuma compra encontrada para este cartão." />}
-            {groups.map((group) => (
-                <article key={`${group.paymentMethodId}-${group.closingDate}`} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            {groups.map((group) => {
+                const colors = paymentMethodCardColors(group.color);
+
+                return <article key={`${group.paymentMethodId}-${group.closingDate}`} className="rounded-2xl border p-4" style={{ backgroundColor: colors.background, borderColor: colors.border }}>
                     <div className="flex flex-col justify-between gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-center">
                         <div>
-                            <h3 className="font-semibold text-white">{group.paymentMethod}</h3>
-                            <p className="mt-1 text-xs text-slate-400">Período: {formatDate(group.periodStart)} a {formatDate(group.periodEnd)}</p>
-                            <p className="mt-1 text-xs text-slate-400">Fechamento: {formatDate(group.closingDate)} · Vencimento: {group.dueDate ? formatDate(group.dueDate) : 'não configurado'}</p>
+                            <h3 className="font-semibold" style={{ color: colors.foreground }}>{group.paymentMethod}</h3>
+                            <p className="mt-1 text-xs" style={{ color: colors.muted }}>Período: {formatDate(group.periodStart)} a {formatDate(group.periodEnd)}</p>
+                            <p className="mt-1 text-xs" style={{ color: colors.muted }}>Fechamento: {formatDate(group.closingDate)} · Vencimento: {group.dueDate ? formatDate(group.dueDate) : 'não configurado'}</p>
                         </div>
-                        <strong className="text-sm text-emerald-300">{formatMoney(group.totalCents)}</strong>
+                        <strong className="text-sm" style={{ color: colors.accent }}>{formatMoney(group.totalCents)}</strong>
                     </div>
-                    <div className="mt-3 space-y-3">{group.purchases.map((purchase) => <PurchaseRow key={`${purchase.origin}-${purchase.id}`} purchase={purchase} />)}</div>
-                </article>
-            ))}
+                    <div className="mt-3 space-y-3">{group.purchases.map((purchase) => <PurchaseRow key={`${purchase.origin}-${purchase.id}`} purchase={purchase} variant="invoice" accentColor={group.color} />)}</div>
+                </article>;
+            })}
     </>;
 }
 
-function PurchaseRow({ purchase }: { purchase: ExpenseItem }) {
+function PurchaseRow({ purchase, variant = 'default', accentColor }: { purchase: ExpenseItem; variant?: 'default' | 'invoice'; accentColor?: string }) {
     const originLabel = purchase.type === 'occurrence' && purchase.origin === 'installment'
         ? `Parcela ${purchase.occurrenceNumber}/${purchase.occurrenceCount}${purchase.isAdjusted ? ' · ajustada' : ''}`
         : purchase.type === 'occurrence' && purchase.origin === 'recurrence'
@@ -202,7 +231,7 @@ function PurchaseRow({ purchase }: { purchase: ExpenseItem }) {
             : null;
 
     return (
-        <div className="flex flex-col gap-4 rounded-2xl border border-white/5 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`flex flex-col gap-4 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${variant === 'invoice' ? 'border-white/10 bg-slate-950/80 shadow-sm' : 'border-white/5 bg-white/[0.03]'}`} style={variant === 'invoice' ? { borderLeftColor: accentColor, borderLeftWidth: '3px' } : undefined}>
             <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium text-slate-200">{purchase.description}</p>
