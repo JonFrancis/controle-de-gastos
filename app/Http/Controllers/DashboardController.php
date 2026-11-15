@@ -25,7 +25,7 @@ class DashboardController extends Controller
         $recurrenceService->ensureOccurrencesForRange($month->copy()->startOfMonth(), $month->copy()->endOfMonth());
         $movementCategoryId = $request->integer('category') ?: null;
         $budgetAnalysis = $monthlyAnalysisService->analyze($selectedMonth, $view, $movementCategoryId);
-        $personalAnalysis = $monthlyAnalysisService->analyze($selectedMonth, 'calendar');
+        $personalAnalysis = $monthlyAnalysisService->analyze($selectedMonth, 'invoice');
         $budgetSummary = $budgetAnalysis['summary'];
         $totalReceiptsCents = (int) Receipt::query()
             ->whereNull('archived_at')

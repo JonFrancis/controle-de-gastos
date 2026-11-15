@@ -126,10 +126,10 @@ export default function Dashboard({ selectedMonth, view, tab, pendingReview, pen
                             <div>
                                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#4F844D]">{tab === 'personal' ? 'Visão pessoal' : view === 'invoice' ? 'Faturas' : 'Seu dinheiro em perspectiva'}</p>
                                 <h1 className="mt-1 font-serif text-4xl font-semibold tracking-tight text-[#263b2b]">{tab === 'personal' ? 'Gastos pessoais' : view === 'invoice' ? 'O que precisa ser pago' : 'Olá!'}</h1>
-                                <p className="mt-1 text-sm text-[#766b5d]">{tab === 'personal' ? 'Acompanhe seus gastos, o salário restante e suas compras.' : view === 'invoice' ? 'Consulte as faturas pelo mês de vencimento.' : `Aqui está o resumo das suas finanças em ${formatMonth(month)}.`}</p>
+                                <p className="mt-1 text-sm text-[#766b5d]">{tab === 'personal' ? 'Acompanhe seus gastos, o salário restante e suas compras pela fatura com vencimento no mês selecionado.' : view === 'invoice' ? 'Consulte as faturas pelo mês de vencimento.' : `Aqui está o resumo das suas finanças em ${formatMonth(month)}.`}</p>
                             </div>
                             <div className="flex flex-wrap items-center gap-3" aria-busy={monthRequestPending}>
-                                <label htmlFor="dashboard-month" className="sr-only">{view === 'invoice' ? 'Mês de vencimento' : 'Mês'}</label>
+                                <label htmlFor="dashboard-month" className="sr-only">{tab === 'personal' || view === 'invoice' ? 'Mês de vencimento' : 'Mês'}</label>
                                 <input id="dashboard-month" type="month" name="month" value={month} onChange={handleMonthChange} disabled={monthRequestPending} className="rounded-2xl border border-[#594c43]/15 bg-[#fffdf8] px-3 py-2.5 text-sm text-[#302b24] shadow-sm disabled:cursor-wait disabled:opacity-60" />
                                 {monthRequestPending && <span role="status" aria-live="polite" className="text-xs text-[#766b5d]">Atualizando…</span>}
                                 {monthRequestFailed && !monthRequestPending && <span role="alert" className="flex items-center gap-2 text-xs text-[#a44e24]">Não foi possível atualizar. <button type="button" onClick={() => requestMonth(month)} className="font-semibold underline underline-offset-2">Tentar novamente</button></span>}
@@ -147,7 +147,7 @@ export default function Dashboard({ selectedMonth, view, tab, pendingReview, pen
 
                         {tab === 'personal' ? <>
                             <section className="mt-6 grid gap-4 md:grid-cols-2">
-                                <SummaryCard label="Meus gastos totais do mês" value={formatMoney(personalSummary.ownConsumptionCents)} note="Consumo próprio atribuído a Eu" accent="emerald" />
+                                <SummaryCard label="Meus gastos totais da fatura" value={formatMoney(personalSummary.ownConsumptionCents)} note="Consumo próprio na fatura com vencimento no mês selecionado" accent="emerald" />
                                 <SalarySummaryCard salaryCents={personalSummary.salaryCents} remainingCents={personalSummary.salaryRemainingCents} salaryUrl={localNavigationUrls.analysisSalary} />
                             </section>
                             <InvoiceCategoryChart selectedMonth={month} rows={charts.invoiceCategoryTotals} />
@@ -354,10 +354,10 @@ function OwnPurchasesSummary({ ownSummary, selectedMonth }: { ownSummary: Props[
 
     return <section className="mt-5 rounded-3xl border border-[#594c43]/10 bg-[#fffdf8] p-6 shadow-[0_12px_30px_rgba(65,48,34,0.05)]">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-            <div><h2 className="font-serif font-semibold text-[#302b24]">Suas compras</h2><p className="mt-1 text-sm text-[#8b8072]">Resumo próprio de {formatMonth(selectedMonth)} · sem cobrança.</p></div>
+            <div><h2 className="font-serif font-semibold text-[#302b24]">Suas compras</h2><p className="mt-1 text-sm text-[#8b8072]">Resumo próprio da fatura com vencimento em {formatMonth(selectedMonth)} · sem cobrança.</p></div>
             {ownSummary && <strong className="text-sm text-[#315b37]">{formatMoney(ownSummary.grossCents)}</strong>}
         </div>
-        {!ownSummary ? <p className="mt-5 rounded-xl border border-dashed border-[#594c43]/20 px-4 py-6 text-center text-sm text-[#8b8072]">Nenhuma compra própria neste mês.</p> : <>
+        {!ownSummary ? <p className="mt-5 rounded-xl border border-dashed border-[#594c43]/20 px-4 py-6 text-center text-sm text-[#8b8072]">Nenhuma compra própria nesta fatura.</p> : <>
             <textarea aria-label="Resumo das suas compras" value={message} onChange={(event) => setMessage(event.target.value)} className="mt-5 min-h-40 w-full resize-y rounded-xl border border-[#594c43]/15 bg-[#f8f4ec] px-3 py-3 text-sm leading-6 text-[#302b24] outline-none focus:border-[#4F844D]/60" />
             <button type="button" onClick={copyMessage} className="mt-3 rounded-xl bg-[#3BD936] px-4 py-2.5 text-sm font-semibold text-[#17351e]">{copied ? 'Copiado' : 'Copiar resumo das minhas compras'}</button>
             {copyError && <p role="alert" className="mt-3 text-sm text-[#96501f]">Não foi possível copiar automaticamente. Selecione e copie o texto manualmente.</p>}
